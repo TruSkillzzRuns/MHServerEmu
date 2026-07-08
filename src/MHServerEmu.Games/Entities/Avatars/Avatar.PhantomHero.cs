@@ -37,11 +37,72 @@ namespace MHServerEmu.Games.Entities.Avatars
     {
         private static readonly Logger PhantomLogger = LogManager.CreateLogger();
 
-        // No hardcoded roster — the pool is built at first spawn by iterating the
-        // client's actual AvatarPrototype hierarchy (NoAbstractApprovedOnly, i.e.
-        // concrete + shipping-approved entries). This makes the mod version-
-        // agnostic: whatever heroes the currently-loaded client data ships with
-        // become spawn candidates automatically. See EnsureResolvedPool().
+        // Full playable roster. Verified via Entity/Characters/Avatars/Shipping/*.
+        private static readonly string[] s_phantomHeroPool =
+        {
+            "Entity/Characters/Avatars/Shipping/AntMan.prototype",
+            "Entity/Characters/Avatars/Shipping/Angela.prototype",
+            "Entity/Characters/Avatars/Shipping/Beast.prototype",
+            "Entity/Characters/Avatars/Shipping/BlackBolt.prototype",
+            "Entity/Characters/Avatars/Shipping/BlackCat.prototype",
+            "Entity/Characters/Avatars/Shipping/BlackPanther.prototype",
+            "Entity/Characters/Avatars/Shipping/BlackWidow.prototype",
+            "Entity/Characters/Avatars/Shipping/Cable.prototype",
+            "Entity/Characters/Avatars/Shipping/CaptainAmerica.prototype",
+            "Entity/Characters/Avatars/Shipping/MsMarvel2.prototype",
+            "Entity/Characters/Avatars/Shipping/Colossus.prototype",
+            "Entity/Characters/Avatars/Shipping/Cyclops.prototype",
+            "Entity/Characters/Avatars/Shipping/Daredevil.prototype",
+            "Entity/Characters/Avatars/Shipping/Deadpool.prototype",
+            "Entity/Characters/Avatars/Shipping/DoctorStrange.prototype",
+            "Entity/Characters/Avatars/Shipping/Elektra.prototype",
+            "Entity/Characters/Avatars/Shipping/EmmaFrost.prototype",
+            "Entity/Characters/Avatars/Shipping/Falcon.prototype",
+            "Entity/Characters/Avatars/Shipping/Gambit.prototype",
+            "Entity/Characters/Avatars/Shipping/GhostRider.prototype",
+            "Entity/Characters/Avatars/Shipping/Groot.prototype",
+            "Entity/Characters/Avatars/Shipping/Hawkeye.prototype",
+            "Entity/Characters/Avatars/Shipping/Hulk.prototype",
+            "Entity/Characters/Avatars/Shipping/HumanTorch.prototype",
+            "Entity/Characters/Avatars/Shipping/Iceman.prototype",
+            "Entity/Characters/Avatars/Shipping/InvisibleWoman.prototype",
+            "Entity/Characters/Avatars/Shipping/IronFist.prototype",
+            "Entity/Characters/Avatars/Shipping/IronMan.prototype",
+            "Entity/Characters/Avatars/Shipping/JeanGrey.prototype",
+            "Entity/Characters/Avatars/Shipping/Juggernaut.prototype",
+            "Entity/Characters/Avatars/Shipping/KittyPryde.prototype",
+            "Entity/Characters/Avatars/Shipping/Loki.prototype",
+            "Entity/Characters/Avatars/Shipping/LukeCage.prototype",
+            "Entity/Characters/Avatars/Shipping/Magik.prototype",
+            "Entity/Characters/Avatars/Shipping/Magneto.prototype",
+            "Entity/Characters/Avatars/Shipping/MoonKnight.prototype",
+            "Entity/Characters/Avatars/Shipping/MrFantastic.prototype",
+            "Entity/Characters/Avatars/Shipping/MsMarvel.prototype",
+            "Entity/Characters/Avatars/Shipping/NickFury.prototype",
+            "Entity/Characters/Avatars/Shipping/Nightcrawler.prototype",
+            "Entity/Characters/Avatars/Shipping/Nova.prototype",
+            "Entity/Characters/Avatars/Shipping/Psylocke.prototype",
+            "Entity/Characters/Avatars/Shipping/Punisher.prototype",
+            "Entity/Characters/Avatars/Shipping/RocketRaccoon.prototype",
+            "Entity/Characters/Avatars/Shipping/Rogue.prototype",
+            "Entity/Characters/Avatars/Shipping/ScarletWitch.prototype",
+            "Entity/Characters/Avatars/Shipping/SheHulk.prototype",
+            "Entity/Characters/Avatars/Shipping/SilverSurfer.prototype",
+            "Entity/Characters/Avatars/Shipping/Spiderman.prototype",
+            "Entity/Characters/Avatars/Shipping/SquirrelGirl.prototype",
+            "Entity/Characters/Avatars/Shipping/Starlord.prototype",
+            "Entity/Characters/Avatars/Shipping/Storm.prototype",
+            "Entity/Characters/Avatars/Shipping/Taskmaster.prototype",
+            "Entity/Characters/Avatars/Shipping/Thing.prototype",
+            "Entity/Characters/Avatars/Shipping/Thor.prototype",
+            "Entity/Characters/Avatars/Shipping/Ultron.prototype",
+            "Entity/Characters/Avatars/Shipping/Venom.prototype",
+            "Entity/Characters/Avatars/Shipping/Vision.prototype",
+            "Entity/Characters/Avatars/Shipping/WarMachine.prototype",
+            "Entity/Characters/Avatars/Shipping/WinterSoldier.prototype",
+            "Entity/Characters/Avatars/Shipping/Wolverine.prototype",
+            "Entity/Characters/Avatars/Shipping/X23.prototype",
+        };
 
         private static readonly object s_phantomDeckLock = new();
         private static readonly List<int> s_phantomDeck = new();
@@ -370,20 +431,21 @@ namespace MHServerEmu.Games.Entities.Avatars
             lock (s_phantomResolvedLock)
             {
                 if (s_phantomResolved != null) return;
-                var resolved = new List<PrototypeId>(64);
-                // Same iteration the login pipeline (PlayerConnection), the
-                // equipment tables, and PowerCommands use to get "every real
-                // playable hero for this client." Guarantees the pool tracks
-                // the loaded client version exactly.
-                foreach (PrototypeId avatarRef in DataDirectory.Instance
-                    .IteratePrototypesInHierarchy<AvatarPrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
+                var resolved = new List<PrototypeId>(s_phantomHeroPool.Length);
+                var missing = new List<string>();
+                for (int i = 0; i < s_phantomHeroPool.Length; i++)
                 {
-                    if (avatarRef == PrototypeId.Invalid) continue;
-                    if (avatarRef.As<AvatarPrototype>() == null) continue;
-                    resolved.Add(avatarRef);
+                    var r = GameDatabase.GetPrototypeRefByName(s_phantomHeroPool[i]);
+                    if (r != PrototypeId.Invalid && r.As<AvatarPrototype>() != null)
+                        resolved.Add(r);
+                    else
+                        missing.Add(s_phantomHeroPool[i]);
                 }
                 s_phantomResolved = resolved;
-                PhantomLogger.Info($"[PhantomHero] pool built from client data: {resolved.Count} playable avatars");
+                if (missing.Count > 0)
+                    PhantomLogger.Info($"[PhantomHero] pool resolved {resolved.Count}/{s_phantomHeroPool.Length} — missing: {string.Join(", ", missing)}");
+                else
+                    PhantomLogger.Info($"[PhantomHero] pool resolved {resolved.Count}/{s_phantomHeroPool.Length} — all paths valid");
             }
         }
 

@@ -1,4 +1,4 @@
-﻿using Gazillion;
+using Gazillion;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.Core.Network;
 using MHServerEmu.DatabaseAccess;
@@ -93,6 +93,13 @@ namespace MHServerEmu.PlayerManagement.Social
         public bool ReceiveMemberBroadcast(CommunityMemberBroadcast broadcast)
         {
             ulong playerDbId = broadcast.MemberPlayerDbId;
+
+            // Phantom heroes (Avatar.SpawnPhantomHero) mint synthetic DbGuids in
+            // the 0xB07F_ADED_XXXX_XXXX range that are never registered with the
+            // community system. Silently ignore their broadcasts so the log
+            // stays clean.
+            if ((playerDbId & 0xFFFF_FFFF_0000_0000UL) == 0xB07F_ADED_0000_0000UL)
+                return false;
 
             // We should be receiving broadcasts only from online players
             PlayerHandle player = _playerManager.ClientManager.GetPlayer(playerDbId);

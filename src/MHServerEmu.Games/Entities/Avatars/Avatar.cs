@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using Gazillion;
 using MHServerEmu.Core.Collections;
 using MHServerEmu.Core.Extensions;
@@ -99,7 +99,12 @@ namespace MHServerEmu.Games.Entities.Avatars
         public bool IsUsingGamepadInput { get; set; } = false;
         public PrototypeId CurrentTransformMode { get; private set; } = PrototypeId.Invalid;
 
-        public override bool IsMovementAuthoritative => false;
+        // Phantom heroes (SpawnPhantomHero) have no client — the server MUST be
+        // authoritative for their movement, or Locomotor.FollowEntity produces no
+        // visible walking on the real client's screen. Real avatars keep the
+        // default false so the client stays in charge.
+        public bool IsPhantomHero { get; internal set; }
+        public override bool IsMovementAuthoritative => IsPhantomHero;
         public override bool CanBeRepulsed => false;
         public override bool CanRepulseOthers => false;
 
@@ -347,6 +352,15 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Get player for AOI update
             Player player = GetOwnerOfType<Player>();
             if (!Verify.IsNotNull(player)) return ChangePositionResult.NotChanged;
+
+            // Phantom-hero owner (SpawnPhantomHero) has no PlayerConnection so AOI is null.
+            // Skip AOI-gated teleport/exit logic and do a plain base position change.
+            if (player.AOI == null)
+            {
+                if (flags.HasFlag(ChangePositionFlags.EnterWorld))
+                    AvatarWorldInstanceId++;
+                return base.ChangeRegionPosition(position, orientation, flags);
+            }
 
             ChangePositionResult result;
 
@@ -1912,6 +1926,11 @@ namespace MHServerEmu.Games.Entities.Avatars
         {
             if (IsInWorld == false)
                 return false;
+
+            // Phantom heroes (Avatar.SpawnPhantomHero) don't need StatsPower —
+            // skip the lookup so we don't spam the log with 'statsPower verify
+            // failed' on every phantom spawn.
+            if (IsPhantomHero) return false;
 
             Power statsPower = GetPower(AvatarPrototype.StatsPower);
             if (!Verify.IsNotNull(statsPower)) return false;
@@ -6892,6 +6911,18 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             Region region = Region;
             if (!Verify.IsNotNull(region)) return;
+
+            // Phantom-hero owner: no client to receive scoring/leaderboard/party
+            // updates. Run only base + endurance regen + power init and bail.
+            if (player.PlayerConnection == null)
+            {
+                base.OnEnteredWorld(settings);
+                Properties[PropertyEnum.AvatarTimePlayedStart] = Game.CurrentTime;
+                foreach (PrimaryResourceManaBehaviorPrototype primaryManaBehaviorProto in GetPrimaryResourceManaBehaviors())
+                    EnableEnduranceRegen(primaryManaBehaviorProto.ManaType);
+                InitializePowers();
+                return;
+            }
 
             player.UpdateScoringEventContext();
 

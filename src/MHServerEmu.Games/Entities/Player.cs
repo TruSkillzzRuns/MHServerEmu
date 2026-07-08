@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using Gazillion;
 using Google.ProtocolBuffers;
 using MHServerEmu.Core.Collections;
@@ -154,7 +154,7 @@ namespace MHServerEmu.Games.Entities
         public bool IsSwitchingAvatar { get; private set; }
 
         public PlayerConnection PlayerConnection { get; private set; }
-        public AreaOfInterest AOI { get => PlayerConnection.AOI; }
+        public AreaOfInterest AOI { get => PlayerConnection?.AOI; }
 
         public Avatar CurrentAvatar { get; private set; }
         public HUDTutorialPrototype CurrentHUDTutorial { get; private set; }
@@ -518,7 +518,7 @@ namespace MHServerEmu.Games.Entities
             CancelPlayerTrade();
 
             SendMessage(NetMessageBeginExitGame.DefaultInstance);
-            AOI.SetRegion(0, true);
+            AOI?.SetRegion(0, true);
 
             base.ExitGame();
         }
@@ -608,8 +608,9 @@ namespace MHServerEmu.Games.Entities
 
         public Region GetRegion()
         {
-            // This shouldn't need any null checks, at least for now
-            return AOI.Region;
+            // Phantom Players (Avatar.SpawnPhantomHero) have no PlayerConnection.
+            // AOI is null in that case — return null and let PlayerIterator skip us.
+            return PlayerConnection?.AOI?.Region;
         }
 
         public bool CanEnterRegion(PrototypeId regionProtoRef, PrototypeId difficultyTierProtoRef, bool isPartyTeleport)

@@ -405,3 +405,6 @@ FodyWeavers.xsd
 # Build directory
 /build
 
+
+# PhantomHeroes installer backups
+*.phbak

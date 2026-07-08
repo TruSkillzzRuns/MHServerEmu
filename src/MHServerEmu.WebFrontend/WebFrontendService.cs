@@ -1,4 +1,4 @@
-﻿using MHServerEmu.Core.Config;
+using MHServerEmu.Core.Config;
 using MHServerEmu.Core.Helpers;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.Core.Network;
@@ -128,6 +128,11 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/AccountManagement/ClearFlag",     new AccountClearFlagWebHandler());
 
             _webService.RegisterHandler("/ServerStatus", new ServerStatusWebHandler());
+
+            // PhantomHeroes runtime endpoints.
+            _webService.RegisterHandler("/webapi/phantom/spawn",  new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomHeroSpawnWebHandler());
+            _webService.RegisterHandler("/webapi/phantom/clear",  new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomHeroClearWebHandler());
+            _webService.RegisterHandler("/webapi/phantom/status", new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomHeroStatusWebHandler());
             _webService.RegisterHandler("/RegionReport", new RegionReportWebHandler());
             _webService.RegisterHandler("/Metrics/Performance", new MetricsPerformanceWebHandler());
         }
