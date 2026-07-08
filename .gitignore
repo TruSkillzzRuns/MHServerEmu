@@ -408,3 +408,10 @@ FodyWeavers.xsd
 
 # PhantomHeroes installer backups
 *.phbak
+
+# Marvel Heroes client data — MUST be provided by the user from their own
+# client install. Copyright Gazillion/Disney. Never commit.
+*.sip
+*.tfc
+*.upk
+Data/Game/
