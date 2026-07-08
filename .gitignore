@@ -421,3 +421,10 @@ Data/Game/
 Account.db*
 *.sqlite
 *.sqlite-*
+
+# Personal local launcher scripts — machine-specific paths, never for the repo.
+# Kept in the fork folder for muscle memory (matches upstream Build.bat).
+StartServer.bat
+StopServer.bat
+StartClient.bat
+StartApache.bat
