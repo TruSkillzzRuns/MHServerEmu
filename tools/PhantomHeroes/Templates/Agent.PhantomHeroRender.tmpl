@@ -1,0 +1,148 @@
+// 1.52 phantom-hero template — Agent + ClientPrototypeRefOverride recipe.
+//
+// This file is a TEMPLATE, not a drop-in. 1.52 forks vary in namespace,
+// property vs helper naming, and AI-controller wiring. You will need to
+// wire it in against your specific 1.52 branch's API — this file gives you
+// the shape and the correct sequence of engine calls.
+//
+// After you drop this in as a new partial next to Avatar.cs (or Agent.cs,
+// depending on which class you attach it to), do the following in your
+// server:
+//   1. Compile.
+//   2. Call SpawnPhantomHeroRendered(...) from a mailbox/chat command.
+//   3. Verify the Agent renders as the target playable-hero prototype
+//      instead of as its own skin.
+//   4. Verify AI kicks in (SetAsPersistent) and the bot fights hostiles.
+//
+// The 5 required engine calls are:
+//   - PopulationManager.CreateSpawnGroup / CreateSpawnSpec / Spawn — same
+//     as any Agent spawn.
+//   - agent.ClientPrototypeRefOverride = <heroRef>   // <-- the whole trick
+//     (or your branch's helper: agent.SetClientPrototypeOverride(heroRef),
+//      or agent.SetSpoofRender(heroRef) — check your source.)
+//   - agent.SetSummonedAllianceOverride(caller.Alliance)
+//   - agent.SetAsPersistent(caller, true)   // team-up-style follow AI
+//   - optional Properties[AIAggroRangeOverride*], DamageMult, Throwability
+//
+// The 1.52 recipe is fundamentally simpler than 1.53 because the client
+// still honors the render override; you do NOT need a phantom Player,
+// null guards, or six engine-side patches. See PHANTOM_HERO_MOD.md
+// Section B for the complete write-up.
+
+using System.Collections.Generic;
+using MHServerEmu.Core.VectorMath;
+using MHServerEmu.Games.Common;
+using MHServerEmu.Games.GameData;
+using MHServerEmu.Games.GameData.Prototypes;
+using MHServerEmu.Games.Populations;
+using MHServerEmu.Games.Properties;
+using MHServerEmu.Games.Regions;
+
+namespace MHServerEmu.Games.Entities.Avatars
+{
+    public partial class Avatar
+    {
+        // The "shell" — hero-shaped Agent prototype paths. These are the same
+        // pool the 1.53 pre-mod game-loop bots used; they exist in the 1.52
+        // client data directory as well.
+        private static readonly string[] s_phantomAgentShellPool =
+        {
+            "Entity/Characters/Bosses/CivilWar/IronMan.prototype",
+            "Entity/Characters/Bosses/CivilWar/CaptainAmerica.prototype",
+            "Entity/Characters/Bosses/CivilWar/BlackPanther.prototype",
+            "Entity/Characters/Bosses/CivilWar/WinterSoldier.prototype",
+            "Entity/Characters/Bosses/CivilWar/WarMachine.prototype",
+            "Entity/Characters/Bosses/CivilWar/Falcon.prototype",
+        };
+
+        // The "render" pool — real playable AvatarPrototypes to visually spoof
+        // the shell as. On 1.52 the client will happily display any of these
+        // as the mesh + animation set. Extend the list with whichever Shipping
+        // AvatarPrototypes your 1.52 client's data directory carries.
+        private static readonly string[] s_phantomRenderPool =
+        {
+            "Entity/Characters/Avatars/Shipping/Wolverine.prototype",
+            "Entity/Characters/Avatars/Shipping/Storm.prototype",
+            "Entity/Characters/Avatars/Shipping/IronMan.prototype",
+            "Entity/Characters/Avatars/Shipping/Thor.prototype",
+            "Entity/Characters/Avatars/Shipping/BlackPanther.prototype",
+            "Entity/Characters/Avatars/Shipping/CaptainAmerica.prototype",
+            // extend from your client's data directory
+        };
+
+        /// <summary>
+        /// Spawns one hero-shaped Agent, sets its client-side render to a real
+        /// AvatarPrototype, and wires team-up-style AI. Returns the agent id or 0.
+        /// </summary>
+        public ulong SpawnPhantomHeroRendered(int level, out string error)
+        {
+            error = null;
+            if (IsInWorld == false) { error = "caller not in world"; return 0; }
+            Region region = Region;
+            if (region == null) { error = "no region"; return 0; }
+
+            // Resolve refs. GetPrototypeRefByName lives in your own data
+            // directory — this call touches nothing external.
+            var rng = Game.Random;
+            string shellPath = s_phantomAgentShellPool[rng.Next(0, s_phantomAgentShellPool.Length)];
+            string renderPath = s_phantomRenderPool[rng.Next(0, s_phantomRenderPool.Length)];
+            var shellRef = GameDatabase.GetPrototypeRefByName(shellPath);
+            var renderRef = GameDatabase.GetPrototypeRefByName(renderPath);
+            if (shellRef == PrototypeId.Invalid) { error = $"shell ref unresolved: {shellPath}"; return 0; }
+            if (renderRef == PrototypeId.Invalid) { error = $"render ref unresolved: {renderPath}"; return 0; }
+
+            // Standard population spawn — same call chain any Agent uses.
+            var pop = region.PopulationManager;
+            var group = pop.CreateSpawnGroup();
+            Vector3 origin = RegionLocation.Position;
+            float ang = (float)(rng.NextDouble() * System.Math.PI * 2.0);
+            float radius = 300f + (float)(rng.NextDouble() * 800f);
+            Vector3 candidate = origin + new Vector3((float)System.Math.Cos(ang) * radius, (float)System.Math.Sin(ang) * radius, 0f);
+            Vector3 spawnPos = RegionLocation.ProjectToFloor(region, candidate);
+            group.Transform = Transform3.BuildTransform(spawnPos, RegionLocation.Orientation);
+            group.SpawnCleanup = false;
+            var spec = pop.CreateSpawnSpec(group);
+            spec.EntityRef = shellRef;
+            spec.Transform = Transform3.Identity();
+            spec.SnapToFloor = true;
+            spec.Properties[PropertyEnum.CharacterLevel] = level;
+            spec.Properties[PropertyEnum.CombatLevel] = level;
+            spec.Spawn();
+            if (spec.ActiveEntity is not Agent bot)
+            {
+                pop.RemoveSpawnGroup(group.Id);
+                error = "spawn failed";
+                return 0;
+            }
+
+            // === THE ONE LINE THAT MATTERS ON 1.52 ===
+            // Replace this with whatever your 1.52 branch exposes:
+            //   direct property setter:   bot.ClientPrototypeRefOverride = renderRef;
+            //   helper method:            bot.SetClientPrototypeOverride(renderRef);
+            //   alternate helper:         bot.SetSpoofRender(renderRef);
+            // Check your Agent.cs / WorldEntity.cs for the exact name.
+            //
+            // TODO_1_52: uncomment ONE of these depending on your branch:
+            //
+            // bot.ClientPrototypeRefOverride = renderRef;
+            // bot.SetClientPrototypeOverride(renderRef);
+            // bot.SetSpoofRender(renderRef);
+
+            // Alliance override so bot targets caller's enemies, not caller.
+            bot.SetSummonedAllianceOverride(Alliance);
+
+            // Team-up-style AI: follow caller, engage caller's enemies.
+            bot.SetAsPersistent(this, true);
+
+            // Optional tuning — same properties as the 1.53 recipe.
+            bot.Properties[PropertyEnum.Throwability] = int.MinValue;
+            bot.Properties[PropertyEnum.PowerUserOverrideID] = Id;
+            bot.Properties[PropertyEnum.AIAggroRangeOverrideHostile] = 2000f;
+            bot.Properties[PropertyEnum.AIAggroRangeOverrideAlly] = 2000f;
+            bot.Properties[PropertyEnum.AIProximityRangeOverride] = 2000f;
+            bot.Properties[PropertyEnum.DamageMult] = 3f;
+
+            return bot.Id;
+        }
+    }
+}

@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>PhantomHeroes</RootNamespace>
+    <AssemblyName>PhantomHeroes</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!-- One-file, no-runtime-required exe. Bundles .NET so users don't have
+         to install the Desktop Runtime. Compressed for smaller size. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- InvariantGlobalization MUST be false for WPF. The font cache
+         initializer (MS.Internal.FontCache.MajorLanguages) needs the full
+         globalization/ICU data to build its script/language tables; with
+         invariant mode it throws TypeInitializationException on the first
+         TextBlock.Measure and the whole window fails to render. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <DebugType>embedded</DebugType>
+
+    <!-- Ship the built exe straight into tools/PhantomHeroes/PhantomHeroes.exe.
+         Send all bin/obj scratch under $TEMP so the source folder stays clean. -->
+    <PublishDir>$(MSBuildProjectDirectory)\</PublishDir>
+    <BaseOutputPath>$(TEMP)\PhantomHeroes-build\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(TEMP)\PhantomHeroes-build\obj\</BaseIntermediateOutputPath>
+    <Version>1.0.1</Version>
+    <Product>Phantom Heroes</Product>
+    <AssemblyTitle>Phantom Heroes</AssemblyTitle>
+    <Description>Phantom Heroes — server-side hero NPCs for MHServerEmu.</Description>
+    <Company>Phantom Heroes</Company>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF-loadable image assets. Referenced via pack:// URIs in XAML. -->
+    <Resource Include="Assets\background.jpeg"/>
+    <Resource Include="Assets\logo.jpeg"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\src\MHServerEmu.Games\Entities\Avatars\Avatar.PhantomHero.cs">
+      <LogicalName>Templates.153.Avatar.PhantomHero.cs</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Templates\Agent.PhantomHeroRender.tmpl">
+      <LogicalName>Templates.152.Agent.PhantomHeroRender.cs</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Templates\PhantomHeroWebHandler.tmpl">
+      <LogicalName>Templates.153.PhantomHeroWebHandler.cs</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="README.md">
+      <LogicalName>README.md</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>
