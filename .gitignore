@@ -415,3 +415,9 @@ FodyWeavers.xsd
 *.tfc
 *.upk
 Data/Game/
+
+# Per-user server state (account database + SQLite journals) — never commit.
+# Each user brings their own or lets MHServerEmu create a fresh one.
+Account.db*
+*.sqlite
+*.sqlite-*

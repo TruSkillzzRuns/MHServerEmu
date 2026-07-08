@@ -34,6 +34,19 @@ Create the `Data\Game\` folders if they don't exist.
   `Data/Game/` — attempting to `git add` them is a no-op by design.
 - Every user must acquire them from their own client install.
 
+## Account database (optional)
+
+`Account.db` (the SQLite file where MHServerEmu stores user accounts and their
+saved characters) is also gitignored and never shipped by this repo.
+
+- **First-time users**: do nothing. On first server launch MHServerEmu will
+  create a fresh empty `Account.db` at
+  `src\MHServerEmu\bin\Release\net8.0\Data\Account.db`. Use the `!account`
+  chat command in-game to make an account.
+- **Migrating from another MHServerEmu install** (e.g. your own previous
+  server): copy your existing `Account.db` into that same folder before
+  starting the server. Your accounts, characters, and inventory come with you.
+
 ## Verification
 
 Once the two files are in place, run the server executable:
