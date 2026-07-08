@@ -133,6 +133,11 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/phantom/spawn",  new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomHeroSpawnWebHandler());
             _webService.RegisterHandler("/webapi/phantom/clear",  new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomHeroClearWebHandler());
             _webService.RegisterHandler("/webapi/phantom/status", new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomHeroStatusWebHandler());
+
+            // OmegaDev2 Regions tool endpoints.
+            _webService.RegisterHandler("/webapi/regions/list",     new MHServerEmu.WebFrontend.Handlers.WebApi.RegionsListWebHandler());
+            _webService.RegisterHandler("/webapi/regions/teleport", new MHServerEmu.WebFrontend.Handlers.WebApi.RegionsTeleportWebHandler());
+
             _webService.RegisterHandler("/RegionReport", new RegionReportWebHandler());
             _webService.RegisterHandler("/Metrics/Performance", new MetricsPerformanceWebHandler());
         }
