@@ -1,6 +1,6 @@
 # Setup
 
-Start-to-finish guide to get MHServerEmu-Phantom running on Windows with a
+Start-to-finish guide to get this MHServerEmu fork running on Windows with a
 1.52 client connecting locally. Should take about 15–20 minutes end-to-end.
 
 ## Prerequisites
@@ -19,8 +19,8 @@ Start-to-finish guide to get MHServerEmu-Phantom running on Windows with a
 ## 1. Clone this repo
 
 ```
-git clone https://github.com/TruSkillzzRuns/MHServerEmu-Phantom.git
-cd MHServerEmu-Phantom
+git clone https://github.com/TruSkillzzRuns/MHServerEmu.git
+cd MHServerEmu
 ```
 
 You'll land on the `phantom-heroes` branch by default.

@@ -1,4 +1,4 @@
-# MHServerEmu-Phantom
+# MHServerEmu
 
 A fork of [MHServerEmu](https://github.com/Crypto137/MHServerEmu) with
 **Phantom Heroes** baked in — server-side hero NPCs you can spawn on demand
@@ -24,8 +24,8 @@ work.
 ## Try it
 
 ```
-git clone https://github.com/TruSkillzzRuns/MHServerEmu-Phantom.git
-cd MHServerEmu-Phantom
+git clone https://github.com/TruSkillzzRuns/MHServerEmu.git
+cd MHServerEmu
 ```
 
 Then follow **[SETUP.md](SETUP.md)** — you'll need to bring two client files
