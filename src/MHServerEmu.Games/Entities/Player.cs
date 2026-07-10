@@ -517,6 +517,11 @@ namespace MHServerEmu.Games.Entities
 
             CancelPlayerTrade();
 
+            // Cleanup any phantom-hero bots this player spawned. Without this
+            // they leak into the game world on logout — server restart is the
+            // only recovery (see Avatar.PhantomHero.cs orphaning bug).
+            try { PurgePhantomsOnExitGame(); } catch { /* best effort — don't block ExitGame */ }
+
             SendMessage(NetMessageBeginExitGame.DefaultInstance);
             AOI?.SetRegion(0, true);
 

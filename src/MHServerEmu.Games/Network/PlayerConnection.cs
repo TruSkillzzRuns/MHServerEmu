@@ -66,6 +66,7 @@ namespace MHServerEmu.Games.Network
 
         public ulong PlayerDbId { get => (ulong)_dbAccount.Id; }
         public long GazillioniteBalance { get => _dbAccount.Player.GazillioniteBalance; set => _dbAccount.Player.GazillioniteBalance = value; }
+        public MigrationData MigrationData { get => _dbAccount.MigrationData; }
 
         /// <summary>
         /// Constructs a new <see cref="PlayerConnection"/>.
@@ -370,6 +371,13 @@ namespace MHServerEmu.Games.Network
             Player.QueueLoadingScreen(remoteRegionProtoRef);
 
             oldRegion?.PlayerLeftRegionEvent.Invoke(new(Player, oldRegion.PrototypeDataRef));
+
+            // Snapshot phantom-hero recipes to MigrationData BEFORE the
+            // avatar exits world. Cross-region transfer destroys this Game
+            // instance; MigrationData rides with the human to the new one
+            // where Avatar.OnEnteredWorld will re-spawn them.
+            try { Player.SnapshotPhantomsForTransfer(); }
+            catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotPhantomsForTransfer threw: {ex.Message}"); }
 
             Player.CurrentAvatar.ExitWorld();
 

@@ -13,6 +13,7 @@ using MHServerEmu.Games.Events;
 using MHServerEmu.Games.Events.Templates;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
+using MHServerEmu.Games.Navi;
 using MHServerEmu.Games.Powers;
 using MHServerEmu.Games.Properties;
 using MHServerEmu.Games.Regions;
@@ -48,9 +49,14 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static int s_phantomDeckIdx;
         private static ulong s_phantomDbIdSeed = 0xB07_FADED_0000_0001UL;
 
-        private readonly List<ulong> _phantomIds = new();
-        private readonly List<ulong> _phantomPlayerIds = new();
-        public int PhantomHeroCount => _phantomIds.Count;
+        // Ownership lists moved to Player (see Player.PhantomHero.cs). The
+        // Avatar shell no longer owns anything — every operation delegates to
+        // GetOwnerOfType<Player>() so avatar swaps and region hops don't
+        // orphan phantoms. Left in place for source-compat: PhantomHeroCount
+        // + the Ids reader now pull straight from the Player's list.
+        private Player PhantomHost => GetOwnerOfType<Player>();
+        public int PhantomHeroCount => PhantomHost?.PhantomHeroCount ?? 0;
+        private IReadOnlyList<ulong> PhantomIds => PhantomHost?.PhantomAvatarIds ?? (IReadOnlyList<ulong>)System.Array.Empty<ulong>();
 
         // Comic-book flavored random usernames. Kept short so nameplates fit.
         private static readonly string[] s_phantomAdjectives =
@@ -72,7 +78,17 @@ namespace MHServerEmu.Games.Entities.Avatars
         // than 1500u from the caller, we teleport it back with a random offset so
         // multiple phantoms spread out. Also fires a random offensive power at any
         // nearby hostile so they don't just stand around.
-        private const float PhantomFollowMaxDistSq = 2500f * 2500f;
+        // Tighter than the old 2500u — phantoms should read as "with you"
+        // not "vaguely nearby." 1500u ≈ two-thirds of a screen at default
+        // zoom; if they wander beyond that the leash snaps them back.
+        private const float PhantomFollowMaxDistSq = 1500f * 1500f;
+        // Stuck detection: if the phantom's position barely changes across
+        // this many ticks (500ms each) they're either wall-clipped or
+        // pathed into an out-of-bounds corner — force a teleport back to
+        // caller.
+        private const int PhantomStuckTickThreshold = 4;      // 2 seconds
+        private const float PhantomStuckMoveEpsilonSq = 40f * 40f;
+        private static readonly Dictionary<ulong, (Vector3 lastPos, int stuckTicks)> s_phantomStuckTrack = new();
         private const float PhantomAttackRange = 1200f;
         private const float PhantomAttackRangeSq = PhantomAttackRange * PhantomAttackRange;
         // Wider search — phantom will walk to any hostile in this radius.
@@ -95,15 +111,17 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         private void OnPhantomTick()
         {
-            if (_phantomIds.Count == 0 || IsInWorld == false) return;
+            Player host = PhantomHost;
+            if (host == null || host.PhantomHeroCount == 0 || IsInWorld == false) return;
 
             Vector3 callerPos = RegionLocation.Position;
             var rng = Game.Random;
             List<ulong> stale = null;
+            var ids = host.PhantomAvatarIds; // snapshot count for stable iteration
 
-            for (int i = 0; i < _phantomIds.Count; i++)
+            for (int i = 0; i < ids.Count; i++)
             {
-                ulong id = _phantomIds[i];
+                ulong id = ids[i];
                 Avatar phantom = Game.EntityManager.GetEntity<Avatar>(id);
                 if (phantom == null || phantom.IsDestroyed || phantom.IsInWorld == false)
                 {
@@ -111,19 +129,33 @@ namespace MHServerEmu.Games.Entities.Avatars
                     continue;
                 }
 
-                // Leash: teleport back if stranded very far from caller.
-                float distSq = Vector3.DistanceSquared2D(phantom.RegionLocation.Position, callerPos);
-                if (distSq > PhantomFollowMaxDistSq)
+                // Stuck detection: if the phantom's position barely moved
+                // this tick despite the Locomotor being set to move, count
+                // it. After N consecutive stuck ticks assume they're
+                // wall-clipped or pathed out of bounds and force-leash.
+                Vector3 curPos = phantom.RegionLocation.Position;
+                bool forceLeash = false;
+                if (s_phantomStuckTrack.TryGetValue(phantom.Id, out var stuckState))
                 {
-                    float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
-                    float radius = 200f + (float)(rng.NextDouble() * 600f);
-                    Vector3 newPos = callerPos + new Vector3((float)Math.Cos(angle) * radius, (float)Math.Sin(angle) * radius, 0f);
+                    float movedSq = Vector3.DistanceSquared2D(curPos, stuckState.lastPos);
+                    bool wantsToMove = phantom.Locomotor != null && phantom.Locomotor.IsMoving;
+                    int newStuck = (wantsToMove && movedSq < PhantomStuckMoveEpsilonSq) ? stuckState.stuckTicks + 1 : 0;
+                    if (newStuck >= PhantomStuckTickThreshold) forceLeash = true;
+                    s_phantomStuckTrack[phantom.Id] = (curPos, forceLeash ? 0 : newStuck);
+                }
+                else s_phantomStuckTrack[phantom.Id] = (curPos, 0);
+
+                // Leash: teleport back if stranded far or wall-stuck.
+                float distSq = Vector3.DistanceSquared2D(curPos, callerPos);
+                if (distSq > PhantomFollowMaxDistSq || forceLeash)
+                {
                     Region r = phantom.Region;
-                    if (r != null) newPos = RegionLocation.ProjectToFloor(r, newPos);
+                    Vector3 leashPos = ChoosePhantomLeashPos(r, callerPos, rng, phantom.Bounds.Radius);
                     try
                     {
                         phantom.Locomotor?.Stop();
-                        phantom.ChangeRegionPosition(newPos, null);
+                        phantom.ChangeRegionPosition(leashPos, null);
+                        s_phantomStuckTrack[phantom.Id] = (leashPos, 0);
                     }
                     catch { /* keep ticking */ }
                 }
@@ -135,9 +167,9 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
 
             if (stale != null)
-                foreach (ulong id in stale) _phantomIds.Remove(id);
+                foreach (ulong id in stale) host.UnregisterPhantom(id);
 
-            if (_phantomIds.Count > 0)
+            if (host.PhantomHeroCount > 0)
                 SchedulePhantomTick();
         }
 
@@ -248,9 +280,61 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
             }
 
-            // Fire an attack if we're within attack range, regardless of movement.
-            if (nearestDistSq <= PhantomAttackRangeSq)
-                TryPhantomAttack(phantom, nearest, nearestDistSq, rng);
+            // Only fire an attack when the phantom is settled — either the
+            // Locomotor has arrived (or is close enough that the last step
+            // is trivial), or the target is inside melee range. Firing while
+            // FollowEntity is mid-path produces the "skating" look: the
+            // cast animation cancels walking mid-stride but position keeps
+            // advancing, so the character glides without a walk cycle.
+            const float PhantomMeleeSq = 400f * 400f;
+            bool arrived = loco == null || loco.IsMoving == false;
+            bool inMelee = nearestDistSq <= PhantomMeleeSq;
+            if ((arrived || inMelee) && nearestDistSq <= PhantomAttackRangeSq)
+            {
+                // Per-phantom attack cooldown — prevents the 2 Hz tick from
+                // burst-firing 2 attacks per second. Real players average
+                // closer to 1 attack per 800-1200 ms after animation locks.
+                long now = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+                if (s_phantomNextAttackMs.TryGetValue(phantom.Id, out long nextAt) == false || now >= nextAt)
+                {
+                    TryPhantomAttack(phantom, nearest, nearestDistSq, rng);
+                    // 800 ms floor + 400 ms jitter so 3 phantoms don't fire in
+                    // lockstep.
+                    s_phantomNextAttackMs[phantom.Id] = now + 800 + (long)(rng.NextDouble() * 400);
+                }
+            }
+        }
+
+        // Per-phantom next-attack timestamp (ms). Enforces at least ~800ms
+        // between casts so the tick doesn't spam-fire.
+        private static readonly Dictionary<ulong, long> s_phantomNextAttackMs = new();
+
+        /// <summary>
+        /// Pick a leash-teleport position near the caller that lands on the
+        /// walkable navi mesh. Retries up to 6 times with fresh random
+        /// angles/radii; falls back to caller position if nothing validates.
+        /// Fixes the "phantom leashes into a wall/out-of-bounds corner and
+        /// stays there" case that only server-restart used to unstick.
+        /// </summary>
+        private static Vector3 ChoosePhantomLeashPos(Region region, Vector3 callerPos, MHServerEmu.Core.System.Random.GRandom rng, float avatarRadius)
+        {
+            if (region == null) return callerPos;
+            var walkCheck = new DefaultContainsPathFlagsCheck(PathFlags.Walk);
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
+                // Tighter than the old 200-800 range so leashed phantoms
+                // land right next to the caller instead of "somewhere on
+                // this screen."
+                float radius = 150f + (float)(rng.NextDouble() * 250f);
+                Vector3 candidate = callerPos + new Vector3((float)Math.Cos(angle) * radius, (float)Math.Sin(angle) * radius, 0f);
+                candidate = RegionLocation.ProjectToFloor(region, candidate);
+                if (region.NaviMesh.Contains(candidate, MathF.Max(20f, avatarRadius), walkCheck))
+                    return candidate;
+            }
+            // Fallback: caller's exact position. Guaranteed walkable since
+            // the caller is standing on it.
+            return callerPos;
         }
 
         private static readonly HashSet<ulong> s_phantomLocoLogged = new();
@@ -415,6 +499,17 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// <paramref name="error"/>.
         /// </summary>
         public ulong SpawnPhantomHero(int levelOverride, string username, out string error)
+            => SpawnPhantomHeroCore(PrototypeId.Invalid, levelOverride, username, out error);
+
+        /// <summary>
+        /// Respawns a phantom from a MigrationData intent — same avatarRef +
+        /// level + username as the pre-transfer state. Used by
+        /// Player.RestorePhantomsFromMigration after cross-region travel.
+        /// </summary>
+        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, out string error)
+            => SpawnPhantomHeroCore(avatarRefOverride, level, username, out error);
+
+        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, out string error)
         {
             error = null;
             if (IsInWorld == false) { error = "avatar not in world"; return 0; }
@@ -422,7 +517,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             Region region = Region;
             if (region == null) { error = "no region"; return 0; }
 
-            PrototypeId avatarRef = NextPhantomHeroRef();
+            PrototypeId avatarRef = avatarRefOverride != PrototypeId.Invalid ? avatarRefOverride : NextPhantomHeroRef();
             if (avatarRef == PrototypeId.Invalid) { error = "hero ref resolve failed"; return 0; }
 
             AvatarPrototype avatarProto = avatarRef.As<AvatarPrototype>();
@@ -472,12 +567,40 @@ namespace MHServerEmu.Games.Entities.Avatars
             phantomAvatar.CombatLevel = effectiveLevel;
             phantomAvatar.ResetResources(false);
 
-            // Step 5: pick a spawn point near the caller and enter the world.
+            // Step 5: pick a spawn point close to the caller and enter the
+            // world. Two goals:
+            //   * Close — old range (300-1100u) put phantoms half a screen
+            //     away; tightened to 200-400u so they land within visible
+            //     radius and read as "with you" instead of "over there".
+            //   * No stacking — reject candidates within PhantomMinSpacing of
+            //     any already-alive phantom. Up to 8 tries; last try
+            //     accepted regardless so we never fail-to-spawn on a crowd.
             var rng = Game.Random;
-            float ang = (float)(rng.NextDouble() * Math.PI * 2.0);
-            float radius = 300f + (float)(rng.NextDouble() * 800f);
             Vector3 origin = RegionLocation.Position;
-            Vector3 candidate = origin + new Vector3((float)Math.Cos(ang) * radius, (float)Math.Sin(ang) * radius, 0f);
+            Vector3 candidate = origin;
+            const float minRadius = 150f;
+            const float maxRadius = 320f;
+            const float PhantomMinSpacing = 130f;              // ≈ 1.4 avatar widths
+            const float PhantomMinSpacingSq = PhantomMinSpacing * PhantomMinSpacing;
+            Player spacingHost = PhantomHost;
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                float ang = (float)(rng.NextDouble() * Math.PI * 2.0);
+                float radius = minRadius + (float)(rng.NextDouble() * (maxRadius - minRadius));
+                candidate = origin + new Vector3((float)Math.Cos(ang) * radius, (float)Math.Sin(ang) * radius, 0f);
+                if (spacingHost == null || spacingHost.PhantomHeroCount == 0) break;
+
+                bool tooClose = false;
+                for (int i = 0; i < spacingHost.PhantomAvatarIds.Count; i++)
+                {
+                    Avatar existing = Game.EntityManager.GetEntity<Avatar>(spacingHost.PhantomAvatarIds[i]);
+                    if (existing == null || existing.IsInWorld == false) continue;
+                    if (Vector3.DistanceSquared2D(existing.RegionLocation.Position, candidate) < PhantomMinSpacingSq) { tooClose = true; break; }
+                }
+                if (tooClose == false) break;
+                // On the last attempt, accept whatever we've got — better a
+                // slight overlap than no spawn.
+            }
             Vector3 spawnPos = RegionLocation.ProjectToFloor(region, candidate);
             Orientation spawnOri = RegionLocation.Orientation;
 
@@ -553,9 +676,35 @@ namespace MHServerEmu.Games.Entities.Avatars
             // the real client's screen.
             phantomAvatar.IsPhantomHero = true;
 
-            // Book-keeping so DespawnAllPhantomHeroes can clean up.
-            _phantomIds.Add(phantomAvatar.Id);
-            _phantomPlayerIds.Add(phantomPlayer.Id);
+            // Force simulation on. WorldEntity.SetSimulated adds the entity to
+            // EntityCollection.Locomotion which is what actually steps
+            // Locomotor path progress per tick AND broadcasts LocomotionState
+            // changes to interested clients. Without this, the tick still
+            // updates position but the client receives only raw position
+            // snaps — no walk animation, hence the "sliding" look. Real
+            // players get flipped simulated=true when a peer's AOI notices
+            // them; phantoms may not go through that path reliably.
+            try { phantomAvatar.SetSimulated(true); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] SetSimulated(true) failed: {ex.Message}"); }
+
+            // Book-keeping goes on the human Player (source of truth) — not on
+            // this Avatar shell — so `!phantom clear` and tick reattachment
+            // still find these entries after hero swaps or region hops.
+            Player host = PhantomHost;
+            if (host == null)
+            {
+                error = "no Player host to register phantom against";
+                try { if (phantomAvatar.IsInWorld) phantomAvatar.ExitWorld(); phantomAvatar.Destroy(); } catch { }
+                DestroyPhantomPlayer(phantomPlayer);
+                return 0;
+            }
+            var descriptor = new MHServerEmu.DatabaseAccess.Models.PhantomIntent
+            {
+                AvatarRef = (ulong)avatarRef,
+                Level = effectiveLevel,
+                Username = username,
+            };
+            host.RegisterPhantom(phantomAvatar.Id, phantomPlayer.Id, descriptor);
             SchedulePhantomTick();
 
             PhantomLogger.Info($"[PhantomHero] {this} spawned '{avatarRef.GetName()}' (avatarId 0x{phantomAvatar.Id:X}, phantomPlayerId 0x{phantomPlayer.Id:X}) at {spawnPos.ToStringNames()} level {effectiveLevel}");
@@ -616,38 +765,85 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// <summary>Destroys every phantom hero this caller has spawned.</summary>
         public int DespawnAllPhantomHeroes()
         {
-            int removed = 0;
-            foreach (ulong avatarId in _phantomIds)
-            {
-                try
-                {
-                    Avatar av = Game.EntityManager.GetEntity<Avatar>(avatarId);
-                    if (av == null) continue;
-                    if (av.IsInWorld) av.ExitWorld();
-                    av.Destroy();
-                    removed++;
-                }
-                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] despawn 0x{avatarId:X} failed: {ex.Message}"); }
-            }
-            foreach (ulong playerId in _phantomPlayerIds)
-            {
-                try
-                {
-                    Player p = Game.EntityManager.GetEntity<Player>(playerId);
-                    if (p == null) continue;
-                    // Player.Destroy walks GuildManager, MissionManager, etc. —
-                    // all of which touch AOI/PlayerConnection state we don't have.
-                    // ExitGame then base Destroy is enough to unregister without
-                    // going through the guild/mission cleanup paths.
-                    if (p.IsInGame) p.ExitGame();
-                    p.Destroy();
-                }
-                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] phantom-player 0x{playerId:X} destroy failed: {ex.Message}"); }
-            }
-            foreach (ulong id in _phantomIds) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); }
-            _phantomIds.Clear();
-            _phantomPlayerIds.Clear();
+            Player host = PhantomHost;
+            if (host == null) return 0;
+            // Snapshot ids for the diagnostic-cache scrub — Player.PurgePhantoms
+            // clears its own list, so we need the ids before it runs.
+            var ids = new List<ulong>(host.PhantomAvatarIds);
+            int removed = host.PurgePhantoms();
+            foreach (ulong id in ids) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id); }
             return removed;
+        }
+
+        /// <summary>
+        /// Called from Avatar.OnEnteredWorld. Prunes phantoms that don't
+        /// belong to this Avatar's region (they were left behind by an old
+        /// Avatar in another region and can't be seen anyway) and restarts
+        /// the tick on survivors so their AI resumes. This is the core of
+        /// Option B: same-region avatar swaps keep phantoms alive; cross-
+        /// region hops clean them up automatically.
+        /// </summary>
+        internal void ReattachPhantomTick()
+        {
+            Player host = PhantomHost;
+            if (host == null || host.PhantomHeroCount == 0) return;
+            Region myRegion = Region;
+            if (myRegion == null) return;
+
+            var mgr = Game?.EntityManager;
+            if (mgr == null) return;
+
+            var stale = new List<ulong>();
+            int alive = 0;
+            for (int i = 0; i < host.PhantomAvatarIds.Count; i++)
+            {
+                ulong id = host.PhantomAvatarIds[i];
+                Avatar phantom = mgr.GetEntity<Avatar>(id);
+                if (phantom == null || phantom.IsDestroyed) { stale.Add(id); continue; }
+                // Different region OR not in world = can't be driven from
+                // here; destroy so the count is honest and !phantom clear
+                // stays accurate.
+                if (phantom.IsInWorld == false || phantom.Region != myRegion) { stale.Add(id); continue; }
+                alive++;
+            }
+
+            if (stale.Count > 0)
+            {
+                foreach (ulong id in stale)
+                {
+                    int idx = -1;
+                    for (int j = 0; j < host.PhantomAvatarIds.Count; j++)
+                        if (host.PhantomAvatarIds[j] == id) { idx = j; break; }
+                    ulong playerId = idx >= 0 && idx < host.PhantomPlayerIds.Count ? host.PhantomPlayerIds[idx] : 0;
+                    try
+                    {
+                        Avatar av = mgr.GetEntity<Avatar>(id);
+                        if (av != null)
+                        {
+                            if (av.IsInWorld) av.ExitWorld();
+                            av.Destroy();
+                        }
+                    }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] stale-region cleanup avatar 0x{id:X} failed: {ex.Message}"); }
+                    if (playerId != 0)
+                    {
+                        try
+                        {
+                            Player p = mgr.GetEntity<Player>(playerId);
+                            if (p != null) { if (p.IsInGame) p.ExitGame(); p.Destroy(); }
+                        }
+                        catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] stale-region cleanup phantom-player 0x{playerId:X} failed: {ex.Message}"); }
+                    }
+                    host.UnregisterPhantom(id);
+                    s_phantomAttackLogged.Remove(id);
+                    s_phantomLocoLogged.Remove(id);
+                    s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id);
+                }
+                PhantomLogger.Info($"[PhantomHero] {this} reattach: pruned {stale.Count} stale, {alive} alive");
+            }
+
+            if (alive > 0)
+                SchedulePhantomTick();
         }
 
         private void DestroyPhantomPlayer(Player p)

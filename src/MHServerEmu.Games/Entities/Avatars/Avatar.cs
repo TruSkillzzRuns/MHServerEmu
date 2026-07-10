@@ -6916,6 +6916,11 @@ namespace MHServerEmu.Games.Entities.Avatars
             // updates. Run only base + endurance regen + power init and bail.
             if (player.PlayerConnection == null)
             {
+                // Ability key mapping must be initialized BEFORE ActivatePower
+                // runs during the phantom tick — GetPowerSlot verifies against
+                // _currentAbilityKeyMapping and warns loudly when it's null.
+                // No client state touched, just local per-Avatar setup.
+                InitAbilityKeyMappings();
                 base.OnEnteredWorld(settings);
                 Properties[PropertyEnum.AvatarTimePlayedStart] = Game.CurrentTime;
                 foreach (PrimaryResourceManaBehaviorPrototype primaryManaBehaviorProto in GetPrimaryResourceManaBehaviors())
@@ -6969,6 +6974,19 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             RestoreSelfAppliedPowerConditions();     // This needs to happen after we assign powers
             UpdateBoostConditionPauseState(region.PausesBoostConditions());
+
+            // Phantom-hero reattach: if the human Player has phantoms tracked
+            // (from a previous Avatar / previous region), prune ones that
+            // aren't in this Region and restart the tick on survivors. This
+            // is the fix for the "AI dead + can't clear until server restart"
+            // bug — see Avatar.PhantomHero.cs.
+            try { ReattachPhantomTick(); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] ReattachPhantomTick threw: {ex.Message}"); }
+
+            // Cross-region restore: if the human arrived here from a region
+            // transfer, MigrationData carries phantom recipes stashed by
+            // PlayerConnection.BeginRegionTransfer. Rebuild them in this new
+            // region so the phantoms come along for the ride.
+            try { player?.RestorePhantomsFromMigration(this); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] RestorePhantomsFromMigration threw: {ex.Message}"); }
 
             // Unlock chapters and waypoints that should be unlocked by default
             player.UnlockChapters();
@@ -7068,6 +7086,17 @@ namespace MHServerEmu.Games.Entities.Avatars
         public override void OnExitedWorld()
         {
             base.OnExitedWorld();
+
+            // Cancel the phantom-hero follow/attack tick — it drove itself
+            // off this Avatar's position, so it must not fire on a torn-down
+            // shell. When the human's next Avatar activates,
+            // ReattachPhantomTick() restarts it from OnEnteredWorld.
+            try
+            {
+                var phantomSched = Game?.GameEventScheduler;
+                if (phantomSched != null && _phantomTick.IsValid) phantomSched.CancelEvent(_phantomTick);
+            }
+            catch { /* best effort */ }
 
             // Clear dialog target
             Player player = GetOwnerOfType<Player>();
