@@ -175,6 +175,10 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         // One-time-per-phantom diagnostic set. Removed once attack is verified.
         private static readonly HashSet<ulong> s_phantomAttackLogged = new();
+        // One-time-per-(phantom,target) diagnostic set for the Attack log so a
+        // new boss gets its state dumped even after this phantom has already
+        // logged an attack on a mob.
+        private static readonly HashSet<ulong> s_phantomAttackTargetLogged = new();
 
         // Revive-priority range — search a bit wider than combat range so
         // phantoms notice downed players from across a room.
@@ -198,12 +202,20 @@ namespace MHServerEmu.Games.Entities.Avatars
             float downedDistSq = PhantomReviveSearchRangeSq;
             var reviveSphere = new Sphere(phantomPos, PhantomReviveSearchRange);
             var reviveCtx = new MHServerEmu.Games.Entities.EntityRegionSPContext(MHServerEmu.Games.Entities.EntityRegionSPContextFlags.PrimaryPartition);
-            foreach (WorldEntity we in region.IterateEntitiesInVolume(reviveSphere, reviveCtx))
+
+            // Direct check on the caller first — this covers the case where the
+            // human died far from the phantom (out of the 4000u sphere) or
+            // during a scripted death animation where the AOI doesn't return
+            // them from IterateEntitiesInVolume. The caller is the phantom's
+            // owner, so we always know exactly who to look for.
+            if (this.IsDead && this.IsInWorld && this.Region == region)
+            {
+                downed = this;
+                downedDistSq = Vector3.DistanceSquared2D(this.RegionLocation.Position, phantomPos);
+            }
+            else foreach (WorldEntity we in region.IterateEntitiesInVolume(reviveSphere, reviveCtx))
             {
                 if (we is not Avatar candidate) continue;
-                // Only skip the phantom itself — DO NOT skip the caller (this.Id).
-                // The caller is the whole point: when the real player who spawned
-                // the phantoms goes down, phantoms need to see them and rez.
                 if (candidate.Id == phantom.Id) continue;
                 if (candidate.IsDead == false) continue;
                 // Real Avatar = has a live PlayerConnection. Phantoms don't
@@ -239,8 +251,19 @@ namespace MHServerEmu.Games.Entities.Avatars
             var sweepSphere = new Sphere(phantomPos, PhantomSearchRange);
             var ctx = new MHServerEmu.Games.Entities.EntityRegionSPContext(MHServerEmu.Games.Entities.EntityRegionSPContextFlags.PrimaryPartition);
 
-            WorldEntity nearest = null;
-            float nearestDistSq = PhantomSearchRangeSq;
+            // Build a full sorted candidate list of hostile Agents instead of just
+            // "the nearest one." Some encounters (dramatic-entrance bosses, mission
+            // untargetable phases, out-of-line-of-sight bosses on elevated
+            // platforms) leave the nearest hostile in a state where
+            // Power.IsValidTarget silently rejects — and if that's the only entity
+            // we track, the phantom locks onto it, ActivatePower burns the
+            // cooldown returning BadTarget, and the phantom stands still for the
+            // whole fight. With a list we fall through to the next-nearest until
+            // one accepts the attack.
+            var candidates = new List<(WorldEntity we, float distSq)>();
+            List<(WorldEntity we, float distSq, string reason)> diagRejected = null;
+            bool diagWant = ShouldEmitPhantomDiag(phantom.Id);
+            long nowMsSweep = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
             foreach (WorldEntity we in region.IterateEntitiesInVolume(sweepSphere, ctx))
             {
                 if (we == null || we.Id == phantom.Id || we.Id == Id) continue;
@@ -249,14 +272,53 @@ namespace MHServerEmu.Games.Entities.Avatars
                 if (we is not Agent) continue;
                 if (phantom.IsHostileTo(we) == false) continue;
                 float d = Vector3.DistanceSquared2D(we.RegionLocation.Position, phantomPos);
-                if (d < nearestDistSq) { nearestDistSq = d; nearest = we; }
+                // Skip anything the engine won't accept as a valid target yet.
+                // Dramatic-entrance bosses (Doom, Loki, terminal bosses...) spawn
+                // with IsDormant=true until their intro cutscene wakes them
+                // (Agent.cs:97 + WakeEndCallback line 3119). While dormant,
+                // IsAffectedByPowersInternal returns false so
+                // Power.IsValidTarget rejects the attack (Power.Validation.cs
+                // line 313).
+                if (we.IsDormant || we.IsUntargetable || we.IsUnaffectable)
+                {
+                    if (diagWant) (diagRejected ??= new()).Add((we, d,
+                        we.IsDormant ? "dormant" : we.IsUntargetable ? "untargetable" : "unaffectable"));
+                    continue;
+                }
+                // Per-phantom blacklist: if we tried this target recently and
+                // ActivatePower returned non-Success, skip for the blacklist window.
+                // Lets phantoms rotate through other hostiles while a cutscene
+                // boss finishes waking up, and lets the boss get picked up again
+                // on the next tick after the blacklist expires.
+                if (IsTargetBlacklisted(phantom.Id, we.Id, nowMsSweep))
+                {
+                    if (diagWant) (diagRejected ??= new()).Add((we, d, "blacklist"));
+                    continue;
+                }
+                candidates.Add((we, d));
             }
+            candidates.Sort(static (a, b) => a.distSq.CompareTo(b.distSq));
 
-            if (nearest == null)
+            if (diagWant && (candidates.Count == 0 || diagRejected != null))
+                DumpPhantomHuntDiag(phantom, phantomPos,
+                    candidates.Count > 0 ? candidates[0].we : null,
+                    candidates.Count > 0 ? candidates[0].distSq : 0f,
+                    diagRejected, region, sweepSphere, ctx);
+
+            if (candidates.Count == 0)
             {
                 phantom.Locomotor?.Stop();
                 return;
             }
+
+            // Advance toward the closest survivor for movement, but for the
+            // attack try each in order — the closest might be a Living Laser
+            // waiting on his cutscene entry that rejects power activation for a
+            // few seconds, while the actual boss is right behind him and
+            // attackable now. Without the fallback the phantom stood on the
+            // first target and never fired.
+            WorldEntity nearest = candidates[0].we;
+            float nearestDistSq = candidates[0].distSq;
 
             // Always keep the Locomotor advancing toward the target — even when
             // we're inside attack range. Stopping while attacking was the reason
@@ -297,7 +359,36 @@ namespace MHServerEmu.Games.Entities.Avatars
                 long now = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
                 if (s_phantomNextAttackMs.TryGetValue(phantom.Id, out long nextAt) == false || now >= nextAt)
                 {
-                    TryPhantomAttack(phantom, nearest, nearestDistSq, rng);
+                    // Try candidates in distance order. First one that
+                    // ActivatePower accepts wins. Others get blacklisted only
+                    // when they actually get an activate attempt — we don't
+                    // pre-check IsValidTarget because that would double the
+                    // per-tick work for the common case where the nearest is
+                    // fine.
+                    bool fired = false;
+                    int maxTries = Math.Min(5, candidates.Count);
+                    for (int i = 0; i < maxTries; i++)
+                    {
+                        WorldEntity tryTarget = candidates[i].we;
+                        float tryDistSq = candidates[i].distSq;
+                        if (tryDistSq > PhantomAttackRangeSq) break; // rest are out of range
+                        PowerUseResult r = TryPhantomAttack(phantom, tryTarget, tryDistSq, rng);
+                        if (r == PowerUseResult.Success)
+                        {
+                            fired = true;
+                            // Successful hit — make sure this target isn't
+                            // blacklisted from a stale prior tick.
+                            ClearTargetBlacklist(phantom.Id, tryTarget.Id);
+                            break;
+                        }
+                        // BadTarget / InsufficientEndurance / TargetIsMissing /
+                        // OutOfPosition / FullscreenMovie — blacklist this
+                        // target for 3 seconds so the sweep skips it while
+                        // whatever transient state clears.
+                        BlacklistTarget(phantom.Id, tryTarget.Id, nowMsSweep);
+                    }
+                    if (!fired && diagWant)
+                        PhantomLogger.Info($"[PhantomHero:Attack] {phantom} all {maxTries} candidates rejected the attack — sweep found {candidates.Count} hostile(s), first={candidates[0].we} dist={MathF.Sqrt(candidates[0].distSq):F0}");
                     // 800 ms floor + 400 ms jitter so 3 phantoms don't fire in
                     // lockstep.
                     s_phantomNextAttackMs[phantom.Id] = now + 800 + (long)(rng.NextDouble() * 400);
@@ -308,6 +399,29 @@ namespace MHServerEmu.Games.Entities.Avatars
         // Per-phantom next-attack timestamp (ms). Enforces at least ~800ms
         // between casts so the tick doesn't spam-fire.
         private static readonly Dictionary<ulong, long> s_phantomNextAttackMs = new();
+
+        // Per-(phantom,target) blacklist expiry. Populated when ActivatePower
+        // returns non-Success, so the sweep skips that target for
+        // PhantomBlacklistDurationMs. Lets phantoms rotate to hittable targets
+        // during scripted encounters (cutscene bosses, mid-transition mission
+        // NPCs, temporary Invulnerable phases) instead of glueing to the
+        // first-picked hostile forever.
+        private const long PhantomBlacklistDurationMs = 3000;
+        private static readonly Dictionary<(ulong phantomId, ulong targetId), long> s_phantomTargetBlacklist = new();
+        private static bool IsTargetBlacklisted(ulong phantomId, ulong targetId, long nowMs)
+            => s_phantomTargetBlacklist.TryGetValue((phantomId, targetId), out long expiresAt) && nowMs < expiresAt;
+        private static void BlacklistTarget(ulong phantomId, ulong targetId, long nowMs)
+            => s_phantomTargetBlacklist[(phantomId, targetId)] = nowMs + PhantomBlacklistDurationMs;
+        private static void ClearTargetBlacklist(ulong phantomId, ulong targetId)
+            => s_phantomTargetBlacklist.Remove((phantomId, targetId));
+        private static void PruneBlacklistFor(ulong phantomId)
+        {
+            List<(ulong, ulong)> toRemove = null;
+            foreach (var key in s_phantomTargetBlacklist.Keys)
+                if (key.phantomId == phantomId) (toRemove ??= new()).Add(key);
+            if (toRemove != null)
+                foreach (var k in toRemove) s_phantomTargetBlacklist.Remove(k);
+        }
 
         /// <summary>
         /// Pick a leash-teleport position near the caller that lands on the
@@ -339,9 +453,58 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         private static readonly HashSet<ulong> s_phantomLocoLogged = new();
 
-        private void TryPhantomAttack(Avatar phantom, WorldEntity target, float targetDistSq, MHServerEmu.Core.System.Random.GRandom rng)
+        // Rate-limit the "why isn't my phantom attacking" dump to at most one
+        // per phantom every 5 seconds so a 500ms tick doesn't spam the log.
+        private static readonly Dictionary<ulong, long> s_phantomNextDiagMs = new();
+        private const long PhantomDiagIntervalMs = 5000;
+
+        private bool ShouldEmitPhantomDiag(ulong phantomId)
         {
-            if (target == null || phantom.PowerCollection == null) return;
+            long now = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            if (s_phantomNextDiagMs.TryGetValue(phantomId, out long nextAt) && now < nextAt) return false;
+            s_phantomNextDiagMs[phantomId] = now + PhantomDiagIntervalMs;
+            return true;
+        }
+
+        private static void DumpPhantomHuntDiag(Avatar phantom, Vector3 phantomPos, WorldEntity picked,
+            float pickedDistSq, List<(WorldEntity we, float distSq, string reason)> rejected,
+            Region region, Sphere sweepSphere, MHServerEmu.Games.Entities.EntityRegionSPContext ctx)
+        {
+            // Full state dump of every hostile Agent in the sweep sphere so we
+            // can identify exactly which flag is stopping the attack on a
+            // cutscene boss. Runs at most once per 5s per phantom.
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"[PhantomHero:Diag] {phantom} pos={phantomPos.ToStringNames()} ");
+            if (picked != null)
+                sb.Append($"picked={picked} dist={MathF.Sqrt(pickedDistSq):F0}");
+            else
+                sb.Append("picked=<none>");
+
+            int n = 0;
+            foreach (WorldEntity we in region.IterateEntitiesInVolume(sweepSphere, ctx))
+            {
+                if (we == null || we.Id == phantom.Id) continue;
+                if (we is not Agent) continue;
+                if (we.IsDead) continue;
+                if (phantom.IsHostileTo(we) == false) continue;
+                if (n++ >= 8) { sb.Append(" ...(more truncated)"); break; }
+                float d = Vector3.Distance2D(we.RegionLocation.Position, phantomPos);
+                string allianceRef = we.Alliance != null ? we.Alliance.DataRef.GetName() : "<null>";
+                sb.Append($" | {we} dist={d:F0} dormant={we.IsDormant} untargetable={we.IsUntargetable} unaffectable={we.IsUnaffectable} affectedByPowers={we.IsAffectedByPowers()} sim={we.IsSimulated} inWorld={we.IsInWorld} alliance={allianceRef}");
+            }
+            if (rejected != null)
+            {
+                sb.Append(" | rejected=[");
+                for (int i = 0; i < rejected.Count && i < 5; i++)
+                    sb.Append($"{rejected[i].we}({rejected[i].reason},{MathF.Sqrt(rejected[i].distSq):F0}) ");
+                sb.Append(']');
+            }
+            PhantomLogger.Info(sb.ToString());
+        }
+
+        private PowerUseResult TryPhantomAttack(Avatar phantom, WorldEntity target, float targetDistSq, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            if (target == null || phantom.PowerCollection == null) return PowerUseResult.GenericError;
             Vector3 phantomPos = phantom.RegionLocation.Position;
 
             // Refill Endurance so InsufficientEndurance doesn't gate every non-basic
@@ -402,7 +565,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                     candidates.Add((rec.PowerPrototypeRef, cdMs));
                 }
 
-                if (candidates.Count == 0) return;
+                if (candidates.Count == 0) return PowerUseResult.OutOfPosition;
 
                 // Sort by cooldown desc — biggest hitter first.
                 candidates.Sort(static (a, b) => b.Item2.CompareTo(a.Item2));
@@ -428,13 +591,21 @@ namespace MHServerEmu.Games.Entities.Avatars
                 var settings = new PowerActivationSettings(target.Id, target.RegionLocation.Position, phantomPos)
                 { Flags = PowerActivationSettingsFlags.NotifyOwner };
                 var result = phantom.ActivatePower(chosenPower, ref settings);
-                if (s_phantomAttackLogged.Add(phantom.Id))
+
+                // Log every failed activation so we can see WHY a cutscene boss
+                // rejects the phantom's power (Dormant/Unaffectable/etc). Log
+                // successes only once per (phantom, target) pair to avoid spam.
+                bool logThis = result != PowerUseResult.Success;
+                ulong key = phantom.Id ^ (target.Id * 0x9E3779B97F4A7C15UL);
+                if (!logThis && s_phantomAttackTargetLogged.Add(key)) logThis = true;
+                if (logThis)
                 {
-                    Player phantomOwner = phantom.GetOwnerOfType<Player>();
-                    string ownerState = phantomOwner == null ? "OWNER=null" :
-                        $"owner={phantomOwner} isMoviePlaying={phantomOwner.IsFullscreenMoviePlaying} isLoadingScreen={phantomOwner.IsOnLoadingScreen} isFullscreenObscured={phantomOwner.IsFullscreenObscured}";
-                    PhantomLogger.Info($"[PhantomHero:Attack] {phantom} → target={target} power={chosenPower.GetName()} result={result} | {ownerState}");
+                    Power probePower = phantom.PowerCollection?.GetPower(chosenPower);
+                    bool isValid = probePower != null && probePower.IsValidTarget(target);
+                    string allianceRef = target.Alliance != null ? target.Alliance.DataRef.GetName() : "<null>";
+                    PhantomLogger.Info($"[PhantomHero:Attack] {phantom} → target={target} power={chosenPower.GetName()} result={result} isValidTarget={isValid} tgtDormant={target.IsDormant} tgtUntargetable={target.IsUntargetable} tgtUnaffectable={target.IsUnaffectable} tgtAffectedByPowers={target.IsAffectedByPowers()} tgtSim={target.IsSimulated} tgtInWorld={target.IsInWorld} tgtAlliance={allianceRef} phantomAlliance={(phantom.Alliance?.DataRef.GetName() ?? "<null>")}");
                 }
+                return result;
             }
             finally { ListPool<(PrototypeId, long)>.Instance.Return(candidates); }
         }
@@ -771,7 +942,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // clears its own list, so we need the ids before it runs.
             var ids = new List<ulong>(host.PhantomAvatarIds);
             int removed = host.PurgePhantoms();
-            foreach (ulong id in ids) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id); }
+            foreach (ulong id in ids) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id); s_phantomNextDiagMs.Remove(id); PruneBlacklistFor(id); }
             return removed;
         }
 
@@ -838,6 +1009,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                     s_phantomAttackLogged.Remove(id);
                     s_phantomLocoLogged.Remove(id);
                     s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id);
+                    s_phantomNextDiagMs.Remove(id);
+                    PruneBlacklistFor(id);
                 }
                 PhantomLogger.Info($"[PhantomHero] {this} reattach: pruned {stale.Count} stale, {alive} alive");
             }

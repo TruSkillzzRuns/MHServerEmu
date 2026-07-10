@@ -3582,6 +3582,18 @@ namespace MHServerEmu.Games.Entities
             var avatar = CurrentAvatar;
             if (avatar == null) return;
 
+            // Phantom-hero synthetic Players have PlayerConnection == null.
+            // Skip the whole kismet flow for them — there's no client to show
+            // the movie AND no client to send NetMessagePlayKismetSeqDone
+            // back to clear FullScreenMoviePlaying. Without this early-out,
+            // the mission that plays a boss dramatic-entrance kismet flips
+            // FullScreenMoviePlaying=true on every phantom's owner Player,
+            // and it never clears — so every subsequent phantom.ActivatePower
+            // call is rejected with PowerUseResult.FullscreenMovie (see
+            // Agent.cs:499) and the phantoms stand there doing nothing for
+            // the rest of the encounter.
+            if (PlayerConnection == null) return;
+
             var kismetProto = GameDatabase.GetPrototype<KismetSequencePrototype>(kismetSeq);
             if (kismetProto == null) return;
 
