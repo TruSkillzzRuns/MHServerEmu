@@ -492,7 +492,7 @@ namespace MHServerEmu.Games.Loot
         /// <summary>
         /// Creates an <see cref="ItemSpec"/> for the provided <see cref="PrototypeId"/>.
         /// </summary>
-        public ItemSpec CreateItemSpec(PrototypeId itemProtoRef, LootContext lootContext, Player player, int level = 1)
+        public ItemSpec CreateItemSpec(PrototypeId itemProtoRef, LootContext lootContext, Player player, int level = 1, PrototypeId rarityProtoRef = default)
         {
             ItemPrototype itemProto = itemProtoRef.As<ItemPrototype>();
             if (!Verify.IsNotNull(itemProto)) return null;
@@ -508,7 +508,9 @@ namespace MHServerEmu.Games.Loot
             filterArgs.ItemProto = itemProto;
             filterArgs.Level = level;
             filterArgs.RollFor = _resolver.ResolveAvatarPrototype(avatarProto, true, 1f).DataRef;
-            filterArgs.Rarity = _resolver.ResolveRarity(null, level, itemProto);
+            // Callers may force a specific rarity (e.g. phantom-hero gear
+            // bands); default is the normal level-based rarity roll.
+            filterArgs.Rarity = rarityProtoRef != PrototypeId.Invalid ? rarityProtoRef : _resolver.ResolveRarity(null, level, itemProto);
             filterArgs.Slot = itemProto.GetInventorySlotForAgent(avatarProto);
 
             if (!Verify.IsTrue(itemProto.MakeRestrictionsDroppable(filterArgs, RestrictionTestFlags.All, out _), $"Failed to make item {itemProto} droppable"))

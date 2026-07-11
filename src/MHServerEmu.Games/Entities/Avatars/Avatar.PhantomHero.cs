@@ -607,12 +607,18 @@ namespace MHServerEmu.Games.Entities.Avatars
         //  anchor constants — the interpolation and call sites don't
         //  need to change.
         // ================================================================
-        private const float PhantomDmgMultLvl1  = 1.2f;
-        private const float PhantomDmgMultLvl60 = 3.0f;
-        private const float PhantomDmgPctBonusLvl1  = 0.1f;
-        private const float PhantomDmgPctBonusLvl60 = 1.5f;
+        // Rebalanced after gear landed: rolled equipment now provides real
+        // affix stats, so the synthetic curve only needs to cover the gap
+        // between "AI that never dodges or optimizes" and a live player —
+        // not simulate an entire BiS loadout. The old anchors (up to 3.0x /
+        // +150% / 5000 rating) double-dipped with gear affixes and made
+        // phantoms shred everything from level 1 to 60.
+        private const float PhantomDmgMultLvl1  = 1.0f;
+        private const float PhantomDmgMultLvl60 = 1.6f;
+        private const float PhantomDmgPctBonusLvl1  = 0.0f;
+        private const float PhantomDmgPctBonusLvl60 = 0.4f;
         private const float PhantomDmgRatingLvl1  = 0f;
-        private const float PhantomDmgRatingLvl60 = 5000f;
+        private const float PhantomDmgRatingLvl60 = 1200f;
 
         // Follow-stop bounds. 50u = "on top of the target" (old behaviour),
         // 1000u = a comfortable ranged-cast distance well inside the widest
@@ -672,12 +678,68 @@ namespace MHServerEmu.Games.Entities.Avatars
         //  the hero-specific weapon slot is filled.
         // ================================================================
 
+        // ----------------------------------------------------------------
+        //  Gear rarity bands. RarityPrototype.Tier is derived from the
+        //  DowngradeTo chain in client data (tier 1 = most common, counting
+        //  up), so bands are expressed as tier ranges — no rarity names in
+        //  source. Band table:
+        //    levels  1-10  → tier 1        (base)
+        //    levels 11-19  → tiers 2-3
+        //    levels 20-30  → tier 4
+        //    levels 31-50  → tiers 4-5
+        //    levels 51-60  → tiers 5-6     (top of the ladder)
+        // ----------------------------------------------------------------
+        private static readonly object s_rarityTierLock = new();
+        private static Dictionary<int, PrototypeId> s_rarityByTier;
+
+        private static void EnsureRarityTiers()
+        {
+            lock (s_rarityTierLock)
+            {
+                if (s_rarityByTier != null) return;
+                var map = new Dictionary<int, PrototypeId>();
+                foreach (PrototypeId rarityRef in DataDirectory.Instance
+                    .IteratePrototypesInHierarchy<RarityPrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
+                {
+                    RarityPrototype rarityProto = rarityRef.As<RarityPrototype>();
+                    if (rarityProto == null) continue;
+                    // First proto wins per tier; the core ladder is a single
+                    // DowngradeTo chain so collisions shouldn't happen.
+                    map.TryAdd(rarityProto.Tier, rarityRef);
+                }
+                s_rarityByTier = map;
+                PhantomLogger.Info($"[PhantomHero:Gear] rarity tier map built: {map.Count} tiers");
+            }
+        }
+
+        private static (int MinTier, int MaxTier) GetPhantomGearRarityBand(int level)
+        {
+            if (level <= 10) return (1, 1);
+            if (level <= 19) return (2, 3);
+            if (level <= 30) return (4, 4);
+            if (level <= 50) return (4, 5);
+            return (5, 6);
+        }
+
+        private static PrototypeId PickPhantomGearRarity(int level, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            EnsureRarityTiers();
+            (int minTier, int maxTier) = GetPhantomGearRarityBand(level);
+            int tier = rng.Next(minTier, maxTier + 1);
+            if (s_rarityByTier.TryGetValue(tier, out PrototypeId rarityRef)) return rarityRef;
+            // Data doesn't have this tier — fall back to the other end of
+            // the band, then to the default level-based roll (Invalid).
+            if (s_rarityByTier.TryGetValue(minTier, out rarityRef)) return rarityRef;
+            return PrototypeId.Invalid;
+        }
+
         /// <summary>
         /// Equip the phantom. If <paramref name="gearOverride"/> is
         /// non-empty, those exact item protos are recreated at the
         /// phantom's level (squad/migration restore); otherwise one random
-        /// valid item is rolled per unlocked equip slot. Returns the
-        /// applied item proto refs for descriptor storage.
+        /// valid item is rolled per unlocked equip slot. Rarity follows the
+        /// level band table above. Returns the applied item proto refs for
+        /// descriptor storage.
         /// </summary>
         internal static List<ulong> ApplyPhantomGear(Player phantomPlayer, Avatar phantomAvatar, int level, List<ulong> gearOverride)
         {
@@ -724,7 +786,8 @@ namespace MHServerEmu.Games.Entities.Avatars
 
                 try
                 {
-                    ItemSpec itemSpec = lootManager.CreateItemSpec(itemProtoRef, LootContext.Drop, phantomPlayer, level);
+                    PrototypeId rarityRef = PickPhantomGearRarity(level, rng);
+                    ItemSpec itemSpec = lootManager.CreateItemSpec(itemProtoRef, LootContext.Drop, phantomPlayer, level, rarityRef);
                     if (itemSpec == null) continue;
 
                     Item item;
