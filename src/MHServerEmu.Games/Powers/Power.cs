@@ -1017,15 +1017,22 @@ namespace MHServerEmu.Games.Powers
                 
                 if (player != null && powerProto.CanCauseTag)
                 {
+                    // Phantom-hero substitution: tag the human creator
+                    // instead of the phantom's synthetic Player, so
+                    // mission "must be tagged by mission player" gates
+                    // (MissionConditionEntityDeath.EvaluateEntity) treat
+                    // phantom damage as if the human dealt it.
+                    Player tagPlayer = Player.ResolveCreditPlayer(player);
                     if (avatar.IsInWorld && avatar.IsHostileTo(target))
-                        target.SetTaggedBy(player, powerProto);
+                        target.SetTaggedBy(tagPlayer, powerProto);
                 }
 
                 if (player != null && powerProto.CanCauseTag)
                 {
                     // NOTE: We don't need to null-check the avatar here because we get the player from it
+                    Player tagPlayer = Player.ResolveCreditPlayer(player);
                     if (avatar.IsInWorld && avatar.IsHostileTo(target))
-                        target.SetTaggedBy(player, powerProto);
+                        target.SetTaggedBy(tagPlayer, powerProto);
                 }
 
                 targetResultsList.Add(targetResults);

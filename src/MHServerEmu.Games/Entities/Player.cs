@@ -3074,6 +3074,19 @@ namespace MHServerEmu.Games.Entities
                 return;
             }
 
+            // Phantom-hero synthetic Players show up in GetPlayerByName
+            // because their username is registered in the entity manager,
+            // but they have no PlayerConnection and no AOI. If we let a
+            // trade start with them, DoCancelPlayerTrade / ExecutePlayerTrade
+            // will NRE on target.AOI.ConsiderEntity(...) the moment the
+            // human closes the trade window. Refuse the trade upstream
+            // instead so the whole session never opens.
+            if (tradePartner.PlayerConnection == null)
+            {
+                SetPlayerTradeStatusCode(PlayerTradeStatusCode.ePTSC_InvalidPartner);
+                return;
+            }
+
             if (IsIgnoredPlayer(tradePartner.DatabaseUniqueId))
             {
                 SetPlayerTradeStatusCode(PlayerTradeStatusCode.ePTSC_PartnerIsIgnored);

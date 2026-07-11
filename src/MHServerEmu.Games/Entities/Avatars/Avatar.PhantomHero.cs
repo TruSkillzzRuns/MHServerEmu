@@ -119,6 +119,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             List<ulong> stale = null;
             var ids = host.PhantomAvatarIds; // snapshot count for stable iteration
 
+            int callerLevel = CharacterLevel;
             for (int i = 0; i < ids.Count; i++)
             {
                 ulong id = ids[i];
@@ -127,6 +128,31 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     (stale ??= new List<ulong>()).Add(id);
                     continue;
+                }
+
+                // Level sync: if the human has levelled since the last tick,
+                // bring phantoms up to match so a lvl-15 hero doesn't drag
+                // lvl-15 phantoms into a lvl-60 mission. Runs every 500ms;
+                // InitializeLevel is a no-op internally when the new level
+                // equals the current level, so this is cheap on stable
+                // ticks. Only levels UP — we don't downlevel phantoms when
+                // the human hero-swaps to a lower-level character.
+                //
+                // Phantoms spawned with an explicit level lock
+                // (`!phantom spawn N L`) are skipped — the user asked for
+                // a specific level and we honour it forever.
+                if (callerLevel > 0 && phantom.CharacterLevel < callerLevel && host.IsPhantomLevelLocked(phantom.Id) == false)
+                {
+                    try
+                    {
+                        phantom.InitializeLevel(callerLevel);
+                        phantom.CombatLevel = callerLevel;
+                        // Refresh the stored descriptor so cross-region
+                        // migration re-spawns at the new level, not the
+                        // stale spawn-time value.
+                        host.UpdatePhantomLevel(phantom.Id, callerLevel);
+                    }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] level sync {phantom.Id:X} → {callerLevel} failed: {ex.Message}"); }
                 }
 
                 // Stuck detection: if the phantom's position barely moved
@@ -670,17 +696,21 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// <paramref name="error"/>.
         /// </summary>
         public ulong SpawnPhantomHero(int levelOverride, string username, out string error)
-            => SpawnPhantomHeroCore(PrototypeId.Invalid, levelOverride, username, out error);
+            // A non-zero levelOverride from the chat command means the user
+            // explicitly asked for a specific level (e.g. `!phantom spawn 4 45`).
+            // Lock that level in — the tick loop will not auto-level these
+            // phantoms as the caller gains XP.
+            => SpawnPhantomHeroCore(PrototypeId.Invalid, levelOverride, username, levelOverride > 0, out error);
 
         /// <summary>
         /// Respawns a phantom from a MigrationData intent — same avatarRef +
-        /// level + username as the pre-transfer state. Used by
+        /// level + username + LockLevel as the pre-transfer state. Used by
         /// Player.RestorePhantomsFromMigration after cross-region travel.
         /// </summary>
-        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, out string error)
-            => SpawnPhantomHeroCore(avatarRefOverride, level, username, out error);
+        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, out string error)
+            => SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, out error);
 
-        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, out string error)
+        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, out string error)
         {
             error = null;
             if (IsInWorld == false) { error = "avatar not in world"; return 0; }
@@ -717,6 +747,14 @@ namespace MHServerEmu.Games.Entities.Avatars
                 phantomPlayer = Game.EntityManager.CreateEntity(playerSettings) as Player;
             }
             if (phantomPlayer == null) { error = "phantom Player entity create failed"; return 0; }
+
+            // Stamp the human's Player entity id on the phantom so kill /
+            // damage-tag paths can substitute the phantom out and credit the
+            // real player. Without this, mission counters and loot rolls skip
+            // phantom kills because Player.IsMissionPlayer on the synthetic
+            // phantom Player always returns false.
+            Player humanHost = PhantomHost;
+            if (humanHost != null) phantomPlayer.PhantomCreatorId = humanHost.Id;
 
             // Step 2: create the Avatar as a child of the phantom Player. Uses
             // the same Player.CreateAvatar helper the real login path calls
@@ -874,6 +912,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 AvatarRef = (ulong)avatarRef,
                 Level = effectiveLevel,
                 Username = username,
+                LockLevel = lockLevel,
             };
             host.RegisterPhantom(phantomAvatar.Id, phantomPlayer.Id, descriptor);
             SchedulePhantomTick();

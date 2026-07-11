@@ -18,13 +18,16 @@ namespace MHServerEmu.Commands.Implementations
     public class PhantomHeroCommands : CommandGroup
     {
         [Command("spawn")]
-        [CommandDescription("Spawn phantom-hero NPCs near you. Args: [count=5] [level=60]")]
+        [CommandDescription("Spawn phantom-hero NPCs near you. Args: [count=5] [level=your level]. Phantoms also auto-level with you as you gain XP.")]
         [CommandInvokerType(CommandInvokerType.Client)]
         [CommandUserLevel(AccountUserLevel.Admin)]
         public string Spawn(string[] @params, NetClient client)
         {
             int count = 5;
-            int level = 60;
+            // 0 = "match caller's CharacterLevel" (handled inside
+            // SpawnPhantomHeroCore). The tick loop then keeps them in sync
+            // if the human levels up — see OnPhantomTick's level-sync block.
+            int level = 0;
             if (@params.Length >= 1 && int.TryParse(@params[0], out int c)) count = System.Math.Clamp(c, 1, 50);
             if (@params.Length >= 2 && int.TryParse(@params[1], out int l)) level = System.Math.Clamp(l, 1, 60);
 

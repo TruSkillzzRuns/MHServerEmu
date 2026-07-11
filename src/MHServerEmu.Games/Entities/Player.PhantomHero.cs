@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Gazillion;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Games.Entities.Avatars;
@@ -34,11 +35,72 @@ namespace MHServerEmu.Games.Entities
         public IReadOnlyList<ulong> PhantomPlayerIds => _phantomPlayerIds;
         public int PhantomHeroCount => _phantomAvatarIds.Count;
 
+        /// <summary>
+        /// Set on phantom-hero synthetic Players at spawn time; points at the
+        /// human Player entity that created them. Non-phantom (real) Players
+        /// always report 0. Used by kill-attribution paths to substitute the
+        /// synthetic phantom Player with the actual human when awarding
+        /// mission credit / loot / XP: a phantom's tag or kill would
+        /// otherwise fail IsMissionPlayer checks and the human would get
+        /// nothing for the mob their bot cleared.
+        /// </summary>
+        public ulong PhantomCreatorId { get; internal set; }
+
+        /// <summary>
+        /// Returns the human Player who should receive credit for anything
+        /// <paramref name="raw"/> did — either <paramref name="raw"/> itself
+        /// if it's a real player, or the phantom's creator if this is a
+        /// phantom synthetic Player. Null if the creator has already left
+        /// the game.
+        /// </summary>
+        public static Player ResolveCreditPlayer(Player raw)
+        {
+            if (raw == null) return null;
+            ulong creatorId = raw.PhantomCreatorId;
+            if (creatorId == 0) return raw;
+            Player creator = raw.Game?.EntityManager?.GetEntity<Player>(creatorId);
+            return creator ?? raw;
+        }
+
         internal void RegisterPhantom(ulong avatarId, ulong phantomPlayerId, PhantomIntent descriptor)
         {
             _phantomAvatarIds.Add(avatarId);
             _phantomPlayerIds.Add(phantomPlayerId);
             _phantomDescriptors.Add(descriptor);
+            SyncPhantomParty();
+        }
+
+        /// <summary>
+        /// True if the phantom with this avatar id was spawned with an
+        /// explicit level lock (`!phantom spawn N L`) and should NOT be
+        /// auto-levelled by the tick loop.
+        /// </summary>
+        internal bool IsPhantomLevelLocked(ulong avatarId)
+        {
+            int idx = _phantomAvatarIds.IndexOf(avatarId);
+            if (idx < 0) return false;
+            return _phantomDescriptors[idx].LockLevel;
+        }
+
+        /// <summary>
+        /// Update the stored spawn-level for a live phantom so a subsequent
+        /// cross-region transfer re-spawns it at the caller's current level
+        /// rather than the (potentially stale) level at first spawn. Called
+        /// by the tick loop's level-sync block when the human has levelled
+        /// past the phantom.
+        /// </summary>
+        internal void UpdatePhantomLevel(ulong avatarId, int newLevel)
+        {
+            int idx = _phantomAvatarIds.IndexOf(avatarId);
+            if (idx < 0) return;
+            var d = _phantomDescriptors[idx];
+            _phantomDescriptors[idx] = new PhantomIntent
+            {
+                AvatarRef = d.AvatarRef,
+                Level = newLevel,
+                Username = d.Username,
+                LockLevel = d.LockLevel,
+            };
         }
 
         internal bool UnregisterPhantom(ulong avatarId)
@@ -48,6 +110,7 @@ namespace MHServerEmu.Games.Entities
             _phantomAvatarIds.RemoveAt(idx);
             _phantomPlayerIds.RemoveAt(idx);
             _phantomDescriptors.RemoveAt(idx);
+            SyncPhantomParty();
             return true;
         }
 
@@ -93,6 +156,7 @@ namespace MHServerEmu.Games.Entities
             _phantomAvatarIds.Clear();
             _phantomPlayerIds.Clear();
             _phantomDescriptors.Clear();
+            SyncPhantomParty();
             return removed;
         }
 
@@ -122,6 +186,7 @@ namespace MHServerEmu.Games.Entities
                     AvatarRef = d.AvatarRef,
                     Level = d.Level,
                     Username = d.Username,
+                    LockLevel = d.LockLevel,
                 });
             }
             int n = PurgePhantoms();
@@ -146,7 +211,7 @@ namespace MHServerEmu.Games.Entities
                     // Force the caller to spawn each intent with its saved
                     // (avatarRef, level, username) rather than the default
                     // "random from deck / caller's level" path.
-                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, out string error);
+                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, out string error);
                     if (id != 0) spawned++;
                     else PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} failed: {error}");
                 }
@@ -167,6 +232,111 @@ namespace MHServerEmu.Games.Entities
             if (_phantomAvatarIds.Count == 0) return;
             int n = PurgePhantoms();
             if (n > 0) PhantomHostLogger.Info($"[Phantom] ExitGame purge for {this}: destroyed {n} phantom(s)");
+        }
+
+        // ================================================================
+        //  Party HUD integration
+        //
+        //  Every phantom-list mutation calls SyncPhantomParty(), which
+        //  synthesises a Gazillion.PartyInfo protobuf with the human as
+        //  leader + every live phantom Player as a member and sends it
+        //  DIRECTLY to the human's client as a PartyInfoClientUpdate. The
+        //  client renders the party HUD from that message alone —
+        //  nameplates, health bars, portraits, mission-progress icons.
+        //
+        //  We deliberately do NOT go through PartyManager.OnPartyInfo-
+        //  ServerUpdate: that path calls Party.AddMember which fires
+        //  Player.OnAddedToParty on every member, including phantoms,
+        //  setting their _partyId. When those phantoms get destroyed,
+        //  Player.Destroy calls UpdatePartyAOI(GetParty()) which iterates
+        //  members and dereferences partyMember.AOI — and phantoms have
+        //  no AOI (PlayerConnection == null), so the whole game instance
+        //  NREs and shuts down. Bypassing server-side party state keeps
+        //  every real subsystem completely unaware of the synthetic
+        //  group.
+        //
+        //  The synthetic GroupId is derived from the human's DbGuid with
+        //  a fixed high-nibble tag (see ComputeSyntheticGroupId) so it's
+        //  stable across spawn/despawn and can't collide with a real
+        //  PlayerManager-minted party id.
+        // ================================================================
+
+        /// <summary>
+        /// Rebuild + push the synthetic party info to reflect the current
+        /// phantom list. Called from every list mutation (Register,
+        /// Unregister, Purge, Restore).
+        /// </summary>
+        private void SyncPhantomParty()
+        {
+            // Only the human host synthesises a party. Phantom Players
+            // (PlayerConnection == null) shouldn't recurse into this.
+            if (PlayerConnection == null) return;
+
+            var game = Game;
+            if (game == null) return;
+
+            ulong groupId = ComputeSyntheticGroupId();
+
+            // Empty list = teardown. Send a client update with a null
+            // PartyInfo to hide the group HUD on the client.
+            if (_phantomAvatarIds.Count == 0)
+            {
+                try
+                {
+                    SendMessage(PartyInfoClientUpdate.CreateBuilder()
+                        .SetGroupId(groupId)
+                        .Build());
+                }
+                catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party] teardown failed: {ex.Message}"); }
+                return;
+            }
+
+            var partyInfoBuilder = PartyInfo.CreateBuilder()
+                .SetGroupId(groupId)
+                .SetType(GroupType.GroupType_Party)
+                .SetLeaderDbId(DatabaseUniqueId)
+                .SetDifficultyTierProtoId(0);
+
+            // Human = leader / first member.
+            partyInfoBuilder.AddMembers(PartyMemberInfo.CreateBuilder()
+                .SetPlayerDbId(DatabaseUniqueId)
+                .SetPlayerName(GetName())
+                .Build());
+
+            // One PartyMemberInfo per live phantom. Skip any whose Player
+            // entity has already been destroyed (mid-teardown race).
+            var mgr = game.EntityManager;
+            for (int i = 0; i < _phantomPlayerIds.Count; i++)
+            {
+                Player phantom = mgr.GetEntity<Player>(_phantomPlayerIds[i]);
+                if (phantom == null) continue;
+                partyInfoBuilder.AddMembers(PartyMemberInfo.CreateBuilder()
+                    .SetPlayerDbId(phantom.DatabaseUniqueId)
+                    .SetPlayerName(phantom.GetName())
+                    .Build());
+            }
+
+            try
+            {
+                SendMessage(PartyInfoClientUpdate.CreateBuilder()
+                    .SetGroupId(groupId)
+                    .SetPartyInfo(partyInfoBuilder.Build())
+                    .Build());
+            }
+            catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party] sync failed: {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// Deterministic group id derived from the human's DbGuid. The
+        /// high nibble is set to a distinct tag (0xFACE_0BAD…) so we can
+        /// tell synthetic parties apart from any PlayerManager-assigned
+        /// group id at a glance in the logs, and so the two id spaces
+        /// can't collide.
+        /// </summary>
+        private ulong ComputeSyntheticGroupId()
+        {
+            const ulong PhantomPartyTag = 0xFACE_0BAD_0000_0000UL;
+            return PhantomPartyTag | (DatabaseUniqueId & 0x0000_0000_FFFF_FFFFUL);
         }
     }
 }

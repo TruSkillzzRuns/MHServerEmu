@@ -332,6 +332,13 @@ namespace MHServerEmu.Games.Entities
             if (killFlags.HasFlag(KillFlags.NoDeadEvent) == false && this is not Missile)
             {
                 var player = killer?.GetOwnerOfType<Player>();
+                // If the killer is a phantom hero, credit its human creator
+                // instead — MissionConditionEntityDeath checks
+                // IsMissionPlayer(killer) and the synthetic phantom Player
+                // is not on any mission. Without the substitution, mob
+                // kills scored by phantoms never advance the human's
+                // objective counter.
+                player = Player.ResolveCreditPlayer(player);
                 region?.EntityDeadEvent.Invoke(new(this, killer, player));
             }
 

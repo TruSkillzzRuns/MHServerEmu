@@ -69,5 +69,15 @@ namespace MHServerEmu.DatabaseAccess.Models
         public ulong AvatarRef;
         public int Level;
         public string Username;
+
+        /// <summary>
+        /// True when the phantom's level was explicitly locked by the user
+        /// at spawn (e.g. `!phantom spawn 4 45`) — the tick loop's
+        /// auto-level-with-caller sync must skip these phantoms so they
+        /// stay at exactly the level the user asked for. False when the
+        /// spawn used the default (match caller's level), so the auto-
+        /// level tick keeps them chasing the human.
+        /// </summary>
+        public bool LockLevel;
     }
 }
