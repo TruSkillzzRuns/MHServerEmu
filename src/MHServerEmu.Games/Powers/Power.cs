@@ -2086,6 +2086,16 @@ namespace MHServerEmu.Games.Powers
             Sphere sphere = new(position, playerNearbyRange);
             foreach (Avatar avatar in region.IterateAvatarsInVolume(sphere))
             {
+                // Skip phantom heroes — their synthetic Players are fresh
+                // accounts with no difficulty unlocks or rarity bonuses.
+                // Counting them here made AwardKillLoot roll loot FOR the
+                // phantoms (dropping normal-tier white items in cosmic
+                // regions, restricted to a "player" that can never pick
+                // them up) and inflated the nearby-player count used for
+                // mob difficulty scaling.
+                if (avatar.IsPhantomHero)
+                    continue;
+
                 // Skip AFK avatars if needed (e.g. for loot rewards)
                 if (combatActiveOnly && avatar.IsCombatActive() == false)
                     continue;

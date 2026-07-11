@@ -797,6 +797,112 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
         }
 
+        /// <summary>
+        /// Match a user-typed hero name against the playable-avatar pool
+        /// resolved from the loaded client data. Matching is entirely
+        /// runtime — hero names come from the user's own data files and
+        /// their chat input, never from this source tree. Exact short-name
+        /// match (case-insensitive) wins immediately; otherwise all
+        /// substring matches are returned so the caller can ask the user
+        /// to be more specific.
+        /// </summary>
+        public static List<(PrototypeId AvatarRef, string ShortName)> FindPhantomHeroRefs(string query)
+        {
+            var results = new List<(PrototypeId, string)>();
+            if (string.IsNullOrWhiteSpace(query)) return results;
+            EnsureResolvedPool();
+
+            lock (s_phantomResolvedLock)
+            {
+                foreach (PrototypeId avatarRef in s_phantomResolved)
+                {
+                    string shortName = ExtractPrototypeShortName(avatarRef.GetName());
+                    if (shortName.Equals(query, StringComparison.OrdinalIgnoreCase))
+                    {
+                        results.Clear();
+                        results.Add((avatarRef, shortName));
+                        return results;
+                    }
+                    if (shortName.Contains(query, StringComparison.OrdinalIgnoreCase))
+                        results.Add((avatarRef, shortName));
+                }
+            }
+
+            return results;
+        }
+
+        /// <summary>
+        /// All approved costumes usable by the given avatar, resolved from
+        /// the loaded client data (CostumePrototype.UsableBy). Like the
+        /// hero pool, this is entirely runtime — no costume names live in
+        /// server source.
+        /// </summary>
+        public static List<(PrototypeId CostumeRef, string ShortName)> GetCostumesForAvatar(PrototypeId avatarRef)
+        {
+            var results = new List<(PrototypeId, string)>();
+            if (avatarRef == PrototypeId.Invalid) return results;
+
+            foreach (PrototypeId costumeRef in DataDirectory.Instance
+                .IteratePrototypesInHierarchy<CostumePrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
+            {
+                CostumePrototype costumeProto = costumeRef.As<CostumePrototype>();
+                if (costumeProto == null) continue;
+                if (costumeProto.UsableBy != avatarRef) continue;
+                if (costumeProto.CostumeUnrealClass == AssetId.Invalid) continue;
+                results.Add((costumeRef, ExtractPrototypeShortName(costumeRef.GetName())));
+            }
+
+            return results;
+        }
+
+        /// <summary>
+        /// Match a user-typed costume name against the avatar's costume
+        /// pool. Exact short-name match wins; otherwise all substring
+        /// matches are returned.
+        /// </summary>
+        public static List<(PrototypeId CostumeRef, string ShortName)> FindCostumeRefs(PrototypeId avatarRef, string query)
+        {
+            var all = GetCostumesForAvatar(avatarRef);
+            var results = new List<(PrototypeId, string)>();
+            if (string.IsNullOrWhiteSpace(query)) return results;
+
+            foreach (var entry in all)
+            {
+                if (entry.ShortName.Equals(query, StringComparison.OrdinalIgnoreCase))
+                {
+                    results.Clear();
+                    results.Add(entry);
+                    return results;
+                }
+                if (entry.ShortName.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    results.Add(entry);
+            }
+
+            return results;
+        }
+
+        /// <summary>Pick a random costume for the avatar, or Invalid if it has none.</summary>
+        public static PrototypeId PickRandomCostume(PrototypeId avatarRef, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            var pool = GetCostumesForAvatar(avatarRef);
+            if (pool.Count == 0) return PrototypeId.Invalid;
+            return pool[rng.Next(0, pool.Count)].CostumeRef;
+        }
+
+        /// <summary>
+        /// "Entity/Characters/Avatars/Shipping/SomeHero.prototype" → "SomeHero".
+        /// </summary>
+        private static string ExtractPrototypeShortName(string prototypePath)
+        {
+            if (string.IsNullOrEmpty(prototypePath)) return string.Empty;
+            int slash = prototypePath.LastIndexOf('/');
+            string fileName = slash >= 0 ? prototypePath[(slash + 1)..] : prototypePath;
+            const string suffix = ".prototype";
+            if (fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                fileName = fileName[..^suffix.Length];
+            return fileName;
+        }
+
         private PrototypeId NextPhantomHeroRef()
         {
             EnsureResolvedPool();
@@ -828,18 +934,19 @@ namespace MHServerEmu.Games.Entities.Avatars
             // A non-zero levelOverride from the chat command means the user
             // explicitly asked for a specific level (e.g. `!phantom spawn 4 45`).
             // Lock that level in — the tick loop will not auto-level these
-            // phantoms as the caller gains XP.
-            => SpawnPhantomHeroCore(PrototypeId.Invalid, levelOverride, username, levelOverride > 0, out error);
+            // phantoms as the caller gains XP. Costume 0 = roll random.
+            => SpawnPhantomHeroCore(PrototypeId.Invalid, levelOverride, username, levelOverride > 0, 0, out error);
 
         /// <summary>
         /// Respawns a phantom from a MigrationData intent — same avatarRef +
-        /// level + username + LockLevel as the pre-transfer state. Used by
-        /// Player.RestorePhantomsFromMigration after cross-region travel.
+        /// level + username + LockLevel + costume as the pre-transfer state.
+        /// Used by Player.RestorePhantomsFromMigration after cross-region
+        /// travel and by saved-squad spawns.
         /// </summary>
-        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, out string error)
-            => SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, out error);
+        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, ulong costumeRef, out string error)
+            => SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, out error);
 
-        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, out string error)
+        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, out string error)
         {
             error = null;
             if (IsInWorld == false) { error = "avatar not in world"; return 0; }
@@ -904,6 +1011,23 @@ namespace MHServerEmu.Games.Entities.Avatars
             phantomAvatar.InitializeLevel(effectiveLevel);
             phantomAvatar.CombatLevel = effectiveLevel;
             phantomAvatar.ResetResources(false);
+
+            // Step 4b: costume. Explicit ref (squad restore / migration /
+            // command) wins; otherwise roll a random one from the avatar's
+            // costume pool so phantom crowds don't all wear the default.
+            // Applied before EnterWorld so the initial replication already
+            // carries the final look. The ACTUAL applied ref is stored in
+            // the descriptor below, so saves/transfers reproduce this
+            // costume instead of re-rolling.
+            PrototypeId appliedCostumeRef = costumeRef != 0 ? (PrototypeId)costumeRef : PickRandomCostume(avatarRef, Game.Random);
+            if (appliedCostumeRef != PrototypeId.Invalid)
+            {
+                if (phantomAvatar.ChangeCostume(appliedCostumeRef) == false)
+                {
+                    PhantomLogger.Warn($"[PhantomHero] ChangeCostume({appliedCostumeRef.GetName()}) failed for {avatarRef.GetName()}");
+                    appliedCostumeRef = PrototypeId.Invalid;
+                }
+            }
 
             // Step 5: pick a spawn point close to the caller and enter the
             // world. Two goals:
@@ -1074,6 +1198,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 Level = effectiveLevel,
                 Username = username,
                 LockLevel = lockLevel,
+                CostumeRef = (ulong)appliedCostumeRef,
             };
             host.RegisterPhantom(phantomAvatar.Id, phantomPlayer.Id, descriptor);
             SchedulePhantomTick();

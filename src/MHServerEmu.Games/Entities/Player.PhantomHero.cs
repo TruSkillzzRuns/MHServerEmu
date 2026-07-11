@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Gazillion;
 using MHServerEmu.Core.Logging;
@@ -100,6 +101,27 @@ namespace MHServerEmu.Games.Entities
                 Level = newLevel,
                 Username = d.Username,
                 LockLevel = d.LockLevel,
+                CostumeRef = d.CostumeRef,
+            };
+        }
+
+        /// <summary>
+        /// Update the stored costume for a live phantom so squad saves and
+        /// cross-region transfers reproduce a costume applied after spawn
+        /// via the costume command.
+        /// </summary>
+        internal void UpdatePhantomCostume(ulong avatarId, ulong costumeRef)
+        {
+            int idx = _phantomAvatarIds.IndexOf(avatarId);
+            if (idx < 0) return;
+            var d = _phantomDescriptors[idx];
+            _phantomDescriptors[idx] = new PhantomIntent
+            {
+                AvatarRef = d.AvatarRef,
+                Level = d.Level,
+                Username = d.Username,
+                LockLevel = d.LockLevel,
+                CostumeRef = costumeRef,
             };
         }
 
@@ -187,6 +209,7 @@ namespace MHServerEmu.Games.Entities
                     Level = d.Level,
                     Username = d.Username,
                     LockLevel = d.LockLevel,
+                    CostumeRef = d.CostumeRef,
                 });
             }
             int n = PurgePhantoms();
@@ -211,7 +234,7 @@ namespace MHServerEmu.Games.Entities
                     // Force the caller to spawn each intent with its saved
                     // (avatarRef, level, username) rather than the default
                     // "random from deck / caller's level" path.
-                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, out string error);
+                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, intent.CostumeRef, out string error);
                     if (id != 0) spawned++;
                     else PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} failed: {error}");
                 }
@@ -291,11 +314,21 @@ namespace MHServerEmu.Games.Entities
                 return;
             }
 
+            // Carry the human's actual difficulty preference. The required
+            // difficultyTierProtoId field was originally 0 (invalid), which
+            // made the client treat the party's difficulty state as broken
+            // and lock the difficulty selector entirely while phantoms were
+            // active. Server-side GetParty() is null here, so
+            // GetDifficultyTierPreference() falls through to the avatar's
+            // DifficultyTierPreference property — the same value a solo
+            // player's selector uses.
+            ulong difficultyTierProtoId = (ulong)GetDifficultyTierPreference();
+
             var partyInfoBuilder = PartyInfo.CreateBuilder()
                 .SetGroupId(groupId)
                 .SetType(GroupType.GroupType_Party)
                 .SetLeaderDbId(DatabaseUniqueId)
-                .SetDifficultyTierProtoId(0);
+                .SetDifficultyTierProtoId(difficultyTierProtoId);
 
             // Human = leader / first member.
             partyInfoBuilder.AddMembers(PartyMemberInfo.CreateBuilder()
@@ -324,6 +357,287 @@ namespace MHServerEmu.Games.Entities
                     .Build());
             }
             catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party] sync failed: {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// True when this Player has live phantoms and therefore a synthetic
+        /// client-side party (which has no server-side Party object).
+        /// </summary>
+        public bool HasPhantomParty => PhantomHeroCount > 0 && PartyId == 0;
+
+        /// <summary>
+        /// Re-push the synthetic party info to the client. Public entry
+        /// point for systems outside the phantom module that change state
+        /// reflected in the party HUD (e.g. difficulty tier changes).
+        /// </summary>
+        public void ResyncPhantomParty() => SyncPhantomParty();
+
+        // ================================================================
+        //  Saved squads
+        //
+        //  Per-account phantom lineups, persisted as JSON under
+        //  <ServerRoot>/Data/PhantomSquads/0x<AccountDbGuid>.json — runtime
+        //  data next to the exe, same territory as Account.db. Squad names
+        //  and rosters are user data: they are typed by the player in chat
+        //  and stored per account, so nothing team- or hero-specific ever
+        //  enters this source tree.
+        // ================================================================
+
+        private const int PhantomSquadMaxCount = 20;
+
+        private sealed class PhantomSquadMember
+        {
+            public ulong AvatarRef { get; set; }
+            public int Level { get; set; }
+            public string Username { get; set; }
+            public bool LockLevel { get; set; }
+            public ulong CostumeRef { get; set; }
+        }
+
+        private string GetPhantomSquadFilePath()
+            => System.IO.Path.Combine(MHServerEmu.Core.Helpers.FileHelper.DataDirectory, "PhantomSquads", $"0x{DatabaseUniqueId:X}.json");
+
+        private Dictionary<string, List<PhantomSquadMember>> LoadPhantomSquadFile()
+        {
+            try
+            {
+                string path = GetPhantomSquadFilePath();
+                if (System.IO.File.Exists(path) == false)
+                    return new(StringComparer.OrdinalIgnoreCase);
+                var loaded = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<PhantomSquadMember>>>(System.IO.File.ReadAllText(path));
+                return loaded != null ? new(loaded, StringComparer.OrdinalIgnoreCase) : new(StringComparer.OrdinalIgnoreCase);
+            }
+            catch (System.Exception ex)
+            {
+                PhantomHostLogger.Warn($"[Phantom:Squad] load failed for {this}: {ex.Message}");
+                return new(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        private bool SavePhantomSquadFile(Dictionary<string, List<PhantomSquadMember>> squads)
+        {
+            try
+            {
+                string path = GetPhantomSquadFilePath();
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+                System.IO.File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(squads,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                PhantomHostLogger.Warn($"[Phantom:Squad] save failed for {this}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static bool IsValidSquadName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 32) return false;
+            foreach (char c in name)
+                if (char.IsLetterOrDigit(c) == false && c != '_' && c != '-') return false;
+            return true;
+        }
+
+        /// <summary>Snapshot the current phantom lineup under a name.</summary>
+        public string SavePhantomSquad(string squadName)
+        {
+            if (IsValidSquadName(squadName) == false)
+                return "Squad names must be 1-32 letters, digits, _ or -.";
+            if (_phantomDescriptors.Count == 0)
+                return "No phantoms active — spawn the lineup you want to save first.";
+
+            var squads = LoadPhantomSquadFile();
+            if (squads.ContainsKey(squadName) == false && squads.Count >= PhantomSquadMaxCount)
+                return $"Squad limit reached ({PhantomSquadMaxCount}). Delete one first.";
+
+            var members = new List<PhantomSquadMember>(_phantomDescriptors.Count);
+            foreach (var d in _phantomDescriptors)
+                members.Add(new PhantomSquadMember { AvatarRef = d.AvatarRef, Level = d.Level, Username = d.Username, LockLevel = d.LockLevel, CostumeRef = d.CostumeRef });
+
+            squads[squadName] = members;
+            if (SavePhantomSquadFile(squads) == false)
+                return "Failed to write squad file — check server log.";
+            return $"Squad '{squadName}' saved ({members.Count} phantom(s)).";
+        }
+
+        /// <summary>Replace the current phantoms with a saved squad.</summary>
+        public string SpawnPhantomSquad(string squadName, Avatar caller)
+        {
+            if (caller == null || caller.IsInWorld == false)
+                return "No avatar in world.";
+
+            var squads = LoadPhantomSquadFile();
+            if (squads.TryGetValue(squadName, out List<PhantomSquadMember> members) == false || members == null || members.Count == 0)
+                return $"No squad named '{squadName}'. Use: phantom squad list";
+
+            PurgePhantoms();
+
+            int spawned = 0;
+            string firstError = null;
+            foreach (var m in members)
+            {
+                // LockLevel squads respawn at their stored level; auto-level
+                // squads respawn at the caller's current level (level 0 =
+                // "match caller" inside SpawnPhantomHeroCore).
+                ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)m.AvatarRef, m.LockLevel ? m.Level : 0, m.Username, m.LockLevel, m.CostumeRef, out string error);
+                if (id != 0) spawned++;
+                else firstError ??= error;
+            }
+
+            return firstError == null
+                ? $"Squad '{squadName}': spawned {spawned}/{members.Count}."
+                : $"Squad '{squadName}': spawned {spawned}/{members.Count}. First error: {firstError}";
+        }
+
+        /// <summary>List saved squad names.</summary>
+        public string ListPhantomSquads()
+        {
+            var squads = LoadPhantomSquadFile();
+            if (squads.Count == 0) return "No saved squads. Use: phantom squad save [name]";
+            var sb = new System.Text.StringBuilder("Saved squads: ");
+            bool first = true;
+            foreach (var kvp in squads)
+            {
+                if (first == false) sb.Append(", ");
+                sb.Append($"{kvp.Key} ({kvp.Value.Count})");
+                first = false;
+            }
+            return sb.ToString();
+        }
+
+        // ================================================================
+        //  Costume commands. Same legal posture as squads: costume names
+        //  are matched at runtime against the client's own data, and the
+        //  applied ref is user data stored per phantom.
+        // ================================================================
+
+        /// <summary>
+        /// Find active phantoms whose hero short-name or username matches
+        /// the query.
+        /// </summary>
+        private List<Avatar> FindActivePhantoms(string query)
+        {
+            var results = new List<Avatar>();
+            var mgr = Game?.EntityManager;
+            if (mgr == null || string.IsNullOrWhiteSpace(query)) return results;
+
+            foreach (ulong avatarId in _phantomAvatarIds)
+            {
+                Avatar phantom = mgr.GetEntity<Avatar>(avatarId);
+                if (phantom == null || phantom.IsInWorld == false) continue;
+
+                string heroName = phantom.PrototypeDataRef.GetName();
+                int slash = heroName.LastIndexOf('/');
+                if (slash >= 0) heroName = heroName[(slash + 1)..];
+                if (heroName.EndsWith(".prototype", StringComparison.OrdinalIgnoreCase))
+                    heroName = heroName[..^".prototype".Length];
+
+                string username = phantom.GetOwnerOfType<Player>()?.GetName() ?? string.Empty;
+
+                if (heroName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    username.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    results.Add(phantom);
+            }
+
+            return results;
+        }
+
+        /// <summary>Give every active phantom a random costume.</summary>
+        public string RandomizePhantomCostumes()
+        {
+            if (_phantomAvatarIds.Count == 0) return "No phantoms active.";
+            var mgr = Game?.EntityManager;
+            if (mgr == null) return "No game.";
+
+            int changed = 0;
+            foreach (ulong avatarId in _phantomAvatarIds)
+            {
+                Avatar phantom = mgr.GetEntity<Avatar>(avatarId);
+                if (phantom == null || phantom.IsInWorld == false) continue;
+                PrototypeId costumeRef = Avatar.PickRandomCostume(phantom.PrototypeDataRef, Game.Random);
+                if (costumeRef == PrototypeId.Invalid) continue;
+                if (phantom.ChangeCostume(costumeRef))
+                {
+                    UpdatePhantomCostume(avatarId, (ulong)costumeRef);
+                    changed++;
+                }
+            }
+            return $"Randomized costumes on {changed} phantom(s).";
+        }
+
+        /// <summary>
+        /// Set a specific (or random) costume on the phantom matching
+        /// <paramref name="phantomQuery"/>. costumeQuery "random" rolls.
+        /// </summary>
+        public string SetPhantomCostume(string phantomQuery, string costumeQuery)
+        {
+            var matches = FindActivePhantoms(phantomQuery);
+            if (matches.Count == 0) return $"No active phantom matching '{phantomQuery}'.";
+            if (matches.Count > 1) return $"Multiple phantoms match '{phantomQuery}' — use their username to disambiguate.";
+
+            Avatar phantom = matches[0];
+            PrototypeId costumeRef;
+
+            if (costumeQuery.Equals("random", StringComparison.OrdinalIgnoreCase))
+            {
+                costumeRef = Avatar.PickRandomCostume(phantom.PrototypeDataRef, Game.Random);
+                if (costumeRef == PrototypeId.Invalid) return "This hero has no approved costumes in the loaded data.";
+            }
+            else
+            {
+                var costumes = Avatar.FindCostumeRefs(phantom.PrototypeDataRef, costumeQuery);
+                if (costumes.Count == 0) return $"No costume matching '{costumeQuery}'. Use: phantom costume list [hero]";
+                if (costumes.Count > 1)
+                {
+                    var sb = new System.Text.StringBuilder("Multiple matches: ");
+                    for (int i = 0; i < costumes.Count && i < 8; i++)
+                    {
+                        if (i > 0) sb.Append(", ");
+                        sb.Append(costumes[i].ShortName);
+                    }
+                    if (costumes.Count > 8) sb.Append(", ...");
+                    return sb.ToString();
+                }
+                costumeRef = costumes[0].CostumeRef;
+            }
+
+            if (phantom.ChangeCostume(costumeRef) == false)
+                return "ChangeCostume failed — check server log.";
+
+            UpdatePhantomCostume(phantom.Id, (ulong)costumeRef);
+            return $"Costume applied.";
+        }
+
+        /// <summary>List available costumes for the phantom matching the query.</summary>
+        public string ListPhantomCostumes(string phantomQuery)
+        {
+            var matches = FindActivePhantoms(phantomQuery);
+            if (matches.Count == 0) return $"No active phantom matching '{phantomQuery}'.";
+            Avatar phantom = matches[0];
+
+            var costumes = Avatar.GetCostumesForAvatar(phantom.PrototypeDataRef);
+            if (costumes.Count == 0) return "This hero has no approved costumes in the loaded data.";
+
+            var sb = new System.Text.StringBuilder($"{costumes.Count} costume(s): ");
+            for (int i = 0; i < costumes.Count && i < 15; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(costumes[i].ShortName);
+            }
+            if (costumes.Count > 15) sb.Append(", ...");
+            return sb.ToString();
+        }
+
+        /// <summary>Delete a saved squad.</summary>
+        public string DeletePhantomSquad(string squadName)
+        {
+            var squads = LoadPhantomSquadFile();
+            if (squads.Remove(squadName) == false)
+                return $"No squad named '{squadName}'.";
+            if (SavePhantomSquadFile(squads) == false)
+                return "Failed to write squad file — check server log.";
+            return $"Squad '{squadName}' deleted.";
         }
 
         /// <summary>

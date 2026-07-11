@@ -79,5 +79,13 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// level tick keeps them chasing the human.
         /// </summary>
         public bool LockLevel;
+
+        /// <summary>
+        /// Costume PrototypeId as ulong (0 = roll a random costume at
+        /// spawn). Stores the costume actually applied, so squad saves and
+        /// cross-region transfers reproduce the same look rather than
+        /// re-rolling.
+        /// </summary>
+        public ulong CostumeRef;
     }
 }
