@@ -14,6 +14,7 @@ using MHServerEmu.Games.Events.Templates;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Navi;
+using MHServerEmu.Games.Network;
 using MHServerEmu.Games.Powers;
 using MHServerEmu.Games.Properties;
 using MHServerEmu.Games.Regions;
@@ -147,6 +148,11 @@ namespace MHServerEmu.Games.Entities.Avatars
                     {
                         phantom.InitializeLevel(callerLevel);
                         phantom.CombatLevel = callerLevel;
+                        // Rescale damage buffs so a level-1 phantom that
+                        // just autolevelled to lvl-15 stops hitting like
+                        // lvl-1 (or overshoots — the anchor curve tracks
+                        // level, not spawn-time snapshot).
+                        ApplyPhantomDamageScaling(phantom, callerLevel);
                         // Refresh the stored descriptor so cross-region
                         // migration re-spawns at the new level, not the
                         // stale spawn-time value.
@@ -358,10 +364,15 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (loco != null)
             {
                 var opts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(250) };
-                // rangeEnd is the Locomotor's "close-enough" tolerance
-                // (Locomotor.GetNextLocomotePosition line 669). Small → walks all
-                // the way in. Real-player-style approach + cast.
-                bool ok = loco.FollowEntity(nearest.Id, 50f, 50f, ref opts, false);
+                // Follow only as close as the phantom's widest usable power's
+                // range. Ranged heroes (Storm, Iron Man, Rocket) stop at
+                // projectile range and start casting; melee heroes (Thing,
+                // Colossus) keep walking in to 50u. Without this every
+                // phantom sprinted into point-blank on every target — visually
+                // wrong for ranged kits, and left the phantom stuck at 50u
+                // firing projectiles the client had to render at melee.
+                float followStopDist = ComputePhantomFollowStopDist(phantom, nearest);
+                bool ok = loco.FollowEntity(nearest.Id, followStopDist, followStopDist, ref opts, false);
                 if (s_phantomLocoLogged.Add(phantom.Id))
                 {
                     PhantomLogger.Info($"[PhantomHero:Loco] {phantom} authoritative={phantom.IsMovementAuthoritative} simulated={phantom.IsSimulated} inWorld={phantom.IsInWorld} target={nearest.Id:X} dist={MathF.Sqrt(nearestDistSq):F0} FollowEntity returned={ok} locoEnabled={loco.IsEnabled} isMoving={loco.IsMoving} method={loco.Method} baseSpeed={loco.DefaultRunSpeed} hasPath={loco.HasPath} pathResult={loco.LastGeneratedPathResult} canMove={phantom.CanMove()}");
@@ -478,6 +489,103 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 
         private static readonly HashSet<ulong> s_phantomLocoLogged = new();
+
+        // ================================================================
+        //  Phantom damage-scaling curve
+        //
+        //  Real avatars pick up damage the same way from levels 1 -> 60:
+        //  a level curve on the base power damage (already baked into
+        //  each PowerPrototype) PLUS gear-scaling from DamageRating.
+        //  Phantoms have no gear, so we synthesise the "gear" side by
+        //  interpolating three properties along the level track:
+        //
+        //    DamageMult      1.5   ->  3.0   (final-damage multiplier)
+        //    DamagePctBonus  0.2   ->  1.5   (percent bonus)
+        //    DamageRating    0     ->  5000  (feeds combat-globals curve;
+        //                                     ~100 rating ≈ 10% damage,
+        //                                     5000 ≈ a fully-BiS endgame
+        //                                     avatar)
+        //
+        //  Tuning runs on t = ((level - 1) / 59)^2 — QUADRATIC, not linear.
+        //  Playtesting showed linear scaling made phantoms hit too hard
+        //  through the story levels (1-30): at level 30 linear-t was 0.49,
+        //  handing out half the endgame bonus while mobs still have
+        //  story-tier health pools. Squaring t keeps the ramp shallow
+        //  early (t=0.24 at level 30, t=0.06 at level 15) and steep into
+        //  endgame, where mob health scales up to meet it. Level 1 and
+        //  level 60 anchors are unaffected.
+        //
+        //  Clamped to [0,1] so a level-lock override (e.g. `!phantom
+        //  spawn 4 45`) still gets the level-45 damage anchors and
+        //  doesn't stay at spawn-time values while the human levels past
+        //  it.
+        //
+        //  If you want phantoms to hit harder / softer, adjust the six
+        //  anchor constants — the interpolation and call sites don't
+        //  need to change.
+        // ================================================================
+        private const float PhantomDmgMultLvl1  = 1.2f;
+        private const float PhantomDmgMultLvl60 = 3.0f;
+        private const float PhantomDmgPctBonusLvl1  = 0.1f;
+        private const float PhantomDmgPctBonusLvl60 = 1.5f;
+        private const float PhantomDmgRatingLvl1  = 0f;
+        private const float PhantomDmgRatingLvl60 = 5000f;
+
+        // Follow-stop bounds. 50u = "on top of the target" (old behaviour),
+        // 1000u = a comfortable ranged-cast distance well inside the widest
+        // player-attack ranges (~1400u for artillery-tier abilities). If a
+        // phantom's collection has no usable ranged option we fall back to
+        // PhantomFollowStopMin — melee heroes get closed distance the same
+        // way real players do.
+        private const float PhantomFollowStopMin = 50f;
+        private const float PhantomFollowStopMax = 1000f;
+        // Margin subtracted from the picked power's range so the phantom
+        // stops just inside effective range rather than exactly at the edge
+        // (where the target moving away one tick would kick the shot out).
+        private const float PhantomFollowRangeMargin = 100f;
+
+        private static float ComputePhantomFollowStopDist(Avatar phantom, WorldEntity target)
+        {
+            var pc = phantom.PowerCollection;
+            if (pc == null) return PhantomFollowStopMin;
+
+            float bestRange = 0f;
+            foreach (var kvp in pc)
+            {
+                Power power = kvp.Value?.Power;
+                if (power == null) continue;
+                PowerPrototype pp = power.Prototype;
+                if (pp == null) continue;
+                if (pp is MovementPowerPrototype) continue;
+                if (pp.PowerCategory != PowerCategoryType.NormalPower) continue;
+                if (pp.Activation == PowerActivationType.Passive) continue;
+                if (pp.IsToggled) continue;
+                if (pp.IsTravelPower) continue;
+                if (power.IsOnCooldown()) continue;
+
+                float r = power.GetRange();
+                if (r > bestRange) bestRange = r;
+            }
+
+            if (bestRange <= 0f) return PhantomFollowStopMin;
+
+            float dist = Math.Clamp(bestRange - PhantomFollowRangeMargin,
+                PhantomFollowStopMin, PhantomFollowStopMax);
+            return dist;
+        }
+
+        private static void ApplyPhantomDamageScaling(Avatar phantom, int level)
+        {
+            float t = Math.Clamp((level - 1) / 59f, 0f, 1f);
+            t *= t; // quadratic — shallow through story levels, steep into endgame
+            float dmgMult   = PhantomDmgMultLvl1     + t * (PhantomDmgMultLvl60     - PhantomDmgMultLvl1);
+            float pctBonus  = PhantomDmgPctBonusLvl1 + t * (PhantomDmgPctBonusLvl60 - PhantomDmgPctBonusLvl1);
+            float dmgRating = PhantomDmgRatingLvl1   + t * (PhantomDmgRatingLvl60   - PhantomDmgRatingLvl1);
+
+            phantom.Properties[PropertyEnum.DamageMult]     = dmgMult;
+            phantom.Properties[PropertyEnum.DamagePctBonus] = pctBonus;
+            phantom.Properties[PropertyEnum.DamageRating]   = dmgRating;
+        }
 
         // Rate-limit the "why isn't my phantom attacking" dump to at most one
         // per phantom every 5 seconds so a 500ms tick doesn't spam the log.
@@ -614,8 +722,29 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
                 candidates.Clear();
 
+                // Pre-generate FXRandomSeed BEFORE the call so it's stored
+                // in settings.FXRandomSeed. Without this the seed is 0,
+                // ArchiveMessageBuilder auto-generates a random one for
+                // the outbound NetMessageActivatePower (line 357), but
+                // that generated seed never gets back into the
+                // PowerApplication / PowerPayload / PowerResult. Client
+                // sees ActivatePower(fxSeed=N) then PowerResult(fxSeed=0)
+                // — mismatched. Body-emitter particle systems that vary
+                // by seed treat 0 as "no effect" or drop it because the
+                // cast doesn't correlate to the hit. Missile / projectile
+                // FX works even with seed=0 because those spawn from a
+                // separate Missile entity.
+                //
+                // ServerCombo forces the broadcast path (Power.cs line
+                // 3680) to include the owner client and skip the combo-
+                // effect early-out.
+                int fxSeed = rng.Next(1, 10000);
                 var settings = new PowerActivationSettings(target.Id, target.RegionLocation.Position, phantomPos)
-                { Flags = PowerActivationSettingsFlags.NotifyOwner };
+                {
+                    Flags = PowerActivationSettingsFlags.NotifyOwner | PowerActivationSettingsFlags.ServerCombo,
+                    FXRandomSeed = fxSeed,
+                    PowerRandomSeed = fxSeed,
+                };
                 var result = phantom.ActivatePower(chosenPower, ref settings);
 
                 // Log every failed activation so we can see WHY a cutscene boss
@@ -846,6 +975,44 @@ namespace MHServerEmu.Games.Entities.Avatars
                 phantomPlayer.UpdateInterestPolicies(true, null);
                 phantomAvatar.UpdateInterestPolicies(true, null);
 
+                // Re-broadcast the phantom's PowerCollection to every real
+                // player that now has it in AOI. PowerCollection.AssignPower
+                // only ships NetMessagePowerCollectionAssignPower to
+                // clients when _owner.IsInGame is true (PowerCollection.cs
+                // line 339) — but phantom powers get assigned during
+                // CreateAvatar / InitializeLevel BEFORE phantomPlayer.
+                // EnterGame() runs. That means the initial assign batch
+                // never reaches anyone, and the client's PowerCollection
+                // for this phantom stays empty. Empty collection ->
+                // NetMessageActivatePower arrives referencing a power the
+                // client doesn't know the phantom has -> the cast
+                // animation never plays -> no VFX. Sending the whole
+                // collection here fixes both: cast animations play and
+                // VFX renders for every phantom power.
+                if (phantomAvatar.PowerCollection != null)
+                {
+                    int collectionSize = 0;
+                    foreach (var _ in phantomAvatar.PowerCollection) collectionSize++;
+                    foreach (Player realPlayer in new PlayerIterator(Game))
+                    {
+                        if (realPlayer.PlayerConnection == null) continue;
+                        var aoi = realPlayer.AOI;
+                        if (aoi == null) continue;
+                        bool interested = aoi.InterestedInEntity(phantomAvatar.Id, AOINetworkPolicyValues.AOIChannelProximity);
+                        if (!interested)
+                        {
+                            PhantomLogger.Info($"[PhantomHero:PowerSync] SKIP {realPlayer.GetName()} — not interested in phantom {phantomAvatar.Id:X} (proximity=false). collectionSize={collectionSize}");
+                            continue;
+                        }
+                        bool sent = phantomAvatar.PowerCollection.SendEntireCollection(realPlayer);
+                        PhantomLogger.Info($"[PhantomHero:PowerSync] {realPlayer.GetName()} ← phantom {phantomAvatar.Id:X} collection ({collectionSize} powers) sent={sent}");
+                    }
+                }
+                else
+                {
+                    PhantomLogger.Warn($"[PhantomHero:PowerSync] phantom {phantomAvatar.Id:X} has no PowerCollection at spawn — client can't render any VFX");
+                }
+
                 // Diagnostic: log what each real player's AOI decided for the phantom.
                 foreach (Player realPlayer in new PlayerIterator(Game))
                 {
@@ -868,16 +1035,10 @@ namespace MHServerEmu.Games.Entities.Avatars
             // weight until manually cleared.
             phantomAvatar.Properties[PropertyEnum.Invulnerable] = true;
 
-            // Full-BiS-omega-set-flavored damage scaling. Tuned down from the
-            // first pass so bosses still take a moment. If you want more or less,
-            // this is the whole knob.
-            // - DamageMult: direct multiplier on outgoing damage.
-            // - DamagePctBonus: percent bonus on top of that multiplier.
-            // - DamageRating: feeds the combat-globals scaling curve
-            //   (WorldEntity.cs line 2918); ~100 rating ≈ 10% damage.
-            phantomAvatar.Properties[PropertyEnum.DamageMult] = 3f;
-            phantomAvatar.Properties[PropertyEnum.DamagePctBonus] = 1.5f;
-            phantomAvatar.Properties[PropertyEnum.DamageRating] = 5000f;
+            // Damage scaling — see ApplyPhantomDamageScaling for the level
+            // curve. Anchored at "helpful but not obliterating" for level 1
+            // and "full-BiS-omega teammate" for level 60, linear between.
+            ApplyPhantomDamageScaling(phantomAvatar, effectiveLevel);
 
             // Server-authoritative movement — real avatars have IsMovementAuthoritative=false
             // because the client drives them. Phantoms have no client, so we must
