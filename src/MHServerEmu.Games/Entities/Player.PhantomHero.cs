@@ -95,14 +95,8 @@ namespace MHServerEmu.Games.Entities
             int idx = _phantomAvatarIds.IndexOf(avatarId);
             if (idx < 0) return;
             var d = _phantomDescriptors[idx];
-            _phantomDescriptors[idx] = new PhantomIntent
-            {
-                AvatarRef = d.AvatarRef,
-                Level = newLevel,
-                Username = d.Username,
-                LockLevel = d.LockLevel,
-                CostumeRef = d.CostumeRef,
-            };
+            d.Level = newLevel;
+            _phantomDescriptors[idx] = d;
         }
 
         /// <summary>
@@ -115,14 +109,21 @@ namespace MHServerEmu.Games.Entities
             int idx = _phantomAvatarIds.IndexOf(avatarId);
             if (idx < 0) return;
             var d = _phantomDescriptors[idx];
-            _phantomDescriptors[idx] = new PhantomIntent
-            {
-                AvatarRef = d.AvatarRef,
-                Level = d.Level,
-                Username = d.Username,
-                LockLevel = d.LockLevel,
-                CostumeRef = costumeRef,
-            };
+            d.CostumeRef = costumeRef;
+            _phantomDescriptors[idx] = d;
+        }
+
+        /// <summary>
+        /// Update the stored gear list for a live phantom (post-spawn
+        /// re-roll via the gear command).
+        /// </summary>
+        internal void UpdatePhantomGear(ulong avatarId, List<ulong> gearRefs)
+        {
+            int idx = _phantomAvatarIds.IndexOf(avatarId);
+            if (idx < 0) return;
+            var d = _phantomDescriptors[idx];
+            d.GearRefs = gearRefs;
+            _phantomDescriptors[idx] = d;
         }
 
         internal bool UnregisterPhantom(ulong avatarId)
@@ -210,6 +211,7 @@ namespace MHServerEmu.Games.Entities
                     Username = d.Username,
                     LockLevel = d.LockLevel,
                     CostumeRef = d.CostumeRef,
+                    GearRefs = d.GearRefs != null ? new List<ulong>(d.GearRefs) : null,
                 });
             }
             int n = PurgePhantoms();
@@ -234,7 +236,7 @@ namespace MHServerEmu.Games.Entities
                     // Force the caller to spawn each intent with its saved
                     // (avatarRef, level, username) rather than the default
                     // "random from deck / caller's level" path.
-                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, intent.CostumeRef, out string error);
+                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, intent.CostumeRef, out string error, intent.GearRefs);
                     if (id != 0) spawned++;
                     else PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} failed: {error}");
                 }
@@ -392,6 +394,7 @@ namespace MHServerEmu.Games.Entities
             public string Username { get; set; }
             public bool LockLevel { get; set; }
             public ulong CostumeRef { get; set; }
+            public List<ulong> GearRefs { get; set; }
         }
 
         private string GetPhantomSquadFilePath()
@@ -453,7 +456,7 @@ namespace MHServerEmu.Games.Entities
 
             var members = new List<PhantomSquadMember>(_phantomDescriptors.Count);
             foreach (var d in _phantomDescriptors)
-                members.Add(new PhantomSquadMember { AvatarRef = d.AvatarRef, Level = d.Level, Username = d.Username, LockLevel = d.LockLevel, CostumeRef = d.CostumeRef });
+                members.Add(new PhantomSquadMember { AvatarRef = d.AvatarRef, Level = d.Level, Username = d.Username, LockLevel = d.LockLevel, CostumeRef = d.CostumeRef, GearRefs = d.GearRefs != null ? new List<ulong>(d.GearRefs) : null });
 
             squads[squadName] = members;
             if (SavePhantomSquadFile(squads) == false)
@@ -480,7 +483,7 @@ namespace MHServerEmu.Games.Entities
                 // LockLevel squads respawn at their stored level; auto-level
                 // squads respawn at the caller's current level (level 0 =
                 // "match caller" inside SpawnPhantomHeroCore).
-                ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)m.AvatarRef, m.LockLevel ? m.Level : 0, m.Username, m.LockLevel, m.CostumeRef, out string error);
+                ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)m.AvatarRef, m.LockLevel ? m.Level : 0, m.Username, m.LockLevel, m.CostumeRef, out string error, m.GearRefs);
                 if (id != 0) spawned++;
                 else firstError ??= error;
             }
@@ -607,6 +610,59 @@ namespace MHServerEmu.Games.Entities
 
             UpdatePhantomCostume(phantom.Id, (ulong)costumeRef);
             return $"Costume applied.";
+        }
+
+        /// <summary>
+        /// Re-roll gear on all active phantoms, or on the one matching
+        /// <paramref name="phantomQuery"/>. Strips current equipment
+        /// (except the costume slot) and rolls a fresh level-appropriate
+        /// set per slot.
+        /// </summary>
+        public string RerollPhantomGear(string phantomQuery = null)
+        {
+            var mgr = Game?.EntityManager;
+            if (mgr == null) return "No game.";
+
+            List<Avatar> targets;
+            if (string.IsNullOrWhiteSpace(phantomQuery))
+            {
+                targets = new List<Avatar>();
+                foreach (ulong avatarId in _phantomAvatarIds)
+                {
+                    Avatar phantom = mgr.GetEntity<Avatar>(avatarId);
+                    if (phantom != null && phantom.IsInWorld) targets.Add(phantom);
+                }
+                if (targets.Count == 0) return "No phantoms active.";
+            }
+            else
+            {
+                targets = FindActivePhantoms(phantomQuery);
+                if (targets.Count == 0) return $"No active phantom matching '{phantomQuery}'.";
+                if (targets.Count > 1) return $"Multiple phantoms match '{phantomQuery}' — use their username to disambiguate.";
+            }
+
+            int rerolled = 0;
+            foreach (Avatar phantom in targets)
+            {
+                Player phantomOwner = phantom.GetOwnerOfType<Player>();
+                var avatarProto = phantom.AvatarPrototype;
+                if (phantomOwner == null || avatarProto?.EquipmentInventories == null) continue;
+
+                // Strip current gear (costume slot untouched — that belongs
+                // to the costume system).
+                foreach (var assignment in avatarProto.EquipmentInventories)
+                {
+                    var invProto = assignment.Inventory.As<GameData.Prototypes.InventoryPrototype>();
+                    if (invProto == null || invProto.ConvenienceLabel == Inventories.InventoryConvenienceLabel.Costume) continue;
+                    phantom.GetInventoryByRef(assignment.Inventory)?.DestroyContained();
+                }
+
+                List<ulong> applied = Avatar.ApplyPhantomGear(phantomOwner, phantom, phantom.CharacterLevel, null);
+                UpdatePhantomGear(phantom.Id, applied);
+                rerolled++;
+            }
+
+            return $"Re-rolled gear on {rerolled} phantom(s).";
         }
 
         /// <summary>List available costumes for the phantom matching the query.</summary>

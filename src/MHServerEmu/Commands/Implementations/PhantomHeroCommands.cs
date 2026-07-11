@@ -147,6 +147,19 @@ namespace MHServerEmu.Commands.Implementations
             return player.SetPhantomCostume(@params[0], @params[1]);
         }
 
+        [Command("gear")]
+        [CommandDescription("Re-roll phantom gear. Usage: gear (all phantoms) | gear [hero] (one phantom). Gear rolls at each phantom's current level.")]
+        [CommandInvokerType(CommandInvokerType.Client)]
+        [CommandUserLevel(AccountUserLevel.Admin)]
+        public string Gear(string[] @params, NetClient client)
+        {
+            var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom gear.");
+            var player = pc.Player;
+            if (player == null || player.CurrentAvatar == null) return "No avatar in world.";
+
+            return player.RerollPhantomGear(@params.Length >= 1 ? @params[0] : null);
+        }
+
         [Command("clear")]
         [CommandDescription("Despawn every phantom you've spawned.")]
         [CommandInvokerType(CommandInvokerType.Client)]

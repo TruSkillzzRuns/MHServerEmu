@@ -7,12 +7,14 @@ using MHServerEmu.Core.Serialization;
 using MHServerEmu.Core.VectorMath;
 using MHServerEmu.Games.Common;
 using MHServerEmu.Games.Entities.Inventories;
+using MHServerEmu.Games.Entities.Items;
 using MHServerEmu.Games.Entities.Locomotion;
 using MHServerEmu.Games.Entities.PowerCollections;
 using MHServerEmu.Games.Events;
 using MHServerEmu.Games.Events.Templates;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
+using MHServerEmu.Games.Loot;
 using MHServerEmu.Games.Navi;
 using MHServerEmu.Games.Network;
 using MHServerEmu.Games.Powers;
@@ -161,6 +163,34 @@ namespace MHServerEmu.Games.Entities.Avatars
                     catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] level sync {phantom.Id:X} → {callerLevel} failed: {ex.Message}"); }
                 }
 
+                // Stuck-power watchdog: a channeled power (or channel-style
+                // ultimate) never ends for a phantom — no client exists to
+                // release the button — and while ActivePowerRef is set,
+                // every attack and revive returns PowerInProgress. Force-end
+                // any power that's been active for 10 consecutive ticks (5s).
+                PrototypeId activePowerRef = phantom.ActivePowerRef;
+                if (activePowerRef != PrototypeId.Invalid)
+                {
+                    if (s_phantomActivePowerTrack.TryGetValue(phantom.Id, out var powerTrack) && powerTrack.powerRef == activePowerRef)
+                    {
+                        int ticks = powerTrack.ticks + 1;
+                        if (ticks >= PhantomStuckPowerTicks)
+                        {
+                            try
+                            {
+                                Power stuckPower = phantom.PowerCollection?.GetPower(activePowerRef);
+                                stuckPower?.EndPower(EndPowerFlags.ExplicitCancel | EndPowerFlags.Force);
+                                PhantomLogger.Info($"[PhantomHero:Watchdog] force-ended stuck power {activePowerRef.GetName()} on {phantom.Id:X} after {ticks * 500}ms");
+                            }
+                            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Watchdog] EndPower failed on {phantom.Id:X}: {ex.Message}"); }
+                            s_phantomActivePowerTrack.Remove(phantom.Id);
+                        }
+                        else s_phantomActivePowerTrack[phantom.Id] = (activePowerRef, ticks);
+                    }
+                    else s_phantomActivePowerTrack[phantom.Id] = (activePowerRef, 1);
+                }
+                else s_phantomActivePowerTrack.Remove(phantom.Id);
+
                 // Stuck detection: if the phantom's position barely moved
                 // this tick despite the Locomotor being set to move, count
                 // it. After N consecutive stuck ticks assume they're
@@ -223,6 +253,22 @@ namespace MHServerEmu.Games.Entities.Avatars
         {
             Region region = phantom.Region;
             if (region == null || phantom.PowerCollection == null) return;
+
+            // Mid-cast: stand still, like a real player. Without this the
+            // tick kept re-issuing FollowEntity every 500ms while a power
+            // was executing, so phantoms slid across the ground through
+            // their cast animations. Any new attack would return
+            // PowerInProgress anyway, and the stuck-power watchdog (in
+            // OnPhantomTick, which runs before this) still force-ends
+            // channels that never finish — so skipping the whole hunt for
+            // the duration of a cast is safe.
+            if (phantom.IsExecutingPower)
+            {
+                var castLoco = phantom.Locomotor;
+                if (castLoco != null && castLoco.IsMoving)
+                    castLoco.Stop();
+                return;
+            }
 
             Vector3 phantomPos = phantom.RegionLocation.Position;
 
@@ -437,6 +483,43 @@ namespace MHServerEmu.Games.Entities.Avatars
         // between casts so the tick doesn't spam-fire.
         private static readonly Dictionary<ulong, long> s_phantomNextAttackMs = new();
 
+        // Per-phantom next-ultimate timestamp (ms). Ultimates fire on any
+        // target once available, then rest for 20 minutes regardless of
+        // what the power data's own cooldown says.
+        private const long PhantomUltimateCooldownMs = 20 * 60 * 1000;
+        private static readonly Dictionary<ulong, long> s_phantomNextUltimateMs = new();
+
+        // Per-(phantom, power) blacklist. Some powers fail for reasons that
+        // won't clear on their own — RestrictiveCondition (unmet condition
+        // requirement, e.g. transform-state powers), WeaponMissing (needs an
+        // equipped item the phantom doesn't have). Without this, a broken
+        // power with a big cooldown weight gets picked every tick against
+        // every target (per-TARGET blacklist doesn't help) and the phantom
+        // never lands a hit. 10-minute expiry in case the blocking state is
+        // situational.
+        private const long PhantomPowerBlacklistMs = 10 * 60 * 1000;
+        private static readonly Dictionary<(ulong phantomId, PrototypeId powerRef), long> s_phantomPowerBlacklist = new();
+        private static bool IsPhantomPowerBlacklisted(ulong phantomId, PrototypeId powerRef, long nowMs)
+            => s_phantomPowerBlacklist.TryGetValue((phantomId, powerRef), out long expiresAt) && nowMs < expiresAt;
+        private static void PrunePowerBlacklistFor(ulong phantomId)
+        {
+            List<(ulong, PrototypeId)> toRemove = null;
+            foreach (var key in s_phantomPowerBlacklist.Keys)
+                if (key.phantomId == phantomId) (toRemove ??= new()).Add(key);
+            if (toRemove != null)
+                foreach (var k in toRemove) s_phantomPowerBlacklist.Remove(k);
+        }
+
+        // Stuck-power watchdog. Channeled / recurring powers (beam channels
+        // and some ultimates) never end on their own for phantoms — a real
+        // player ends them by releasing the button, which the phantom can't
+        // do. A stuck ActivePowerRef rejects every subsequent attack AND
+        // revive with PowerInProgress, soft-locking the phantom forever.
+        // If the same power stays active for this many consecutive ticks
+        // (500ms each), force-end it.
+        private const int PhantomStuckPowerTicks = 10; // 5 seconds
+        private static readonly Dictionary<ulong, (PrototypeId powerRef, int ticks)> s_phantomActivePowerTrack = new();
+
         // Per-(phantom,target) blacklist expiry. Populated when ActivatePower
         // returns non-Success, so the sweep skips that target for
         // PhantomBlacklistDurationMs. Lets phantoms rotate to hittable targets
@@ -574,6 +657,102 @@ namespace MHServerEmu.Games.Entities.Avatars
             return dist;
         }
 
+        // ================================================================
+        //  Phantom gear
+        //
+        //  Rolls one level-appropriate item per equip slot using the same
+        //  data the loot system uses for real drops:
+        //  AvatarPrototype.EquipmentInventories declares the slots, and
+        //  LootUtilities.BuildInventoryLootPicker resolves every concrete
+        //  item prototype that fits a given (avatar, slot) pair from the
+        //  loaded client data. Nothing item-specific lives in source.
+        //
+        //  Besides stats, this un-breaks weapon-gated powers: powers that
+        //  returned WeaponMissing (e.g. shield-throw style kits) work once
+        //  the hero-specific weapon slot is filled.
+        // ================================================================
+
+        /// <summary>
+        /// Equip the phantom. If <paramref name="gearOverride"/> is
+        /// non-empty, those exact item protos are recreated at the
+        /// phantom's level (squad/migration restore); otherwise one random
+        /// valid item is rolled per unlocked equip slot. Returns the
+        /// applied item proto refs for descriptor storage.
+        /// </summary>
+        internal static List<ulong> ApplyPhantomGear(Player phantomPlayer, Avatar phantomAvatar, int level, List<ulong> gearOverride)
+        {
+            var applied = new List<ulong>();
+            AvatarPrototype avatarProto = phantomAvatar.AvatarPrototype;
+            if (avatarProto?.EquipmentInventories == null) return applied;
+
+            Game game = phantomAvatar.Game;
+            var lootManager = game.LootManager;
+            var rng = game.Random;
+
+            bool useOverride = gearOverride != null && gearOverride.Count > 0;
+            int overrideIdx = 0;
+
+            foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
+            {
+                if (assignment.UnlocksAtCharacterLevel > level) continue;
+
+                InventoryPrototype invProto = assignment.Inventory.As<InventoryPrototype>();
+                if (invProto == null) continue;
+                // The costume slot is driven by the phantom costume system —
+                // equipping a rolled costume item here would clobber it.
+                if (invProto.ConvenienceLabel == InventoryConvenienceLabel.Costume) continue;
+
+                Inventory equipInventory = phantomAvatar.GetInventoryByRef(assignment.Inventory);
+                if (equipInventory == null) continue;
+
+                // Resolve the item proto: stored ref on restore, random roll otherwise.
+                PrototypeId itemProtoRef = PrototypeId.Invalid;
+                if (useOverride)
+                {
+                    if (overrideIdx < gearOverride.Count)
+                        itemProtoRef = (PrototypeId)gearOverride[overrideIdx++];
+                }
+                else
+                {
+                    var picker = new MHServerEmu.Core.Collections.Picker<Prototype>(rng);
+                    LootUtilities.BuildInventoryLootPicker(picker, avatarProto.DataRef, assignment.UISlot);
+                    if (picker.Empty() == false && picker.Pick(out Prototype pickedProto) && pickedProto != null)
+                        itemProtoRef = pickedProto.DataRef;
+                }
+
+                if (itemProtoRef == PrototypeId.Invalid) continue;
+
+                try
+                {
+                    ItemSpec itemSpec = lootManager.CreateItemSpec(itemProtoRef, LootContext.Drop, phantomPlayer, level);
+                    if (itemSpec == null) continue;
+
+                    Item item;
+                    using (var itemSettings = ObjectPoolManager.Instance.Get<EntitySettings>())
+                    {
+                        itemSettings.EntityRef = itemProtoRef;
+                        itemSettings.ItemSpec = itemSpec;
+                        item = game.EntityManager.CreateEntity(itemSettings) as Item;
+                    }
+                    if (item == null) continue;
+
+                    if (item.ChangeInventoryLocation(equipInventory) != InventoryResult.Success)
+                    {
+                        item.Destroy();
+                        continue;
+                    }
+
+                    applied.Add((ulong)itemProtoRef);
+                }
+                catch (Exception ex)
+                {
+                    PhantomLogger.Warn($"[PhantomHero:Gear] equip {itemProtoRef.GetName()} on {phantomAvatar.Id:X} failed: {ex.Message}");
+                }
+            }
+
+            return applied;
+        }
+
         private static void ApplyPhantomDamageScaling(Avatar phantom, int level)
         {
             float t = Math.Clamp((level - 1) / 59f, 0f, 1f);
@@ -660,20 +839,26 @@ namespace MHServerEmu.Games.Entities.Avatars
             //   Filters (hard rejects):
             //     - is a Movement / Travel / Passive / Toggled power
             //     - is not NormalPower category
-            //     - name ends in "Ultimate.prototype" (cinematic, returns FullscreenMovie)
             //     - power.GetRange() < target distance (would return OutOfPosition)
             //     - power is currently on cooldown
+            //     - ultimates: additionally gated behind a 20-minute
+            //       per-phantom timer (see s_phantomNextUltimateMs)
             //
             //   Score = cooldown duration in ms (used as a proxy for hit weight —
             //   powers with longer cooldowns are baked bigger, and it's the only
             //   universal numeric signal we can get without a per-hero damage table).
             //
-            //   Pick strategy: sort survivors by score desc, weighted-random among
+            //   Pick strategy: a ready ultimate wins outright — 20 minutes
+            //   apart it should never lose a coin flip to a basic attack.
+            //   Otherwise sort survivors by score desc, weighted-random among
             //   the top 5. Favors real cooldown-worthy hits while still varying,
             //   and always fires the basic (0 cd) when nothing bigger is available.
             var candidates = ListPool<(PrototypeId, long)>.Instance.Get();
             try
             {
+                long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+                PrototypeId readyUltimate = PrototypeId.Invalid;
+
                 foreach (var kvp in phantom.PowerCollection)
                 {
                     PowerCollectionRecord rec = kvp.Value;
@@ -687,38 +872,67 @@ namespace MHServerEmu.Games.Entities.Avatars
                     if (pp.IsToggled) continue;
                     if (pp.IsTravelPower) continue;
 
-                    string pName = pp.DataRef.GetName() ?? string.Empty;
-                    if (pName.EndsWith("Ultimate.prototype", StringComparison.Ordinal)) continue;
-
                     float pRange = power.GetRange();
                     if (pRange > 0f && pRange + 50f < targetDist) continue;
 
                     if (power.IsOnCooldown()) continue;
 
+                    // Skip powers that recently failed with power-specific
+                    // errors (RestrictiveCondition / WeaponMissing) — they
+                    // won't start working by themselves, and their big
+                    // cooldown weights would otherwise get them picked
+                    // every single tick.
+                    if (IsPhantomPowerBlacklisted(phantom.Id, rec.PowerPrototypeRef, nowMs)) continue;
+
+                    // Ultimates fire on any target, but at most once per
+                    // 20 minutes per phantom (on top of whatever cooldown
+                    // the power data itself carries). The original
+                    // FullscreenMovie failure that got them blanket-banned
+                    // was the phantom-Player fullscreen-state bug, fixed in
+                    // Player.PlayKismetSeq.
+                    string pName = pp.DataRef.GetName() ?? string.Empty;
+                    if (pName.EndsWith("Ultimate.prototype", StringComparison.Ordinal))
+                    {
+                        if (s_phantomNextUltimateMs.TryGetValue(phantom.Id, out long ultReadyAt) && nowMs < ultReadyAt)
+                            continue;
+                        readyUltimate = rec.PowerPrototypeRef;
+                        continue; // not part of the weighted pool — it wins outright below
+                    }
+
                     long cdMs = (long)power.GetCooldownDuration().TotalMilliseconds;
                     candidates.Add((rec.PowerPrototypeRef, cdMs));
                 }
 
-                if (candidates.Count == 0) return PowerUseResult.OutOfPosition;
+                if (candidates.Count == 0 && readyUltimate == PrototypeId.Invalid)
+                    return PowerUseResult.OutOfPosition;
 
-                // Sort by cooldown desc — biggest hitter first.
-                candidates.Sort(static (a, b) => b.Item2.CompareTo(a.Item2));
-
-                // Take top 5 (or fewer). Weighted-random pick — weight = 1 + cooldownMs/1000
-                // so a 5s power is ~6x more likely than a basic (0s) attack.
-                int take = Math.Min(5, candidates.Count);
-                long totalWeight = 0;
-                for (int i = 0; i < take; i++) totalWeight += 1 + (candidates[i].Item2 / 1000);
-                long roll = ((long)rng.NextDouble() * totalWeight * 1000L) % Math.Max(1, totalWeight);
-                if (roll < 0) roll = -roll;
-
-                PrototypeId chosenPower = candidates[0].Item1;
-                long acc = 0;
-                for (int i = 0; i < take; i++)
+                PrototypeId chosenPower;
+                bool chosenIsUltimate = readyUltimate != PrototypeId.Invalid;
+                if (chosenIsUltimate)
                 {
-                    long w = 1 + (candidates[i].Item2 / 1000);
-                    acc += w;
-                    if (roll < acc) { chosenPower = candidates[i].Item1; break; }
+                    chosenPower = readyUltimate;
+                }
+                else
+                {
+                    // Sort by cooldown desc — biggest hitter first.
+                    candidates.Sort(static (a, b) => b.Item2.CompareTo(a.Item2));
+
+                    // Take top 5 (or fewer). Weighted-random pick — weight = 1 + cooldownMs/1000
+                    // so a 5s power is ~6x more likely than a basic (0s) attack.
+                    int take = Math.Min(5, candidates.Count);
+                    long totalWeight = 0;
+                    for (int i = 0; i < take; i++) totalWeight += 1 + (candidates[i].Item2 / 1000);
+                    long roll = ((long)rng.NextDouble() * totalWeight * 1000L) % Math.Max(1, totalWeight);
+                    if (roll < 0) roll = -roll;
+
+                    chosenPower = candidates[0].Item1;
+                    long acc = 0;
+                    for (int i = 0; i < take; i++)
+                    {
+                        long w = 1 + (candidates[i].Item2 / 1000);
+                        acc += w;
+                        if (roll < acc) { chosenPower = candidates[i].Item1; break; }
+                    }
                 }
                 candidates.Clear();
 
@@ -746,6 +960,37 @@ namespace MHServerEmu.Games.Entities.Avatars
                     PowerRandomSeed = fxSeed,
                 };
                 var result = phantom.ActivatePower(chosenPower, ref settings);
+
+                // Charge-and-release powers: the first activation only
+                // STARTS the charge and waits for a button-release message
+                // that will never come (no client). Release immediately —
+                // ReleaseVariableActivation schedules the actual firing at
+                // the power's MinReleaseTimeMS on the game scheduler, so
+                // the shot still charges the minimum time and then goes
+                // off on its own. Without this, phantoms wound up holding
+                // the charge until the stuck-power watchdog cancelled it
+                // 5 seconds later, and the power never fired at all.
+                if (result == PowerUseResult.Success)
+                {
+                    Power chosenPowerInstance = phantom.PowerCollection?.GetPower(chosenPower);
+                    if (chosenPowerInstance?.Prototype?.ExtraActivation is SecondaryActivateOnReleasePrototype)
+                    {
+                        try { chosenPowerInstance.ReleaseVariableActivation(ref settings); }
+                        catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] ReleaseVariableActivation({chosenPower.GetName()}) failed on {phantom.Id:X}: {ex.Message}"); }
+                    }
+                }
+
+                // Start the 20-minute ultimate timer only on a successful
+                // cast — a rejected attempt (target died mid-windup etc.)
+                // shouldn't burn the ult for the next 20 minutes.
+                if (chosenIsUltimate && result == PowerUseResult.Success)
+                    s_phantomNextUltimateMs[phantom.Id] = nowMs + PhantomUltimateCooldownMs;
+
+                // Power-specific failures won't clear by retrying with a
+                // different target — park the power so the picker falls
+                // back to ones that actually work (see s_phantomPowerBlacklist).
+                if (result == PowerUseResult.RestrictiveCondition || result == PowerUseResult.WeaponMissing)
+                    s_phantomPowerBlacklist[(phantom.Id, chosenPower)] = nowMs + PhantomPowerBlacklistMs;
 
                 // Log every failed activation so we can see WHY a cutscene boss
                 // rejects the phantom's power (Dormant/Unaffectable/etc). Log
@@ -934,8 +1179,9 @@ namespace MHServerEmu.Games.Entities.Avatars
             // A non-zero levelOverride from the chat command means the user
             // explicitly asked for a specific level (e.g. `!phantom spawn 4 45`).
             // Lock that level in — the tick loop will not auto-level these
-            // phantoms as the caller gains XP. Costume 0 = roll random.
-            => SpawnPhantomHeroCore(PrototypeId.Invalid, levelOverride, username, levelOverride > 0, 0, out error);
+            // phantoms as the caller gains XP. Costume 0 = roll random,
+            // gear null = roll random per slot.
+            => SpawnPhantomHeroCore(PrototypeId.Invalid, levelOverride, username, levelOverride > 0, 0, null, out error);
 
         /// <summary>
         /// Respawns a phantom from a MigrationData intent — same avatarRef +
@@ -943,10 +1189,10 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// Used by Player.RestorePhantomsFromMigration after cross-region
         /// travel and by saved-squad spawns.
         /// </summary>
-        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, ulong costumeRef, out string error)
-            => SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, out error);
+        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, ulong costumeRef, out string error, List<ulong> gearRefs = null)
+            => SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, gearRefs, out error);
 
-        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, out string error)
+        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error)
         {
             error = null;
             if (IsInWorld == false) { error = "avatar not in world"; return 0; }
@@ -1028,6 +1274,12 @@ namespace MHServerEmu.Games.Entities.Avatars
                     appliedCostumeRef = PrototypeId.Invalid;
                 }
             }
+
+            // Step 4c: gear — one level-appropriate item per unlocked equip
+            // slot (or the stored set on squad/migration restore). Fills
+            // hero-specific weapon slots too, which un-breaks WeaponMissing
+            // powers. The applied refs go on the descriptor below.
+            List<ulong> appliedGearRefs = ApplyPhantomGear(phantomPlayer, phantomAvatar, effectiveLevel, gearRefs);
 
             // Step 5: pick a spawn point close to the caller and enter the
             // world. Two goals:
@@ -1199,6 +1451,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 Username = username,
                 LockLevel = lockLevel,
                 CostumeRef = (ulong)appliedCostumeRef,
+                GearRefs = appliedGearRefs,
             };
             host.RegisterPhantom(phantomAvatar.Id, phantomPlayer.Id, descriptor);
             SchedulePhantomTick();
@@ -1267,7 +1520,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // clears its own list, so we need the ids before it runs.
             var ids = new List<ulong>(host.PhantomAvatarIds);
             int removed = host.PurgePhantoms();
-            foreach (ulong id in ids) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id); s_phantomNextDiagMs.Remove(id); PruneBlacklistFor(id); }
+            foreach (ulong id in ids) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id); s_phantomNextDiagMs.Remove(id); s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id); PruneBlacklistFor(id); PrunePowerBlacklistFor(id); }
             return removed;
         }
 
@@ -1335,7 +1588,10 @@ namespace MHServerEmu.Games.Entities.Avatars
                     s_phantomLocoLogged.Remove(id);
                     s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id);
                     s_phantomNextDiagMs.Remove(id);
+                    s_phantomNextUltimateMs.Remove(id);
+                    s_phantomActivePowerTrack.Remove(id);
                     PruneBlacklistFor(id);
+                    PrunePowerBlacklistFor(id);
                 }
                 PhantomLogger.Info($"[PhantomHero] {this} reattach: pruned {stale.Count} stale, {alive} alive");
             }

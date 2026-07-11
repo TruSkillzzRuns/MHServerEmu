@@ -87,5 +87,12 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// re-rolling.
         /// </summary>
         public ulong CostumeRef;
+
+        /// <summary>
+        /// Equipped item PrototypeIds as ulongs, in equip-slot iteration
+        /// order (null/empty = roll random gear at spawn). Item affixes
+        /// re-roll on restore; the item identities are preserved.
+        /// </summary>
+        public System.Collections.Generic.List<ulong> GearRefs;
     }
 }
