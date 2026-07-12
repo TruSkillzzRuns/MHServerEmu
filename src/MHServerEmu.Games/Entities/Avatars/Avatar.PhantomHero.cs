@@ -679,15 +679,13 @@ namespace MHServerEmu.Games.Entities.Avatars
         // ================================================================
 
         // ----------------------------------------------------------------
-        //  Gear rarity bands. RarityPrototype.Tier is derived from the
-        //  DowngradeTo chain in client data (tier 1 = most common, counting
-        //  up), so bands are expressed as tier ranges — no rarity names in
-        //  source. Band table:
-        //    levels  1-10  → tier 1        (base)
-        //    levels 11-19  → tiers 2-3
-        //    levels 20-30  → tier 4
-        //    levels 31-50  → tiers 4-5
-        //    levels 51-60  → tiers 5-6     (top of the ladder)
+        //  Gear rarity bands (see PickPhantomGearRarity for the data-
+        //  reality notes on the top tiers):
+        //    levels  1-10  → tier 1                       (white)
+        //    levels 11-19  → tiers 2-3                    (green/blue)
+        //    levels 20-30  → tier 4                       (purple)
+        //    levels 31-50  → tier 4 + RarityCosmic        (purple/yellow)
+        //    levels 51-60  → RarityCosmic + RarityUnique  (yellow/orange)
         // ----------------------------------------------------------------
         private static readonly object s_rarityTierLock = new();
         private static Dictionary<int, PrototypeId> s_rarityByTier;
@@ -708,29 +706,59 @@ namespace MHServerEmu.Games.Entities.Avatars
                     map.TryAdd(rarityProto.Tier, rarityRef);
                 }
                 s_rarityByTier = map;
-                PhantomLogger.Info($"[PhantomHero:Gear] rarity tier map built: {map.Count} tiers");
+                // One-time dump of the resolved ladder so band issues are
+                // diagnosable from the log (e.g. off-ladder special
+                // rarities in data that shouldn't be rolled).
+                var sb = new System.Text.StringBuilder($"[PhantomHero:Gear] rarity tier map built: {map.Count} tiers |");
+                foreach (var kvp in map)
+                    sb.Append($" T{kvp.Key}={kvp.Value.GetName()}");
+                PhantomLogger.Info(sb.ToString());
             }
         }
 
-        private static (int MinTier, int MaxTier) GetPhantomGearRarityBand(int level)
-        {
-            if (level <= 10) return (1, 1);
-            if (level <= 19) return (2, 3);
-            if (level <= 30) return (4, 4);
-            if (level <= 50) return (4, 5);
-            return (5, 6);
-        }
-
-        private static PrototypeId PickPhantomGearRarity(int level, MHServerEmu.Core.System.Random.GRandom rng)
+        /// <summary>
+        /// The rarities a phantom's gear is ALLOWED to end up at for a
+        /// given level. This is both the roll pool and the acceptance
+        /// filter: some item prototypes carry their own rarity
+        /// restrictions (red "Ultimate" items, Runeword items), and
+        /// MakeRestrictionsDroppable silently overrides whatever rarity we
+        /// request to satisfy them — so forcing the rarity up front is not
+        /// enough, the FINAL spec rarity must be validated against this
+        /// list and off-band items re-picked.
+        ///
+        /// 1.52 data reality: the DowngradeTo tier chain covers
+        /// Common(1) → Uncommon(2) → Rare(3) → Epic(4), but yellow Cosmic
+        /// and orange Unique are not on that chain — they're anchored
+        /// directly by the engine's LootGlobalsPrototype refs. The chain
+        /// above Epic holds the red special rarities we must never roll.
+        /// </summary>
+        private static List<PrototypeId> GetPhantomGearAllowedRarities(int level)
         {
             EnsureRarityTiers();
-            (int minTier, int maxTier) = GetPhantomGearRarityBand(level);
-            int tier = rng.Next(minTier, maxTier + 1);
-            if (s_rarityByTier.TryGetValue(tier, out PrototypeId rarityRef)) return rarityRef;
-            // Data doesn't have this tier — fall back to the other end of
-            // the band, then to the default level-based roll (Invalid).
-            if (s_rarityByTier.TryGetValue(minTier, out rarityRef)) return rarityRef;
-            return PrototypeId.Invalid;
+            var lootGlobals = GameDatabase.LootGlobalsPrototype;
+            var allowed = new List<PrototypeId>(2);
+
+            void AddTier(int tier)
+            {
+                if (s_rarityByTier.TryGetValue(tier, out PrototypeId r) && r != PrototypeId.Invalid)
+                    allowed.Add(r);
+            }
+
+            if (level <= 10) AddTier(1);
+            else if (level <= 19) { AddTier(2); AddTier(3); }
+            else if (level <= 30) AddTier(4);
+            else if (level <= 50)
+            {
+                AddTier(4);
+                if (lootGlobals.RarityCosmic != PrototypeId.Invalid) allowed.Add(lootGlobals.RarityCosmic);
+            }
+            else
+            {
+                if (lootGlobals.RarityCosmic != PrototypeId.Invalid) allowed.Add(lootGlobals.RarityCosmic);
+                if (lootGlobals.RarityUnique != PrototypeId.Invalid) allowed.Add(lootGlobals.RarityUnique);
+            }
+
+            return allowed;
         }
 
         /// <summary>
@@ -754,6 +782,12 @@ namespace MHServerEmu.Games.Entities.Avatars
             bool useOverride = gearOverride != null && gearOverride.Count > 0;
             int overrideIdx = 0;
 
+            List<PrototypeId> allowedRarities = GetPhantomGearAllowedRarities(level);
+
+            // Red "Ultimate" tier — banned from every slot, core or special.
+            EnsureRarityTiers();
+            s_rarityByTier.TryGetValue(5, out PrototypeId bannedUltimateRef);
+
             foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
             {
                 if (assignment.UnlocksAtCharacterLevel > level) continue;
@@ -764,37 +798,118 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // equipping a rolled costume item here would clobber it.
                 if (invProto.ConvenienceLabel == InventoryConvenienceLabel.Costume) continue;
 
+                // Slot policy:
+                //  - Core armor (Gear01-05): rarity strictly follows the
+                //    level band table — this is what colors the paper doll.
+                //  - Special classes (artifacts, medal, relic, insignia,
+                //    ring, legendary, uru-forged): these item families have
+                //    their own natural rarity ranges, and forcing the band
+                //    on them excluded their ENTIRE pools (empty artifact /
+                //    rune / legendary slots on the level-60 paper doll).
+                //    They roll their natural rarity instead — red Ultimate
+                //    stays banned everywhere.
+                //  - Anything else (crafting, consumables, misc): skipped.
+                EquipmentInvUISlot uiSlot = assignment.UISlot;
+                bool isCoreGear = uiSlot >= EquipmentInvUISlot.Gear01 && uiSlot <= EquipmentInvUISlot.Gear05;
+                bool isSpecial = uiSlot == EquipmentInvUISlot.Artifact01 || uiSlot == EquipmentInvUISlot.Artifact02 ||
+                                 uiSlot == EquipmentInvUISlot.Artifact03 || uiSlot == EquipmentInvUISlot.Artifact04 ||
+                                 uiSlot == EquipmentInvUISlot.Medal      || uiSlot == EquipmentInvUISlot.Relic      ||
+                                 uiSlot == EquipmentInvUISlot.Insignia   || uiSlot == EquipmentInvUISlot.Ring       ||
+                                 uiSlot == EquipmentInvUISlot.Legendary  || uiSlot == EquipmentInvUISlot.UruForged;
+                if (isCoreGear == false && isSpecial == false) continue;
+
                 Inventory equipInventory = phantomAvatar.GetInventoryByRef(assignment.Inventory);
                 if (equipInventory == null) continue;
 
-                // Resolve the item proto: stored ref on restore, random roll otherwise.
-                PrototypeId itemProtoRef = PrototypeId.Invalid;
-                if (useOverride)
-                {
-                    if (overrideIdx < gearOverride.Count)
-                        itemProtoRef = (PrototypeId)gearOverride[overrideIdx++];
-                }
-                else
-                {
-                    var picker = new MHServerEmu.Core.Collections.Picker<Prototype>(rng);
-                    LootUtilities.BuildInventoryLootPicker(picker, avatarProto.DataRef, assignment.UISlot);
-                    if (picker.Empty() == false && picker.Pick(out Prototype pickedProto) && pickedProto != null)
-                        itemProtoRef = pickedProto.DataRef;
-                }
+                // Stored ref on restore (consumed even if it fails, to keep
+                // slot alignment); random picks otherwise.
+                PrototypeId overrideItemRef = PrototypeId.Invalid;
+                if (useOverride && overrideIdx < gearOverride.Count)
+                    overrideItemRef = (PrototypeId)gearOverride[overrideIdx++];
 
-                if (itemProtoRef == PrototypeId.Invalid) continue;
+                var picker = new MHServerEmu.Core.Collections.Picker<Prototype>(rng);
+                LootUtilities.BuildInventoryLootPicker(picker, avatarProto.DataRef, assignment.UISlot);
 
                 try
                 {
-                    PrototypeId rarityRef = PickPhantomGearRarity(level, rng);
-                    ItemSpec itemSpec = lootManager.CreateItemSpec(itemProtoRef, LootContext.Drop, phantomPlayer, level, rarityRef);
-                    if (itemSpec == null) continue;
+                    // An item prototype can carry its own rarity restriction
+                    // (red Ultimate / Runeword items live in the same slot
+                    // pools as normal gear) and the spec builder overrides
+                    // our requested rarity to match it — so the FINAL spec
+                    // rarity is what gets validated. The pool is DRAINED via
+                    // PickRemove rather than sampled: every rejected item is
+                    // removed and never retried, and every remaining item is
+                    // eventually tried at EVERY allowed rarity. If any item
+                    // in the pool can exist in-band (and every hero has
+                    // Uniques/Cosmics per slot), it is guaranteed to be
+                    // found — red can never come out of this loop.
+                    ItemSpec acceptedSpec = null;
+                    PrototypeId acceptedItemRef = PrototypeId.Invalid;
+
+                    bool TryBuildInBandSpec(PrototypeId itemProtoRef)
+                    {
+                        if (itemProtoRef == PrototypeId.Invalid) return false;
+
+                        if (isCoreGear)
+                        {
+                            // Core armor: try every banded rarity, random
+                            // start for variety. A Unique-class item may
+                            // only build at Unique while a normal piece
+                            // only reaches Cosmic — one random rarity per
+                            // item would wrongly discard valid items.
+                            int rarityCount = Math.Max(1, allowedRarities.Count);
+                            int start = rng.Next(0, rarityCount);
+                            for (int i = 0; i < rarityCount; i++)
+                            {
+                                PrototypeId rarityRef = allowedRarities.Count > 0
+                                    ? allowedRarities[(start + i) % allowedRarities.Count]
+                                    : PrototypeId.Invalid;
+
+                                ItemSpec spec = lootManager.CreateItemSpec(itemProtoRef, LootContext.Drop, phantomPlayer, level, rarityRef);
+                                if (spec == null) continue;
+                                if (allowedRarities.Count > 0 && allowedRarities.Contains(spec.RarityProtoRef) == false) continue;
+
+                                acceptedSpec = spec;
+                                acceptedItemRef = itemProtoRef;
+                                return true;
+                            }
+                            return false;
+                        }
+
+                        // Special slots: natural (level-based) rarity roll —
+                        // artifacts, medals, runewords, legendaries etc. own
+                        // their rarity ranges. Only red Ultimate is banned.
+                        ItemSpec naturalSpec = lootManager.CreateItemSpec(itemProtoRef, LootContext.Drop, phantomPlayer, level);
+                        if (naturalSpec == null) return false;
+                        if (bannedUltimateRef != PrototypeId.Invalid && naturalSpec.RarityProtoRef == bannedUltimateRef) return false;
+
+                        acceptedSpec = naturalSpec;
+                        acceptedItemRef = itemProtoRef;
+                        return true;
+                    }
+
+                    // Stored override item first (squad/migration restore)...
+                    if (overrideItemRef != PrototypeId.Invalid)
+                        TryBuildInBandSpec(overrideItemRef);
+
+                    // ...then drain the slot pool until something lands in-band.
+                    while (acceptedSpec == null && picker.Empty() == false)
+                    {
+                        if (picker.PickRemove(out Prototype pickedProto) == false || pickedProto == null) break;
+                        TryBuildInBandSpec(pickedProto.DataRef);
+                    }
+
+                    if (acceptedSpec == null)
+                    {
+                        PhantomLogger.Warn($"[PhantomHero:Gear] slot pool for {assignment.UISlot} on {avatarProto.DataRef.GetName()} has NO item usable at the level-{level} band rarities — slot left empty");
+                        continue;
+                    }
 
                     Item item;
                     using (var itemSettings = ObjectPoolManager.Instance.Get<EntitySettings>())
                     {
-                        itemSettings.EntityRef = itemProtoRef;
-                        itemSettings.ItemSpec = itemSpec;
+                        itemSettings.EntityRef = acceptedItemRef;
+                        itemSettings.ItemSpec = acceptedSpec;
                         item = game.EntityManager.CreateEntity(itemSettings) as Item;
                     }
                     if (item == null) continue;
@@ -805,11 +920,11 @@ namespace MHServerEmu.Games.Entities.Avatars
                         continue;
                     }
 
-                    applied.Add((ulong)itemProtoRef);
+                    applied.Add((ulong)acceptedItemRef);
                 }
                 catch (Exception ex)
                 {
-                    PhantomLogger.Warn($"[PhantomHero:Gear] equip {itemProtoRef.GetName()} on {phantomAvatar.Id:X} failed: {ex.Message}");
+                    PhantomLogger.Warn($"[PhantomHero:Gear] equip roll for slot {assignment.UISlot} on {phantomAvatar.Id:X} failed: {ex.Message}");
                 }
             }
 
