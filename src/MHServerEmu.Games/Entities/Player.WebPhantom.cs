@@ -125,6 +125,16 @@ namespace MHServerEmu.Games.Entities
             public string Name { get; set; }
             public List<string> Heroes { get; set; }
             public List<int> Levels { get; set; }
+            public List<WebPhantomSquadMember> Members { get; set; }
+        }
+
+        public sealed class WebPhantomSquadMember
+        {
+            public string AvatarRef { get; set; }
+            public string HeroName { get; set; }
+            public int Level { get; set; }
+            public bool LockLevel { get; set; }
+            public string CostumeRef { get; set; }
         }
 
         public List<WebPhantomSquadInfo> GetPhantomSquadsForWeb()
@@ -135,15 +145,76 @@ namespace MHServerEmu.Games.Entities
             {
                 var heroes = new List<string>(kvp.Value.Count);
                 var levels = new List<int>(kvp.Value.Count);
+                var members = new List<WebPhantomSquadMember>(kvp.Value.Count);
                 foreach (var m in kvp.Value)
                 {
-                    heroes.Add(WebLeafOf(GameDatabase.GetPrototypeName((PrototypeId)m.AvatarRef)));
+                    string heroName = WebLeafOf(GameDatabase.GetPrototypeName((PrototypeId)m.AvatarRef));
+                    heroes.Add(heroName);
                     levels.Add(m.LockLevel ? m.Level : 0); // 0 = auto-level
+                    members.Add(new WebPhantomSquadMember
+                    {
+                        AvatarRef = $"0x{m.AvatarRef:X16}",
+                        HeroName = heroName,
+                        Level = m.Level,
+                        LockLevel = m.LockLevel,
+                        CostumeRef = m.CostumeRef != 0 ? $"0x{m.CostumeRef:X16}" : null,
+                    });
                 }
-                list.Add(new WebPhantomSquadInfo { Name = kvp.Key, Heroes = heroes, Levels = levels });
+                list.Add(new WebPhantomSquadInfo { Name = kvp.Key, Heroes = heroes, Levels = levels, Members = members });
             }
             list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             return list;
+        }
+
+        public sealed class WebSquadSaveMember
+        {
+            public ulong AvatarRef { get; set; }
+            public int Level { get; set; }
+            public bool LockLevel { get; set; }
+            public ulong CostumeRef { get; set; }
+        }
+
+        /// <summary>
+        /// Save a squad from an explicit member list (the OmegaDev2 visual
+        /// Squad Builder) rather than a snapshot of the live phantoms. Same
+        /// file, same name rules, same limits as SavePhantomSquad — usernames
+        /// and gear are left null so they're minted/rolled fresh at spawn.
+        /// </summary>
+        public string SavePhantomSquadFromList(string squadName, List<WebSquadSaveMember> members)
+        {
+            if (IsValidSquadName(squadName) == false)
+                return "Squad names must be 1-32 letters, digits, _ or -.";
+            if (members == null || members.Count == 0)
+                return "Squad has no members.";
+            if (members.Count > 50)
+                return "Squad too large (max 50).";
+
+            foreach (var m in members)
+                if (((PrototypeId)m.AvatarRef).As<GameData.Prototypes.AvatarPrototype>() == null)
+                    return $"0x{m.AvatarRef:X16} is not an avatar prototype.";
+
+            var squads = LoadPhantomSquadFile();
+            if (squads.ContainsKey(squadName) == false && squads.Count >= PhantomSquadMaxCount)
+                return $"Squad limit reached ({PhantomSquadMaxCount}). Delete one first.";
+
+            var stored = new List<PhantomSquadMember>(members.Count);
+            foreach (var m in members)
+            {
+                stored.Add(new PhantomSquadMember
+                {
+                    AvatarRef = m.AvatarRef,
+                    Level = Math.Clamp(m.Level, 0, 60),
+                    Username = null,
+                    LockLevel = m.LockLevel && m.Level > 0,
+                    CostumeRef = m.CostumeRef,
+                    GearRefs = null,
+                });
+            }
+
+            squads[squadName] = stored;
+            if (SavePhantomSquadFile(squads) == false)
+                return "Failed to write squad file — check server log.";
+            return $"Squad '{squadName}' saved ({stored.Count} phantom(s)).";
         }
 
         private static string WebLeafOf(string path)

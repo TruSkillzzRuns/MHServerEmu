@@ -18,10 +18,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override Task Get(WebRequestContext context)
         {
-            int lines = 200;
-            // Bare-bones query param parse — WebRequestContext exposes Url on the
-            // underlying HttpListenerRequest via reflection to avoid a dependency
-            // graph edit; for now just accept default 200 lines.
+            var qs = System.Web.HttpUtility.ParseQueryString(context.QueryString ?? string.Empty);
+            int lines = int.TryParse(qs["lines"], out int requested)
+                ? System.Math.Clamp(requested, 50, 5000)
+                : 200;
 
             try
             {

@@ -368,6 +368,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null, op = null, name = null;
+            var members = new List<Player.WebSquadSaveMember>();
             try
             {
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
@@ -376,6 +377,18 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (root.TryGetProperty("playerDbId", out var pd)) playerDbId = pd.GetString();
                 if (root.TryGetProperty("op", out var opEl)) op = opEl.GetString();
                 if (root.TryGetProperty("name", out var nm)) name = nm.GetString();
+                if (root.TryGetProperty("members", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var el in arr.EnumerateArray())
+                    {
+                        var m = new Player.WebSquadSaveMember();
+                        if (el.TryGetProperty("avatarRef", out var ar)) m.AvatarRef = PhantomsWebUtil.ParseRef(ar.GetString());
+                        if (el.TryGetProperty("level", out var lv)) m.Level = lv.GetInt32();
+                        if (el.TryGetProperty("lockLevel", out var ll)) m.LockLevel = ll.GetBoolean();
+                        if (el.TryGetProperty("costumeRef", out var cr)) m.CostumeRef = PhantomsWebUtil.ParseRef(cr.GetString());
+                        if (m.AvatarRef != 0) members.Add(m);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -401,9 +414,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 string message = op.ToLowerInvariant() switch
                 {
                     "save" => p.SavePhantomSquad(name),
+                    "savelist" => p.SavePhantomSquadFromList(name, members),
                     "spawn" or "load" => p.SpawnPhantomSquad(name, p.CurrentAvatar),
                     "delete" => p.DeletePhantomSquad(name),
-                    _ => $"unknown op '{op}' — use save, spawn or delete",
+                    _ => $"unknown op '{op}' — use save, savelist, spawn or delete",
                 };
                 return new { Ok = true, Message = message };
             });
