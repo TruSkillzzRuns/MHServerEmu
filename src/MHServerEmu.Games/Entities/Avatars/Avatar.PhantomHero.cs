@@ -115,7 +115,8 @@ namespace MHServerEmu.Games.Entities.Avatars
         private void OnPhantomTick()
         {
             Player host = PhantomHost;
-            if (host == null || host.PhantomHeroCount == 0 || IsInWorld == false) return;
+            if (host == null || IsInWorld == false) return;
+            if (host.PhantomHeroCount == 0 && host.EnemyPhantomCount == 0) return;
 
             Vector3 callerPos = RegionLocation.Position;
             var rng = Game.Random;
@@ -163,64 +164,44 @@ namespace MHServerEmu.Games.Entities.Avatars
                     catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] level sync {phantom.Id:X} → {callerLevel} failed: {ex.Message}"); }
                 }
 
-                // Stuck-power watchdog: a channeled power (or channel-style
-                // ultimate) never ends for a phantom — no client exists to
-                // release the button — and while ActivePowerRef is set,
-                // every attack and revive returns PowerInProgress. Force-end
-                // any power that's been active for 10 consecutive ticks (5s).
-                PrototypeId activePowerRef = phantom.ActivePowerRef;
-                if (activePowerRef != PrototypeId.Invalid)
+                // Downed handling. A killable phantom that hit 0 HP stays
+                // IsInWorld true but IsDead — same "downed" state real
+                // players enter, so friendly phantoms and the human caller
+                // can revive via ResurrectOtherAvatar. Track how long
+                // they've been down; if nobody rescues them within
+                // PhantomAutoReviveMs, revive them ourselves so the squad
+                // never permanently loses a member.
+                long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+                if (phantom.IsDead)
                 {
-                    if (s_phantomActivePowerTrack.TryGetValue(phantom.Id, out var powerTrack) && powerTrack.powerRef == activePowerRef)
+                    if (s_phantomDownedSinceMs.TryGetValue(phantom.Id, out long downedSince) == false)
                     {
-                        int ticks = powerTrack.ticks + 1;
-                        if (ticks >= PhantomStuckPowerTicks)
+                        s_phantomDownedSinceMs[phantom.Id] = nowMs;
+                    }
+                    else if (nowMs - downedSince >= PhantomAutoReviveMs)
+                    {
+                        try
                         {
-                            try
-                            {
-                                Power stuckPower = phantom.PowerCollection?.GetPower(activePowerRef);
-                                stuckPower?.EndPower(EndPowerFlags.ExplicitCancel | EndPowerFlags.Force);
-                                PhantomLogger.Info($"[PhantomHero:Watchdog] force-ended stuck power {activePowerRef.GetName()} on {phantom.Id:X} after {ticks * 500}ms");
-                            }
-                            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Watchdog] EndPower failed on {phantom.Id:X}: {ex.Message}"); }
-                            s_phantomActivePowerTrack.Remove(phantom.Id);
+                            phantom.Resurrect();
+                            // Teleport back to the caller so they don't
+                            // pop back up in the middle of the fight that
+                            // killed them.
+                            Vector3 respawnPos = ChoosePhantomLeashPos(phantom.Region, callerPos, rng, phantom.Bounds.Radius);
+                            phantom.ChangeRegionPosition(respawnPos, null);
+                            s_phantomDownedSinceMs.Remove(phantom.Id);
+                            PhantomLogger.Info($"[PhantomHero:Down] auto-revived {phantom} after {nowMs - downedSince}ms downed");
                         }
-                        else s_phantomActivePowerTrack[phantom.Id] = (activePowerRef, ticks);
+                        catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Down] auto-revive failed: {ex.Message}"); }
                     }
-                    else s_phantomActivePowerTrack[phantom.Id] = (activePowerRef, 1);
+                    // While downed, skip movement + hunt — a corpse doesn't
+                    // walk. The revive priority in the hunt on OTHER phantoms
+                    // will still find and raise this one.
+                    continue;
                 }
-                else s_phantomActivePowerTrack.Remove(phantom.Id);
+                s_phantomDownedSinceMs.Remove(phantom.Id);
 
-                // Stuck detection: if the phantom's position barely moved
-                // this tick despite the Locomotor being set to move, count
-                // it. After N consecutive stuck ticks assume they're
-                // wall-clipped or pathed out of bounds and force-leash.
-                Vector3 curPos = phantom.RegionLocation.Position;
-                bool forceLeash = false;
-                if (s_phantomStuckTrack.TryGetValue(phantom.Id, out var stuckState))
-                {
-                    float movedSq = Vector3.DistanceSquared2D(curPos, stuckState.lastPos);
-                    bool wantsToMove = phantom.Locomotor != null && phantom.Locomotor.IsMoving;
-                    int newStuck = (wantsToMove && movedSq < PhantomStuckMoveEpsilonSq) ? stuckState.stuckTicks + 1 : 0;
-                    if (newStuck >= PhantomStuckTickThreshold) forceLeash = true;
-                    s_phantomStuckTrack[phantom.Id] = (curPos, forceLeash ? 0 : newStuck);
-                }
-                else s_phantomStuckTrack[phantom.Id] = (curPos, 0);
-
-                // Leash: teleport back if stranded far or wall-stuck.
-                float distSq = Vector3.DistanceSquared2D(curPos, callerPos);
-                if (distSq > PhantomFollowMaxDistSq || forceLeash)
-                {
-                    Region r = phantom.Region;
-                    Vector3 leashPos = ChoosePhantomLeashPos(r, callerPos, rng, phantom.Bounds.Radius);
-                    try
-                    {
-                        phantom.Locomotor?.Stop();
-                        phantom.ChangeRegionPosition(leashPos, null);
-                        s_phantomStuckTrack[phantom.Id] = (leashPos, 0);
-                    }
-                    catch { /* keep ticking */ }
-                }
+                // Watchdog + stuck detection + leash — shared with enemy phantoms.
+                PhantomSharedMaintenance(phantom, callerPos, rng);
 
                 // Hunt: locomotor-walk toward the nearest hostile in a wider sweep,
                 // then attack once in range. Locomotor.FollowEntity refreshes each
@@ -231,8 +212,131 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (stale != null)
                 foreach (ulong id in stale) host.UnregisterPhantom(id);
 
-            if (host.PhantomHeroCount > 0)
+            // ---- Enemy phantoms: hostile hunt + corpse cleanup ----
+            if (host.EnemyPhantomCount > 0)
+            {
+                List<ulong> enemyGone = null;
+                var enemyIds = host.EnemyPhantomAvatarIds;
+                long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+                for (int i = 0; i < enemyIds.Count; i++)
+                {
+                    ulong id = enemyIds[i];
+                    Avatar foe = Game.EntityManager.GetEntity<Avatar>(id);
+                    if (foe == null || foe.IsDestroyed || foe.IsInWorld == false)
+                    {
+                        (enemyGone ??= new List<ulong>()).Add(id);
+                        continue;
+                    }
+
+                    // Corpse cleanup: enemy phantoms are killable but have no
+                    // client-driven revive — despawn a few seconds after death
+                    // so the win feels earned and the body doesn't linger.
+                    if (foe.IsDead)
+                    {
+                        if (s_enemyDeadSinceMs.TryGetValue(id, out long deadSince) == false)
+                            s_enemyDeadSinceMs[id] = nowMs;
+                        else if (nowMs - deadSince >= EnemyPhantomCorpseMs)
+                        {
+                            try { if (foe.IsInWorld) foe.ExitWorld(); foe.Destroy(); } catch { /* keep ticking */ }
+                            (enemyGone ??= new List<ulong>()).Add(id);
+                            s_enemyDeadSinceMs.Remove(id);
+                        }
+                        continue;
+                    }
+                    s_enemyDeadSinceMs.Remove(id);
+
+                    PhantomSharedMaintenance(foe, callerPos, rng);
+
+                    // Hunt in enemy mode: no reviving, and the caller is a
+                    // valid (primary!) target.
+                    try { UpdatePhantomHunt(foe, rng, enemyMode: true); } catch { /* keep ticking */ }
+                }
+
+                if (enemyGone != null)
+                    foreach (ulong id in enemyGone)
+                    {
+                        host.UnregisterEnemyPhantom(id);
+                        s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id);
+                        s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id);
+                        s_enemyDeadSinceMs.Remove(id);
+                        PruneBlacklistFor(id); PrunePowerBlacklistFor(id);
+                    }
+            }
+
+            if (host.PhantomHeroCount > 0 || host.EnemyPhantomCount > 0)
                 SchedulePhantomTick();
+        }
+
+        // Enemy-phantom corpse timers (avatar id -> death timestamp ms).
+        private const long EnemyPhantomCorpseMs = 4000;
+        private static readonly Dictionary<ulong, long> s_enemyDeadSinceMs = new();
+
+        /// <summary>
+        /// Per-phantom upkeep shared by friendly and enemy phantoms: the
+        /// stuck-power watchdog, wall-stuck detection, and the leash that
+        /// teleports strays back to the caller (which for enemies keeps the
+        /// fight ON the caller).
+        /// </summary>
+        private void PhantomSharedMaintenance(Avatar phantom, Vector3 callerPos, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            // Stuck-power watchdog: a channeled power (or channel-style
+            // ultimate) never ends for a phantom — no client exists to
+            // release the button — and while ActivePowerRef is set,
+            // every attack and revive returns PowerInProgress. Force-end
+            // any power that's been active for 10 consecutive ticks (5s).
+            PrototypeId activePowerRef = phantom.ActivePowerRef;
+            if (activePowerRef != PrototypeId.Invalid)
+            {
+                if (s_phantomActivePowerTrack.TryGetValue(phantom.Id, out var powerTrack) && powerTrack.powerRef == activePowerRef)
+                {
+                    int ticks = powerTrack.ticks + 1;
+                    if (ticks >= PhantomStuckPowerTicks)
+                    {
+                        try
+                        {
+                            Power stuckPower = phantom.PowerCollection?.GetPower(activePowerRef);
+                            stuckPower?.EndPower(EndPowerFlags.ExplicitCancel | EndPowerFlags.Force);
+                            PhantomLogger.Info($"[PhantomHero:Watchdog] force-ended stuck power {activePowerRef.GetName()} on {phantom.Id:X} after {ticks * 500}ms");
+                        }
+                        catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Watchdog] EndPower failed on {phantom.Id:X}: {ex.Message}"); }
+                        s_phantomActivePowerTrack.Remove(phantom.Id);
+                    }
+                    else s_phantomActivePowerTrack[phantom.Id] = (activePowerRef, ticks);
+                }
+                else s_phantomActivePowerTrack[phantom.Id] = (activePowerRef, 1);
+            }
+            else s_phantomActivePowerTrack.Remove(phantom.Id);
+
+            // Stuck detection: if the phantom's position barely moved
+            // this tick despite the Locomotor being set to move, count
+            // it. After N consecutive stuck ticks assume they're
+            // wall-clipped or pathed out of bounds and force-leash.
+            Vector3 curPos = phantom.RegionLocation.Position;
+            bool forceLeash = false;
+            if (s_phantomStuckTrack.TryGetValue(phantom.Id, out var stuckState))
+            {
+                float movedSq = Vector3.DistanceSquared2D(curPos, stuckState.lastPos);
+                bool wantsToMove = phantom.Locomotor != null && phantom.Locomotor.IsMoving;
+                int newStuck = (wantsToMove && movedSq < PhantomStuckMoveEpsilonSq) ? stuckState.stuckTicks + 1 : 0;
+                if (newStuck >= PhantomStuckTickThreshold) forceLeash = true;
+                s_phantomStuckTrack[phantom.Id] = (curPos, forceLeash ? 0 : newStuck);
+            }
+            else s_phantomStuckTrack[phantom.Id] = (curPos, 0);
+
+            // Leash: teleport back if stranded far or wall-stuck.
+            float distSq = Vector3.DistanceSquared2D(curPos, callerPos);
+            if (distSq > PhantomFollowMaxDistSq || forceLeash)
+            {
+                Region r = phantom.Region;
+                Vector3 leashPos = ChoosePhantomLeashPos(r, callerPos, rng, phantom.Bounds.Radius);
+                try
+                {
+                    phantom.Locomotor?.Stop();
+                    phantom.ChangeRegionPosition(leashPos, null);
+                    s_phantomStuckTrack[phantom.Id] = (leashPos, 0);
+                }
+                catch { /* keep ticking */ }
+            }
         }
 
         // One-time-per-phantom diagnostic set. Removed once attack is verified.
@@ -249,7 +353,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         private const float PhantomReviveCastRange = 500f;
         private const float PhantomReviveCastRangeSq = PhantomReviveCastRange * PhantomReviveCastRange;
 
-        private void UpdatePhantomHunt(Avatar phantom, MHServerEmu.Core.System.Random.GRandom rng)
+        private void UpdatePhantomHunt(Avatar phantom, MHServerEmu.Core.System.Random.GRandom rng, bool enemyMode = false)
         {
             Region region = phantom.Region;
             if (region == null || phantom.PowerCollection == null) return;
@@ -271,6 +375,10 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
 
             Vector3 phantomPos = phantom.RegionLocation.Position;
+
+            // Enemy phantoms don't do triage — straight to the hunt.
+            if (enemyMode)
+                goto Hunt;
 
             // Priority 1: revive any downed real Avatar within revive range. Real
             // avatars are still IsInWorld while downed (dead-but-revivable); we
@@ -296,10 +404,19 @@ namespace MHServerEmu.Games.Entities.Avatars
                 if (we is not Avatar candidate) continue;
                 if (candidate.Id == phantom.Id) continue;
                 if (candidate.IsDead == false) continue;
-                // Real Avatar = has a live PlayerConnection. Phantoms don't
-                // revive each other because their owner Player has PlayerConnection=null.
+
+                // Valid revive targets are (a) real players (PlayerConnection
+                // != null) OR (b) FRIENDLY phantoms — other members of the
+                // same squad as this phantom. Enemy phantoms (PhantomCreatorId
+                // == 0 on their owner Player) never get raised: killing them
+                // is the whole point.
                 Player candOwner = candidate.GetOwnerOfType<Player>();
-                if (candOwner == null || candOwner.PlayerConnection == null) continue;
+                if (candOwner == null) continue;
+                bool isRealPlayer = candOwner.PlayerConnection != null;
+                bool isFriendlyPhantom = candOwner.PhantomCreatorId != 0
+                    && candOwner.PhantomCreatorId == this.PhantomHost?.Id;
+                if (isRealPlayer == false && isFriendlyPhantom == false) continue;
+
                 float d = Vector3.DistanceSquared2D(candidate.RegionLocation.Position, phantomPos);
                 if (d < downedDistSq) { downedDistSq = d; downed = candidate; }
             }
@@ -323,6 +440,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 return; // don't hunt while triaging a downed teammate
             }
 
+            Hunt:
             // Widest sweep so we start advancing on enemies before they're in
             // attack range. IterateEntitiesInVolume walks the region spatial
             // partition, cheap.
@@ -344,7 +462,10 @@ namespace MHServerEmu.Games.Entities.Avatars
             long nowMsSweep = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
             foreach (WorldEntity we in region.IterateEntitiesInVolume(sweepSphere, ctx))
             {
-                if (we == null || we.Id == phantom.Id || we.Id == Id) continue;
+                if (we == null || we.Id == phantom.Id) continue;
+                // Friendly phantoms never target their caller; enemy phantoms
+                // consider the caller a first-class target.
+                if (enemyMode == false && we.Id == Id) continue;
                 if (we.IsDead || we.IsInWorld == false) continue;
                 // Only Agents — filters out props/destructibles/spawner markers.
                 if (we is not Agent) continue;
@@ -478,6 +599,13 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
             }
         }
+
+        // Killable-phantom balance knobs.
+        private const float PhantomHealthMult = 2.0f;       // +200% HealthMax (real players carry defensive layers phantoms don't have)
+        private const long PhantomAutoReviveMs = 25_000;    // if nothing else revives them, respawn at the caller
+
+        // Per-phantom "downed since" timestamp — 0 when alive.
+        private static readonly Dictionary<ulong, long> s_phantomDownedSinceMs = new();
 
         // Per-phantom next-attack timestamp (ms). Enforces at least ~800ms
         // between casts so the tick doesn't spam-fire.
@@ -1384,11 +1512,59 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// Used by Player.RestorePhantomsFromMigration after cross-region
         /// travel and by saved-squad spawns.
         /// </summary>
-        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, ulong costumeRef, out string error, List<ulong> gearRefs = null)
-            => SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, gearRefs, out error);
+        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, ulong costumeRef, out string error, List<ulong> gearRefs = null, bool invincible = false)
+            => SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, gearRefs, out error, enemy: false, invincible: invincible);
 
-        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error)
+        /// <summary>
+        /// Spawns a HOSTILE phantom hero — full avatar kit (powers, gear,
+        /// costume) but alliance-flipped so it hunts the caller and their
+        /// squad. Killable, never party-listed, never migrated, and kill
+        /// credit is never remapped to the human who spawned it.
+        /// </summary>
+        public ulong SpawnEnemyPhantomHero(PrototypeId avatarRefOverride, int level, out string error)
+            => SpawnPhantomHeroCore(avatarRefOverride, level, null, lockLevel: true, 0, null, out error, enemy: true);
+
+        // Cached mutually-hostile alliance for enemy phantoms, resolved from
+        // the loaded client data at runtime (first alliance that is hostile
+        // both ways with the player alliance).
+        private static PrototypeId s_enemyAllianceRef = PrototypeId.Invalid;
+        private static bool s_enemyAllianceResolved;
+
+        private static PrototypeId ResolveHostileAllianceRef()
         {
+            if (s_enemyAllianceResolved) return s_enemyAllianceRef;
+
+            AlliancePrototype playerAlliance = GameDatabase.GlobalsPrototype?.PlayerAlliancePrototype;
+            if (playerAlliance != null)
+            {
+                foreach (PrototypeId allianceRef in DataDirectory.Instance
+                    .IteratePrototypesInHierarchy<AlliancePrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
+                {
+                    var allianceProto = allianceRef.As<AlliancePrototype>();
+                    if (allianceProto == null) continue;
+                    if (allianceProto.IsHostileTo(playerAlliance) && playerAlliance.IsHostileTo(allianceProto))
+                    {
+                        s_enemyAllianceRef = allianceRef;
+                        break;
+                    }
+                }
+            }
+
+            s_enemyAllianceResolved = true;
+            if (s_enemyAllianceRef == PrototypeId.Invalid)
+                PhantomLogger.Warn("[PhantomHero:Enemy] no mutually-hostile alliance found in loaded data — enemy phantoms unavailable");
+            else
+                PhantomLogger.Info($"[PhantomHero:Enemy] hostile alliance resolved: {s_enemyAllianceRef.GetName()}");
+            return s_enemyAllianceRef;
+        }
+
+        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error, bool enemy = false, bool invincible = false)
+        {
+            if (enemy && ResolveHostileAllianceRef() == PrototypeId.Invalid)
+            {
+                error = "no hostile alliance in loaded data";
+                return 0;
+            }
             error = null;
             if (IsInWorld == false) { error = "avatar not in world"; return 0; }
 
@@ -1430,8 +1606,10 @@ namespace MHServerEmu.Games.Entities.Avatars
             // real player. Without this, mission counters and loot rolls skip
             // phantom kills because Player.IsMissionPlayer on the synthetic
             // phantom Player always returns false.
+            // ENEMY phantoms deliberately skip this — their kills must never
+            // credit the human who spawned them.
             Player humanHost = PhantomHost;
-            if (humanHost != null) phantomPlayer.PhantomCreatorId = humanHost.Id;
+            if (humanHost != null && enemy == false) phantomPlayer.PhantomCreatorId = humanHost.Id;
 
             // Step 2: create the Avatar as a child of the phantom Player. Uses
             // the same Player.CreateAvatar helper the real login path calls
@@ -1600,11 +1778,28 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] AOI broadcast failed: {ex.Message}"); }
 
-            // Invulnerable so the phantom can't be downed by mob damage while
-            // it's just standing there. Client-controlled Avatars have a revive
-            // flow the phantom can't drive — a downed phantom would be dead
-            // weight until manually cleared.
-            phantomAvatar.Properties[PropertyEnum.Invulnerable] = true;
+            if (enemy)
+            {
+                // Alliance flip: hostile both ways with the player alliance,
+                // resolved from data at spawn. This is what makes the hunt
+                // loop target players/friendly phantoms, mobs ignore them,
+                // and players able to damage them.
+                phantomAvatar.Properties[PropertyEnum.AllianceOverride] = ResolveHostileAllianceRef();
+            }
+            else if (invincible)
+            {
+                // Opt-in god mode from Squad Builder — hits do nothing.
+                phantomAvatar.Properties[PropertyEnum.Invulnerable] = true;
+            }
+            else
+            {
+                // Killable phantoms: real players dodge, kite and pop
+                // defensives — phantoms eat every hit face-first. A HP
+                // buff keeps them alive long enough to matter without
+                // trivializing content. Refill after the mult applies.
+                phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = PhantomHealthMult;
+                phantomAvatar.ResetResources(false);
+            }
 
             // Damage scaling — see ApplyPhantomDamageScaling for the level
             // curve. Anchored at "helpful but not obliterating" for level 1
@@ -1639,6 +1834,14 @@ namespace MHServerEmu.Games.Entities.Avatars
                 DestroyPhantomPlayer(phantomPlayer);
                 return 0;
             }
+            if (enemy)
+            {
+                host.RegisterEnemyPhantom(phantomAvatar.Id, phantomPlayer.Id);
+                SchedulePhantomTick();
+                PhantomLogger.Info($"[PhantomHero:Enemy] {this} spawned HOSTILE '{avatarRef.GetName()}' (avatarId 0x{phantomAvatar.Id:X}) at {spawnPos.ToStringNames()} level {effectiveLevel}");
+                return phantomAvatar.Id;
+            }
+
             var descriptor = new MHServerEmu.DatabaseAccess.Models.PhantomIntent
             {
                 AvatarRef = (ulong)avatarRef,
@@ -1647,6 +1850,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 LockLevel = lockLevel,
                 CostumeRef = (ulong)appliedCostumeRef,
                 GearRefs = appliedGearRefs,
+                Invincible = invincible,
             };
             host.RegisterPhantom(phantomAvatar.Id, phantomPlayer.Id, descriptor);
             SchedulePhantomTick();
@@ -1706,6 +1910,23 @@ namespace MHServerEmu.Games.Entities.Avatars
             _webClearEvent.Get().Initialize(this);
         }
 
+        /// <summary>Destroys every ENEMY phantom this caller has spawned.</summary>
+        public int DespawnAllEnemyPhantoms()
+        {
+            Player host = PhantomHost;
+            if (host == null) return 0;
+            var ids = new List<ulong>(host.EnemyPhantomAvatarIds);
+            int removed = host.PurgeEnemyPhantoms();
+            foreach (ulong id in ids)
+            {
+                s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id);
+                s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id);
+                s_enemyDeadSinceMs.Remove(id);
+                PruneBlacklistFor(id); PrunePowerBlacklistFor(id);
+            }
+            return removed;
+        }
+
         /// <summary>Destroys every phantom hero this caller has spawned.</summary>
         public int DespawnAllPhantomHeroes()
         {
@@ -1715,7 +1936,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // clears its own list, so we need the ids before it runs.
             var ids = new List<ulong>(host.PhantomAvatarIds);
             int removed = host.PurgePhantoms();
-            foreach (ulong id in ids) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id); s_phantomNextDiagMs.Remove(id); s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id); PruneBlacklistFor(id); PrunePowerBlacklistFor(id); }
+            foreach (ulong id in ids) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id); s_phantomNextDiagMs.Remove(id); s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id); s_phantomDownedSinceMs.Remove(id); PruneBlacklistFor(id); PrunePowerBlacklistFor(id); }
             return removed;
         }
 
@@ -1791,7 +2012,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 PhantomLogger.Info($"[PhantomHero] {this} reattach: pruned {stale.Count} stale, {alive} alive");
             }
 
-            if (alive > 0)
+            if (alive > 0 || host.EnemyPhantomCount > 0)
                 SchedulePhantomTick();
         }
 

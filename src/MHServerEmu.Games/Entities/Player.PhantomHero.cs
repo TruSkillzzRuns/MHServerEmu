@@ -183,6 +183,90 @@ namespace MHServerEmu.Games.Entities
             return removed;
         }
 
+        // ================================================================
+        //  Enemy phantoms — hostile AI heroes. Deliberately a SEPARATE
+        //  registry from the friendly squad:
+        //    * never added to the synthetic party HUD
+        //    * never migrated across regions (they're an encounter, not a
+        //      companion)
+        //    * no PhantomCreatorId, so kill/loot credit is never remapped
+        //      to the human who spawned them
+        // ================================================================
+
+        private readonly List<ulong> _enemyPhantomAvatarIds = new();
+        private readonly List<ulong> _enemyPhantomPlayerIds = new();
+
+        public IReadOnlyList<ulong> EnemyPhantomAvatarIds => _enemyPhantomAvatarIds;
+        public int EnemyPhantomCount => _enemyPhantomAvatarIds.Count;
+
+        internal void RegisterEnemyPhantom(ulong avatarId, ulong phantomPlayerId)
+        {
+            _enemyPhantomAvatarIds.Add(avatarId);
+            _enemyPhantomPlayerIds.Add(phantomPlayerId);
+        }
+
+        internal bool UnregisterEnemyPhantom(ulong avatarId)
+        {
+            int idx = _enemyPhantomAvatarIds.IndexOf(avatarId);
+            if (idx < 0) return false;
+
+            // Destroy the paired synthetic Player too — Unregister is called
+            // by the tick's dead-cleanup, which only destroys the Avatar.
+            ulong phantomPlayerId = _enemyPhantomPlayerIds[idx];
+            _enemyPhantomAvatarIds.RemoveAt(idx);
+            _enemyPhantomPlayerIds.RemoveAt(idx);
+
+            try
+            {
+                Player p = Game?.EntityManager?.GetEntity<Player>(phantomPlayerId);
+                if (p != null)
+                {
+                    if (p.IsInGame) p.ExitGame();
+                    p.Destroy();
+                }
+            }
+            catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Enemy] unregister player 0x{phantomPlayerId:X} failed: {ex.Message}"); }
+
+            return true;
+        }
+
+        /// <summary>Destroys every enemy phantom this player has spawned.</summary>
+        public int PurgeEnemyPhantoms()
+        {
+            if (_enemyPhantomAvatarIds.Count == 0) return 0;
+            var mgr = Game?.EntityManager;
+            if (mgr == null) { _enemyPhantomAvatarIds.Clear(); _enemyPhantomPlayerIds.Clear(); return 0; }
+
+            int removed = 0;
+            foreach (ulong avatarId in _enemyPhantomAvatarIds)
+            {
+                try
+                {
+                    Avatar av = mgr.GetEntity<Avatar>(avatarId);
+                    if (av == null) continue;
+                    if (av.IsInWorld) av.ExitWorld();
+                    av.Destroy();
+                    removed++;
+                }
+                catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Enemy] purge avatar 0x{avatarId:X} failed: {ex.Message}"); }
+            }
+            foreach (ulong phantomPlayerId in _enemyPhantomPlayerIds)
+            {
+                try
+                {
+                    Player p = mgr.GetEntity<Player>(phantomPlayerId);
+                    if (p == null) continue;
+                    if (p.IsInGame) p.ExitGame();
+                    p.Destroy();
+                }
+                catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Enemy] purge player 0x{phantomPlayerId:X} failed: {ex.Message}"); }
+            }
+
+            _enemyPhantomAvatarIds.Clear();
+            _enemyPhantomPlayerIds.Clear();
+            return removed;
+        }
+
         /// <summary>
         /// Copy current phantom recipes into MigrationData so the human's
         /// next Game instance (after the region transfer completes) can
@@ -193,6 +277,9 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         internal void SnapshotPhantomsForTransfer()
         {
+            // Enemy phantoms never migrate — they die with the region.
+            PurgeEnemyPhantoms();
+
             if (_phantomDescriptors.Count == 0) return;
             var mig = PlayerConnection?.MigrationData;
             if (mig == null)
@@ -212,6 +299,7 @@ namespace MHServerEmu.Games.Entities
                     LockLevel = d.LockLevel,
                     CostumeRef = d.CostumeRef,
                     GearRefs = d.GearRefs != null ? new List<ulong>(d.GearRefs) : null,
+                    Invincible = d.Invincible,
                 });
             }
             int n = PurgePhantoms();
@@ -236,7 +324,7 @@ namespace MHServerEmu.Games.Entities
                     // Force the caller to spawn each intent with its saved
                     // (avatarRef, level, username) rather than the default
                     // "random from deck / caller's level" path.
-                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, intent.CostumeRef, out string error, intent.GearRefs);
+                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, intent.CostumeRef, out string error, intent.GearRefs, intent.Invincible);
                     if (id != 0) spawned++;
                     else PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} failed: {error}");
                 }
@@ -254,6 +342,9 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         internal void PurgePhantomsOnExitGame()
         {
+            int e = PurgeEnemyPhantoms();
+            if (e > 0) PhantomHostLogger.Info($"[Phantom:Enemy] ExitGame purge for {this}: destroyed {e} enemy phantom(s)");
+
             if (_phantomAvatarIds.Count == 0) return;
             int n = PurgePhantoms();
             if (n > 0) PhantomHostLogger.Info($"[Phantom] ExitGame purge for {this}: destroyed {n} phantom(s)");
@@ -395,6 +486,7 @@ namespace MHServerEmu.Games.Entities
             public bool LockLevel { get; set; }
             public ulong CostumeRef { get; set; }
             public List<ulong> GearRefs { get; set; }
+            public bool Invincible { get; set; }
         }
 
         private string GetPhantomSquadFilePath()
@@ -456,7 +548,7 @@ namespace MHServerEmu.Games.Entities
 
             var members = new List<PhantomSquadMember>(_phantomDescriptors.Count);
             foreach (var d in _phantomDescriptors)
-                members.Add(new PhantomSquadMember { AvatarRef = d.AvatarRef, Level = d.Level, Username = d.Username, LockLevel = d.LockLevel, CostumeRef = d.CostumeRef, GearRefs = d.GearRefs != null ? new List<ulong>(d.GearRefs) : null });
+                members.Add(new PhantomSquadMember { AvatarRef = d.AvatarRef, Level = d.Level, Username = d.Username, LockLevel = d.LockLevel, CostumeRef = d.CostumeRef, GearRefs = d.GearRefs != null ? new List<ulong>(d.GearRefs) : null, Invincible = d.Invincible });
 
             squads[squadName] = members;
             if (SavePhantomSquadFile(squads) == false)
@@ -483,7 +575,7 @@ namespace MHServerEmu.Games.Entities
                 // LockLevel squads respawn at their stored level; auto-level
                 // squads respawn at the caller's current level (level 0 =
                 // "match caller" inside SpawnPhantomHeroCore).
-                ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)m.AvatarRef, m.LockLevel ? m.Level : 0, m.Username, m.LockLevel, m.CostumeRef, out string error, m.GearRefs);
+                ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)m.AvatarRef, m.LockLevel ? m.Level : 0, m.Username, m.LockLevel, m.CostumeRef, out string error, m.GearRefs, m.Invincible);
                 if (id != 0) spawned++;
                 else firstError ??= error;
             }

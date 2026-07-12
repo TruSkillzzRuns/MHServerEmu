@@ -120,6 +120,40 @@ namespace MHServerEmu.Games.Entities
             return list;
         }
 
+        public sealed class WebEnemyPhantomInfo
+        {
+            public string HeroName { get; set; }
+            public int Level { get; set; }
+            public int HealthPct { get; set; }
+            public bool Dead { get; set; }
+        }
+
+        public List<WebEnemyPhantomInfo> GetEnemyPhantomInfosForWeb()
+        {
+            var list = new List<WebEnemyPhantomInfo>(_enemyPhantomAvatarIds.Count);
+            var mgr = Game?.EntityManager;
+            if (mgr == null) return list;
+
+            foreach (ulong avatarId in _enemyPhantomAvatarIds)
+            {
+                var av = mgr.GetEntity<Avatar>(avatarId);
+                if (av == null) continue;
+
+                long health = av.Properties[MHServerEmu.Games.Properties.PropertyEnum.Health];
+                long healthMax = av.Properties[MHServerEmu.Games.Properties.PropertyEnum.HealthMax];
+
+                list.Add(new WebEnemyPhantomInfo
+                {
+                    HeroName = WebLeafOf(GameDatabase.GetPrototypeName(av.PrototypeDataRef)),
+                    Level = av.CharacterLevel,
+                    HealthPct = healthMax > 0 ? (int)(health * 100 / healthMax) : 0,
+                    Dead = av.IsDead,
+                });
+            }
+
+            return list;
+        }
+
         public sealed class WebPhantomSquadInfo
         {
             public string Name { get; set; }
@@ -135,6 +169,7 @@ namespace MHServerEmu.Games.Entities
             public int Level { get; set; }
             public bool LockLevel { get; set; }
             public string CostumeRef { get; set; }
+            public bool Invincible { get; set; }
         }
 
         public List<WebPhantomSquadInfo> GetPhantomSquadsForWeb()
@@ -158,6 +193,7 @@ namespace MHServerEmu.Games.Entities
                         Level = m.Level,
                         LockLevel = m.LockLevel,
                         CostumeRef = m.CostumeRef != 0 ? $"0x{m.CostumeRef:X16}" : null,
+                        Invincible = m.Invincible,
                     });
                 }
                 list.Add(new WebPhantomSquadInfo { Name = kvp.Key, Heroes = heroes, Levels = levels, Members = members });
@@ -172,6 +208,7 @@ namespace MHServerEmu.Games.Entities
             public int Level { get; set; }
             public bool LockLevel { get; set; }
             public ulong CostumeRef { get; set; }
+            public bool Invincible { get; set; }
         }
 
         /// <summary>
@@ -208,6 +245,7 @@ namespace MHServerEmu.Games.Entities
                     LockLevel = m.LockLevel && m.Level > 0,
                     CostumeRef = m.CostumeRef,
                     GearRefs = null,
+                    Invincible = m.Invincible,
                 });
             }
 

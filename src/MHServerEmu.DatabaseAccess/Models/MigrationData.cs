@@ -94,5 +94,14 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// re-roll on restore; the item identities are preserved.
         /// </summary>
         public System.Collections.Generic.List<ulong> GearRefs;
+
+        /// <summary>
+        /// True when the phantom was spawned with the "invincible" opt-in
+        /// (Squad Builder checkbox). Applies PropertyEnum.Invulnerable at
+        /// spawn so hits do nothing. False = normal HP curve, killable,
+        /// downed on 0 HP with the caller's phantoms and the caller
+        /// himself as valid revive sources.
+        /// </summary>
+        public bool Invincible;
     }
 }

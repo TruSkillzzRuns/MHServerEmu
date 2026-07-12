@@ -386,6 +386,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         if (el.TryGetProperty("level", out var lv)) m.Level = lv.GetInt32();
                         if (el.TryGetProperty("lockLevel", out var ll)) m.LockLevel = ll.GetBoolean();
                         if (el.TryGetProperty("costumeRef", out var cr)) m.CostumeRef = PhantomsWebUtil.ParseRef(cr.GetString());
+                        if (el.TryGetProperty("invincible", out var inv)) m.Invincible = inv.GetBoolean();
                         if (m.AvatarRef != 0) members.Add(m);
                     }
                 }
