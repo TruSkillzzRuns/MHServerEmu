@@ -63,6 +63,14 @@ namespace MHServerEmu.Core.Network.Web
                         break;
                 }
             }
+            catch (HttpListenerException hle) when (hle.ErrorCode is 995 or 64 or 1229)
+            {
+                // Client aborted / disconnected mid-write. Normal browser
+                // behavior when the user scrolls / closes / cancels; not a
+                // server error. Downgrade to Trace so the log stays quiet
+                // under heavy WebView2 palette load.
+                Logger.Trace($"Client aborted {context}: HttpListenerException ({hle.ErrorCode})");
+            }
             catch (Exception e)
             {
                 context.StatusCode = (int)HttpStatusCode.InternalServerError;

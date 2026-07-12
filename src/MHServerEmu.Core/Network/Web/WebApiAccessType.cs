@@ -4,8 +4,9 @@
     {
         None,
         AccountManagement,
+        PlayerAdmin,
 
-        /* 
+        /*
          * Add more access types here as needed.
          * 
          * Do not change the order of existing types because they are saved to disk,

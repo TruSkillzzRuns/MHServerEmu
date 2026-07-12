@@ -33,12 +33,22 @@ namespace MHServerEmu.Core.Network.Web
 
             _httpResponse.StatusCode = 200;
             _httpResponse.KeepAlive = false;
+
+            // WebView2 pages loaded via NavigateToString have Origin: null,
+            // which triggers CORS on every /webapi/* fetch. Without these
+            // headers the browser gives "Failed to fetch" and silently
+            // drops the response body even though the server sent 200.
+            _httpResponse.Headers["Access-Control-Allow-Origin"] = "*";
+            _httpResponse.Headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS";
+            _httpResponse.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
         }
 
         public override string ToString()
         {
             return $"{HttpMethod} {LocalPath}";
         }
+
+        public string QueryString { get => _httpRequest.Url?.Query ?? string.Empty; }
 
         public string GetIPAddress()
         {

@@ -1221,6 +1221,23 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 
         /// <summary>
+        /// The full playable-avatar pool, resolved from the loaded client
+        /// data. Used by the OmegaDev2 phantom tool's hero roster.
+        /// </summary>
+        public static List<(PrototypeId AvatarRef, string ShortName)> GetAllPhantomHeroRefs()
+        {
+            var results = new List<(PrototypeId, string)>();
+            EnsureResolvedPool();
+            lock (s_phantomResolvedLock)
+            {
+                foreach (PrototypeId avatarRef in s_phantomResolved)
+                    results.Add((avatarRef, ExtractPrototypeShortName(avatarRef.GetName())));
+            }
+            results.Sort((a, b) => string.CompareOrdinal(a.Item2, b.Item2));
+            return results;
+        }
+
+        /// <summary>
         /// Match a user-typed hero name against the playable-avatar pool
         /// resolved from the loaded client data. Matching is entirely
         /// runtime — hero names come from the user's own data files and

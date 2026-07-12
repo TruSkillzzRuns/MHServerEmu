@@ -25,11 +25,14 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override Task Get(WebRequestContext context)
         {
-            var regions = RegionsRuntime.ListSafeRegions();
+            var regions = RegionsRuntime.ListAllRegions();
+            // Return both OmegaDev's expected shape (totalRegions/regions[*]{protoRef,name,path,isSafe})
+            // and my Teleport Pad's original fields (id/shortName/displayName), so both consumers work.
             return context.SendJsonAsync(new
             {
                 ok = true,
                 count = regions.Count,
+                totalRegions = regions.Count,
                 regions,
             });
         }
@@ -94,47 +97,101 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     internal static class RegionsRuntime
     {
         /// <summary>
-        /// Enumerate every entry in the RegionPrototypeId safe-warp allowlist.
-        /// The enum's field name matches the prototype short-name; the value
-        /// is the numeric PrototypeId. Display names come from the [Description]
-        /// attribute if present, otherwise the enum field name.
+        /// Enumerate every RegionPrototype in the loaded client data. Mark
+        /// isSafe=true for entries in the RegionPrototypeId safe-warp
+        /// allowlist. Returns fields both my Teleport Pad and OmegaDev's
+        /// Region Remix expect.
         /// </summary>
-        public static List<RegionInfo> ListSafeRegions()
+        public static List<RegionInfo> ListAllRegions()
         {
-            var enumType = Type.GetType("MHServerEmu.Games.Regions.RegionPrototypeId, MHServerEmu.Games");
             var result = new List<RegionInfo>();
-            if (enumType == null) return result;
+            var safeIds = new HashSet<ulong>();
+
+            var enumType = Type.GetType("MHServerEmu.Games.Regions.RegionPrototypeId, MHServerEmu.Games");
+            if (enumType != null)
+            {
+                foreach (var value in Enum.GetValues(enumType))
+                {
+                    ulong id = Convert.ToUInt64(value);
+                    if (id != 0) safeIds.Add(id);
+                }
+            }
 
             var gameDatabaseType = Type.GetType("MHServerEmu.Games.GameData.GameDatabase, MHServerEmu.Games");
             var getNameMethod = gameDatabaseType?.GetMethod("GetPrototypeName", BindingFlags.Public | BindingFlags.Static);
+            var dataDirType = Type.GetType("MHServerEmu.Games.GameData.DataDirectory, MHServerEmu.Games");
+            var flagsType = Type.GetType("MHServerEmu.Games.GameData.PrototypeIterateFlags, MHServerEmu.Games");
+            var regionProtoType = Type.GetType("MHServerEmu.Games.GameData.Prototypes.RegionPrototype, MHServerEmu.Games");
 
-            foreach (var value in Enum.GetValues(enumType))
+            if (dataDirType == null || flagsType == null || regionProtoType == null || gameDatabaseType == null)
             {
-                string shortName = value.ToString() ?? "";
-                ulong id = Convert.ToUInt64(value);
+                // Fallback — just enumerate the safe-warp allowlist so we always return SOMETHING.
+                foreach (var id in safeIds)
+                    result.Add(BuildRow(id, TryGetPath(getNameMethod, id) ?? id.ToString(), isSafe: true));
+                return result;
+            }
+
+            object flags = Enum.Parse(flagsType, "NoAbstractApprovedOnly");
+            var iterMethod = dataDirType.GetMethod("IteratePrototypesInHierarchy",
+                new[] { typeof(Type), flagsType });
+            var instanceProp = dataDirType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
+            var dataDir = instanceProp?.GetValue(null);
+            if (iterMethod == null || dataDir == null)
+            {
+                foreach (var id in safeIds)
+                    result.Add(BuildRow(id, TryGetPath(getNameMethod, id) ?? id.ToString(), isSafe: true));
+                return result;
+            }
+
+            var iter = iterMethod.Invoke(dataDir, new object[] { regionProtoType, flags });
+            if (iter == null) return result;
+            // PrototypeIterator has a duck-typed struct enumerator — not IEnumerable.
+            var getEnum = iter.GetType().GetMethod("GetEnumerator");
+            var e = getEnum?.Invoke(iter, null);
+            if (e == null) return result;
+            var moveNext = e.GetType().GetMethod("MoveNext");
+            var currentProp = e.GetType().GetProperty("Current");
+            if (moveNext == null || currentProp == null) return result;
+            while (moveNext.Invoke(e, null) is bool ok && ok)
+            {
+                var refObj = currentProp.GetValue(e);
+                if (refObj == null) continue;
+                ulong id = Convert.ToUInt64(refObj);
                 if (id == 0) continue;
-
-                string path = shortName;
-                if (getNameMethod != null)
-                {
-                    try
-                    {
-                        var pathObj = getNameMethod.Invoke(null, new object[] { id });
-                        if (pathObj is string s && !string.IsNullOrEmpty(s)) path = s;
-                    }
-                    catch { /* fall through — use shortName */ }
-                }
-
-                result.Add(new RegionInfo
-                {
-                    id = id,
-                    shortName = shortName,
-                    path = path,
-                    displayName = HumanReadable(shortName),
-                });
+                string path = TryGetPath(getNameMethod, id) ?? id.ToString();
+                result.Add(BuildRow(id, path, safeIds.Contains(id)));
             }
             return result;
         }
+
+        private static string? TryGetPath(MethodInfo? getName, ulong id)
+        {
+            if (getName == null) return null;
+            try { return getName.Invoke(null, new object[] { id }) as string; }
+            catch { return null; }
+        }
+
+        private static RegionInfo BuildRow(ulong id, string path, bool isSafe)
+        {
+            string leaf = path;
+            int slash = path.LastIndexOf('/');
+            if (slash >= 0) leaf = path[(slash + 1)..];
+            if (leaf.EndsWith(".prototype")) leaf = leaf[..^".prototype".Length];
+            return new RegionInfo
+            {
+                id = id,
+                protoRef = "0x" + id.ToString("X"),
+                shortName = leaf,
+                path = path,
+                name = HumanReadable(leaf),
+                displayName = HumanReadable(leaf),
+                isSafe = isSafe,
+            };
+        }
+
+        // Kept for backward compat with any caller expecting the old shape.
+        public static List<RegionInfo> ListSafeRegions()
+            => ListAllRegions().Where(r => r.isSafe).ToList();
 
         public static ulong ResolveRegionRef(string s, out string? error)
         {
@@ -188,9 +245,12 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         public class RegionInfo
         {
             public ulong id { get; set; }
+            public string protoRef { get; set; } = "";
             public string shortName { get; set; } = "";
             public string path { get; set; } = "";
+            public string name { get; set; } = "";
             public string displayName { get; set; } = "";
+            public bool isSafe { get; set; }
         }
     }
 }

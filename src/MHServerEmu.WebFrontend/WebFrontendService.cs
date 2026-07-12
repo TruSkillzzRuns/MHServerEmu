@@ -138,6 +138,31 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/regions/list",     new MHServerEmu.WebFrontend.Handlers.WebApi.RegionsListWebHandler());
             _webService.RegisterHandler("/webapi/regions/teleport", new MHServerEmu.WebFrontend.Handlers.WebApi.RegionsTeleportWebHandler());
 
+            // OmegaDev2 Gear Picker.
+            _webService.RegisterHandler("/webapi/items/catalog", new MHServerEmu.WebFrontend.Handlers.WebApi.ItemCatalogWebHandler());
+            _webService.RegisterHandler("/webapi/items/give",    new MHServerEmu.WebFrontend.Handlers.WebApi.ItemGiveWebHandler());
+
+            // OmegaDev2 Phantom Heroes tool — full command surface over WebAPI.
+            _webService.RegisterHandler("/webapi/phantoms/catalog", new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsCatalogWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/status",  new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsStatusWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/spawn",   new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsSpawnWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/clear",   new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsClearWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/costume", new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsCostumeWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/gear",    new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsGearWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/squads",  new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsSquadsWebHandler());
+
+            // OmegaDev2 Command Console + logs.
+            _webService.RegisterHandler("/webapi/console/exec", new MHServerEmu.WebFrontend.Handlers.WebApi.ConsoleExecWebHandler());
+            _webService.RegisterHandler("/webapi/logs/tail",    new MHServerEmu.WebFrontend.Handlers.WebApi.LogsTailWebHandler());
+            _webService.RegisterHandler("/webapi/debug/logs",   new MHServerEmu.WebFrontend.Handlers.WebApi.DebugLogsWebHandler());
+
+            // OmegaDev2 icon/portrait pipeline. Reads textures from the
+            // USER'S OWN client install ([ClientAssets] in Config.ini —
+            // empty by default = endpoints return 404 and the tool shows
+            // no pictures). No game assets ship with the server.
+            _webService.RegisterHandler("/webapi/portrait",  new MHServerEmu.WebFrontend.Handlers.WebApi.PortraitWebHandler());
+            _webService.RegisterHandler("/webapi/texbyname", new MHServerEmu.WebFrontend.Handlers.WebApi.TextureByNameWebHandler());
+
             _webService.RegisterHandler("/RegionReport", new RegionReportWebHandler());
             _webService.RegisterHandler("/Metrics/Performance", new MetricsPerformanceWebHandler());
         }

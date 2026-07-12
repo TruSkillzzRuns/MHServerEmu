@@ -1,0 +1,28 @@
+﻿
+namespace UpkManager.Models.UpkFile.Tables
+{
+    public abstract class UnrealObjectTableEntryBase : UnrealUpkBuilderBase
+    {
+
+        #region Properties
+
+        public UnrealHeader UnrealHeader { get; protected set; }
+        public int OuterReference { get; protected set; }
+
+        public FObject ObjectNameIndex { get; protected set; }
+
+        #endregion Properties
+
+        #region Unreal Properties
+
+        public int TableIndex { get; set; }
+
+        #endregion Unreal Properties
+
+        public virtual string GetPathName()
+        {
+            return ObjectNameIndex.Name;
+        }
+    }
+
+}

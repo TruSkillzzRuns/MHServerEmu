@@ -1,0 +1,160 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using MHServerEmu.Core.Logging;
+using MHServerEmu.Games.Entities.Avatars;
+using MHServerEmu.Games.Events;
+using MHServerEmu.Games.Events.Templates;
+using MHServerEmu.Games.GameData;
+
+namespace MHServerEmu.Games.Entities
+{
+    // OmegaDev2 Phantom Heroes bridge. Same shape as the Gear Picker bridge
+    // (Player.WebItemGive.cs): HTTP handlers run on ThreadPool threads while
+    // every phantom operation touches entity state and Game.Current, so each
+    // web request marshals a delegate onto this player's game thread via a
+    // zero-delay scheduled event and awaits the TaskCompletionSource.
+    public partial class Player
+    {
+        private static readonly Logger WebPhantomLogger = LogManager.CreateLogger();
+
+        public sealed class WebPhantomOpState
+        {
+            public Func<Player, object> Op { get; }
+            public TaskCompletionSource<object> Tcs { get; }
+            public WebPhantomOpState(Func<Player, object> op, TaskCompletionSource<object> tcs)
+            {
+                Op = op;
+                Tcs = tcs;
+            }
+        }
+
+        private readonly EventGroup _webPhantomEvents = new();
+
+        /// <summary>
+        /// Thread-safe entry point for the phantom web endpoints. Runs
+        /// <paramref name="op"/> on this player's game thread and completes
+        /// <paramref name="tcs"/> with whatever it returns. Each call gets
+        /// its own event pointer so concurrent requests don't cancel each
+        /// other.
+        /// </summary>
+        public void RunPhantomWebOp(Func<Player, object> op, TaskCompletionSource<object> tcs)
+        {
+            var scheduler = Game?.GameEventScheduler;
+            if (scheduler == null)
+            {
+                tcs.TrySetResult(new WebPhantomError { Ok = false, Error = "no game scheduler" });
+                return;
+            }
+
+            EventPointer<WebPhantomOpEvent> eventPointer = new();
+            scheduler.ScheduleEvent(eventPointer, TimeSpan.Zero, _webPhantomEvents);
+            eventPointer.Get().Initialize(this, new WebPhantomOpState(op, tcs));
+        }
+
+        private void DoWebPhantomOp(WebPhantomOpState state)
+        {
+            try
+            {
+                state.Tcs.TrySetResult(state.Op(this));
+            }
+            catch (Exception ex)
+            {
+                WebPhantomLogger.Warn($"[Phantom:Web] op threw: {ex}");
+                state.Tcs.TrySetResult(new WebPhantomError { Ok = false, Error = ex.Message });
+            }
+        }
+
+        private sealed class WebPhantomOpEvent : CallMethodEventParam1<Player, WebPhantomOpState>
+        {
+            protected override CallbackDelegate GetCallback() => static (player, state) => player.DoWebPhantomOp(state);
+        }
+
+        public sealed class WebPhantomError
+        {
+            public bool Ok { get; set; }
+            public string Error { get; set; }
+        }
+
+        // ================================================================
+        //  Structured views over private phantom state, for the web tool.
+        //  Game-thread only — call from inside a RunPhantomWebOp delegate.
+        // ================================================================
+
+        public sealed class WebPhantomInfo
+        {
+            public string AvatarId { get; set; }
+            public string HeroProtoRef { get; set; }
+            public string HeroName { get; set; }
+            public string Username { get; set; }
+            public int Level { get; set; }
+            public bool LockLevel { get; set; }
+            public string CostumeRef { get; set; }
+            public bool InWorld { get; set; }
+        }
+
+        public List<WebPhantomInfo> GetPhantomInfosForWeb()
+        {
+            var list = new List<WebPhantomInfo>(_phantomAvatarIds.Count);
+            var mgr = Game?.EntityManager;
+
+            for (int i = 0; i < _phantomAvatarIds.Count; i++)
+            {
+                var d = _phantomDescriptors[i];
+                Avatar av = mgr?.GetEntity<Avatar>(_phantomAvatarIds[i]);
+
+                PrototypeId heroRef = av != null ? av.PrototypeDataRef : (PrototypeId)d.AvatarRef;
+                list.Add(new WebPhantomInfo
+                {
+                    AvatarId = $"0x{_phantomAvatarIds[i]:X}",
+                    HeroProtoRef = $"0x{(ulong)heroRef:X16}",
+                    HeroName = WebLeafOf(GameDatabase.GetPrototypeName(heroRef)),
+                    Username = d.Username,
+                    Level = av?.CharacterLevel ?? d.Level,
+                    LockLevel = d.LockLevel,
+                    CostumeRef = d.CostumeRef != 0 ? $"0x{d.CostumeRef:X16}" : null,
+                    InWorld = av?.IsInWorld == true,
+                });
+            }
+
+            return list;
+        }
+
+        public sealed class WebPhantomSquadInfo
+        {
+            public string Name { get; set; }
+            public List<string> Heroes { get; set; }
+            public List<int> Levels { get; set; }
+        }
+
+        public List<WebPhantomSquadInfo> GetPhantomSquadsForWeb()
+        {
+            var squads = LoadPhantomSquadFile();
+            var list = new List<WebPhantomSquadInfo>(squads.Count);
+            foreach (var kvp in squads)
+            {
+                var heroes = new List<string>(kvp.Value.Count);
+                var levels = new List<int>(kvp.Value.Count);
+                foreach (var m in kvp.Value)
+                {
+                    heroes.Add(WebLeafOf(GameDatabase.GetPrototypeName((PrototypeId)m.AvatarRef)));
+                    levels.Add(m.LockLevel ? m.Level : 0); // 0 = auto-level
+                }
+                list.Add(new WebPhantomSquadInfo { Name = kvp.Key, Heroes = heroes, Levels = levels });
+            }
+            list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+            return list;
+        }
+
+        private static string WebLeafOf(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            int slash = path.LastIndexOf('/');
+            string leaf = slash >= 0 ? path[(slash + 1)..] : path;
+            const string suffix = ".prototype";
+            if (leaf.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                leaf = leaf[..^suffix.Length];
+            return leaf;
+        }
+    }
+}

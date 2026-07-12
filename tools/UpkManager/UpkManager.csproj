@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Platform>x64</Platform>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <NoWarn>$(NoWarn);NU1900</NoWarn>
+    <!-- Legal to use `?` on reference types (UnrealHeader.RefRecorder etc.) without enabling
+         the full nullable-warning rework. Silences CS8632 without introducing 8600/8618 spam. -->
+    <Nullable>annotations</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MessagePack" Version="3.1.7" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DDSLib\DDSLib.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Compression\lib64\lzo2_64.dll">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+    <None Update="Compression\lib64\msvcr100.dll">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
