@@ -115,8 +115,21 @@ namespace MHServerEmu.Games.Entities.Avatars
         private void OnPhantomTick()
         {
             Player host = PhantomHost;
-            if (host == null || IsInWorld == false) return;
+            if (host == null) return;
             if (host.PhantomHeroCount == 0 && host.EnemyPhantomCount == 0) return;
+
+            // ALWAYS re-arm before doing anything else so a transient
+            // IsInWorld=false (auto-revive proc, downed-then-released state,
+            // brief teleport window) doesn't permanently kill the tick loop.
+            // Previously one flicker → tick returned without rescheduling
+            // → enemy phantoms stood frozen for the rest of the session.
+            // The bottom-of-function reschedule is now belt-and-suspenders.
+            SchedulePhantomTick();
+
+            // If the caller's Avatar is briefly not in world (mid-teleport,
+            // mid-auto-revive) we can't do a proximity sweep — skip this
+            // tick's work, but the tick loop keeps running for next time.
+            if (IsInWorld == false) return;
 
             Vector3 callerPos = RegionLocation.Position;
             var rng = Game.Random;
@@ -550,6 +563,31 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             if (candidates.Count == 0)
             {
+                // Enemy mode: don't stop if the player just died — the
+                // caller's Avatar is IsDead briefly and gets filtered out
+                // of the sweep, and if we stop here the phantom sits idle
+                // waiting for a target that IS alive to appear. Instead,
+                // keep advancing on the caller's position so we're on top
+                // of them the moment they revive. Also flush the target /
+                // power blacklists that may have accumulated during the
+                // death sequence so the wake-up is clean.
+                if (enemyMode)
+                {
+                    PruneBlacklistFor(phantom.Id);
+                    PrunePowerBlacklistFor(phantom.Id);
+                    Avatar callerAv = this;
+                    var loco2 = phantom.Locomotor;
+                    if (callerAv != null && loco2 != null)
+                    {
+                        var opts2 = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(250) };
+                        // Follow the caller Avatar entity — even while dead
+                        // the entity id is stable and the locomotor can path
+                        // to the corpse's position.
+                        loco2.FollowEntity(callerAv.Id, PhantomAttackRange, PhantomAttackRange, ref opts2, false);
+                    }
+                    return;
+                }
+
                 phantom.Locomotor?.Stop();
                 return;
             }
@@ -587,6 +625,32 @@ namespace MHServerEmu.Games.Entities.Avatars
                 if (s_phantomLocoLogged.Add(phantom.Id))
                 {
                     PhantomLogger.Info($"[PhantomHero:Loco] {phantom} authoritative={phantom.IsMovementAuthoritative} simulated={phantom.IsSimulated} inWorld={phantom.IsInWorld} target={nearest.Id:X} dist={MathF.Sqrt(nearestDistSq):F0} FollowEntity returned={ok} locoEnabled={loco.IsEnabled} isMoving={loco.IsMoving} method={loco.Method} baseSpeed={loco.DefaultRunSpeed} hasPath={loco.HasPath} pathResult={loco.LastGeneratedPathResult} canMove={phantom.CanMove()}");
+                }
+
+                // Pathfinding failure — enemy phantoms in Manhattan / verticality
+                // regions can end up on an elevated platform (Z=49) while the
+                // player is at ground level (Z=1), and FollowEntity's navmesh
+                // path resolution returns Failed. Without a fix the phantom just
+                // stands there for the whole fight. Detect and force-leash to a
+                // valid navmesh spot near the target so the fight resumes at
+                // ground level. Only fires when target is out of attack range
+                // — a small path glitch inside attack range is fine, the
+                // phantom will just cast from where they stand.
+                if (ok == false
+                    && (loco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.Failed
+                     || loco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.FailedNaviMesh)
+                    && nearestDistSq > PhantomAttackRangeSq)
+                {
+                    Vector3 targetPos = nearest.RegionLocation.Position;
+                    Vector3 rescuePos = ChoosePhantomLeashPos(region, targetPos, rng, phantom.Bounds.Radius);
+                    try
+                    {
+                        loco.Stop();
+                        phantom.ChangeRegionPosition(rescuePos, null);
+                        s_phantomStuckTrack[phantom.Id] = (rescuePos, 0);
+                        PhantomLogger.Info($"[PhantomHero:Loco] {phantom} path failed, force-leashed to {rescuePos.ToStringNames()} near target");
+                    }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loco] path-fail leash threw: {ex.Message}"); }
                 }
             }
 
@@ -629,23 +693,50 @@ namespace MHServerEmu.Games.Entities.Avatars
                             ClearTargetBlacklist(phantom.Id, tryTarget.Id);
                             break;
                         }
-                        // BadTarget / InsufficientEndurance / TargetIsMissing /
-                        // OutOfPosition / FullscreenMovie — blacklist this
-                        // target for 3 seconds so the sweep skips it while
-                        // whatever transient state clears.
-                        BlacklistTarget(phantom.Id, tryTarget.Id, nowMsSweep);
+                        // Only blacklist the TARGET for target-specific failures.
+                        // Everything else (RestrictiveCondition, WeaponMissing,
+                        // OutOfPosition, InsufficientEndurance, FullscreenMovie,
+                        // Cooldown, ...) is about the PHANTOM or the POWER,
+                        // not the target — the failing power gets blacklisted
+                        // internally in TryPhantomAttack, and the picker will
+                        // choose a different one next tick. Nuking the target
+                        // for 3 seconds was what made enemy phantoms silently
+                        // give up on the player while cycling through every
+                        // restrictive-condition power one at a time.
+                        bool targetIsTheProblem =
+                            r == PowerUseResult.BadTarget
+                            || r == PowerUseResult.TargetIsMissing;
+                        if (targetIsTheProblem)
+                            BlacklistTarget(phantom.Id, tryTarget.Id, nowMsSweep);
                     }
                     if (!fired && diagWant)
                         PhantomLogger.Info($"[PhantomHero:Attack] {phantom} all {maxTries} candidates rejected the attack — sweep found {candidates.Count} hostile(s), first={candidates[0].we} dist={MathF.Sqrt(candidates[0].distSq):F0}");
-                    // 800 ms floor + 400 ms jitter so 3 phantoms don't fire in
-                    // lockstep.
-                    s_phantomNextAttackMs[phantom.Id] = now + 800 + (long)(rng.NextDouble() * 400);
+                    // Enemy phantoms attack ~2x faster than friendlies —
+                    // 400ms + 300ms jitter vs 800ms + 400ms — because the
+                    // player is one target being ganged up on, not a squad
+                    // sharing pressure. Enough to feel dangerous without
+                    // being animation-jamming.
+                    long baseCd = enemyMode ? 400 : 800;
+                    long jitter = enemyMode ? 300 : 400;
+                    s_phantomNextAttackMs[phantom.Id] = now + baseCd + (long)(rng.NextDouble() * jitter);
                 }
             }
         }
 
         // Killable-phantom balance knobs.
-        private const float PhantomHealthMult = 2.0f;       // +200% HealthMax (real players carry defensive layers phantoms don't have)
+        //
+        // Friendly phantoms (Squad Builder / !phantom spawn) intentionally
+        // stay closer to a real avatar's stat block — they're squadmates,
+        // not the main event, and boosting them further trivialises the
+        // fights they're helping with.
+        //
+        // Enemy phantoms (Rogue Encounter, Wave Director, Enemy Phantoms
+        // tool) are the CONTENT — they exist to challenge the player, so
+        // they hit harder and take more punishment. Nemesis rank layers on
+        // top of the enemy values so returning nemeses feel meaningfully
+        // more dangerous than a fresh rogue spawn.
+        private const float PhantomHealthMult      = 2.0f;  // friendly: +200% HealthMax
+        private const float EnemyPhantomHealthMult = 3.0f;  // enemy:    +300% HealthMax
 
         // Per-phantom "downed since" timestamp — 0 when alive.
         // Populated on the first tick that observes IsDead; removed on the
@@ -661,6 +752,11 @@ namespace MHServerEmu.Games.Entities.Avatars
         // target once available, then rest for 20 minutes regardless of
         // what the power data's own cooldown says.
         private const long PhantomUltimateCooldownMs = 20 * 60 * 1000;
+        // Wait 15 seconds after spawn before an enemy phantom can throw
+        // their first Ultimate — prevents the "spawn → nuke → dead player"
+        // one-shot experience while still letting the ultimate happen
+        // later in the fight.
+        private const long EnemyPhantomUltimateOpenerBlockMs = 15 * 1000;
         private static readonly Dictionary<ulong, long> s_phantomNextUltimateMs = new();
 
         // Per-(phantom, power) blacklist. Some powers fail for reasons that
@@ -787,12 +883,29 @@ namespace MHServerEmu.Games.Entities.Avatars
         // not simulate an entire BiS loadout. The old anchors (up to 3.0x /
         // +150% / 5000 rating) double-dipped with gear affixes and made
         // phantoms shred everything from level 1 to 60.
+        // Damage curve — friendly phantoms stay at the "helpful teammate"
+        // anchor. Enemy phantoms use a separate, higher-anchored curve so
+        // rogue encounters actually threaten a geared 60. Nemesis rank
+        // multiplies on top of the ENEMY curve, not the friendly one.
         private const float PhantomDmgMultLvl1  = 1.0f;
         private const float PhantomDmgMultLvl60 = 1.6f;
         private const float PhantomDmgPctBonusLvl1  = 0.0f;
         private const float PhantomDmgPctBonusLvl60 = 0.4f;
         private const float PhantomDmgRatingLvl1  = 0f;
         private const float PhantomDmgRatingLvl60 = 1200f;
+
+        // Enemy-phantom damage curve (Rogue Encounter, Wave Director,
+        // Enemy Phantoms tool). Only mildly higher than the friendly curve
+        // — the challenge should come from HP + kit variety + rank scaling,
+        // NOT from base damage numbers so high they one-shot the player on
+        // spawn. Previous 2.5×/0.75/1600 was well into "delete you on
+        // ultimate" territory.
+        private const float EnemyPhantomDmgMultLvl1  = 1.0f;
+        private const float EnemyPhantomDmgMultLvl60 = 1.7f;
+        private const float EnemyPhantomDmgPctBonusLvl1  = 0.0f;
+        private const float EnemyPhantomDmgPctBonusLvl60 = 0.45f;
+        private const float EnemyPhantomDmgRatingLvl1  = 0f;
+        private const float EnemyPhantomDmgRatingLvl60 = 1250f;
 
         // Follow-stop bounds. 50u = "on top of the target" (old behaviour),
         // 1000u = a comfortable ranged-cast distance well inside the widest
@@ -1105,13 +1218,24 @@ namespace MHServerEmu.Games.Entities.Avatars
             return applied;
         }
 
-        private static void ApplyPhantomDamageScaling(Avatar phantom, int level)
+        private static void ApplyPhantomDamageScaling(Avatar phantom, int level, bool enemy = false)
         {
             float t = Math.Clamp((level - 1) / 59f, 0f, 1f);
             t *= t; // quadratic — shallow through story levels, steep into endgame
-            float dmgMult   = PhantomDmgMultLvl1     + t * (PhantomDmgMultLvl60     - PhantomDmgMultLvl1);
-            float pctBonus  = PhantomDmgPctBonusLvl1 + t * (PhantomDmgPctBonusLvl60 - PhantomDmgPctBonusLvl1);
-            float dmgRating = PhantomDmgRatingLvl1   + t * (PhantomDmgRatingLvl60   - PhantomDmgRatingLvl1);
+
+            float dmgMult, pctBonus, dmgRating;
+            if (enemy)
+            {
+                dmgMult   = EnemyPhantomDmgMultLvl1     + t * (EnemyPhantomDmgMultLvl60     - EnemyPhantomDmgMultLvl1);
+                pctBonus  = EnemyPhantomDmgPctBonusLvl1 + t * (EnemyPhantomDmgPctBonusLvl60 - EnemyPhantomDmgPctBonusLvl1);
+                dmgRating = EnemyPhantomDmgRatingLvl1   + t * (EnemyPhantomDmgRatingLvl60   - EnemyPhantomDmgRatingLvl1);
+            }
+            else
+            {
+                dmgMult   = PhantomDmgMultLvl1     + t * (PhantomDmgMultLvl60     - PhantomDmgMultLvl1);
+                pctBonus  = PhantomDmgPctBonusLvl1 + t * (PhantomDmgPctBonusLvl60 - PhantomDmgPctBonusLvl1);
+                dmgRating = PhantomDmgRatingLvl1   + t * (PhantomDmgRatingLvl60   - PhantomDmgRatingLvl1);
+            }
 
             phantom.Properties[PropertyEnum.DamageMult]     = dmgMult;
             phantom.Properties[PropertyEnum.DamagePctBonus] = pctBonus;
@@ -1857,15 +1981,36 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // and players able to damage them.
                 phantomAvatar.Properties[PropertyEnum.AllianceOverride] = ResolveHostileAllianceRef();
 
-                // Nemesis-only HP boost — layered ON TOP of the base
-                // PhantomHealthMult so returning nemeses feel meaningfully
-                // tougher than a fresh random Rogue Encounter spawn.
-                if (nemesisRank > 0)
+                // Nemesis rank now maps directly to a TOTAL HealthMaxMult
+                // (not a factor on top of the enemy base) — see the
+                // per-rank table in Player.NemesisHealthMultForRank. Fresh
+                // rogues use the enemy base (3.0×); rank N replaces it.
+                phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = nemesisRank > 0
+                    ? Player.NemesisHealthMultForRank(nemesisRank)
+                    : EnemyPhantomHealthMult;
+                phantomAvatar.ResetResources(false);
+
+                // Nameplate rank tag — the client uses PropertyEnum.Rank to
+                // decide which UI treatment to render:
+                //   * Nemeses get Boss rank → top-of-screen boss bar with
+                //     portrait (same UI as Sinister Six / Master of Evil).
+                //   * Regular rogue phantoms get MiniBoss → elite nameplate
+                //     over their head, more visible than a stock Popcorn.
+                // No effect on loot/XP — phantoms already don't credit
+                // scoring or drop tables (see PurgeEnemyPhantoms path).
+                try
                 {
-                    float rankMult = Player.NemesisHealthMultForRank(nemesisRank);
-                    phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = PhantomHealthMult * rankMult;
-                    phantomAvatar.ResetResources(false);
+                    var globals = GameDatabase.PopulationGlobalsPrototype;
+                    if (globals != null)
+                    {
+                        var rankProto = nemesisRank > 0
+                            ? globals.GetRankByEnum(Rank.Boss)
+                            : globals.GetRankByEnum(Rank.MiniBoss);
+                        if (rankProto != null)
+                            phantomAvatar.Properties[PropertyEnum.Rank] = rankProto.DataRef;
+                    }
                 }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Enemy] rank tag failed: {ex.Message}"); }
             }
             else if (invincible)
             {
@@ -1883,9 +2028,21 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
 
             // Damage scaling — see ApplyPhantomDamageScaling for the level
-            // curve. Anchored at "helpful but not obliterating" for level 1
-            // and "full-BiS-omega teammate" for level 60, linear between.
-            ApplyPhantomDamageScaling(phantomAvatar, effectiveLevel);
+            // curve. Friendly phantoms use the "helpful teammate" anchor;
+            // enemy phantoms use a higher-anchored curve so rogue encounters
+            // actually threaten a geared 60.
+            ApplyPhantomDamageScaling(phantomAvatar, effectiveLevel, enemy);
+
+            // Nemesis-only damage boost — applied AFTER ApplyPhantomDamageScaling
+            // so it doesn't get overwritten by the level curve. Per-rank
+            // fractional boost from the softened balance table (rank 1 = +5%,
+            // rank 5 = +60%). See Player.NemesisDmgBoostForRank.
+            if (enemy && nemesisRank > 0)
+            {
+                float dmgBoost = Player.NemesisDmgBoostForRank(nemesisRank);
+                float currentDmgMult = phantomAvatar.Properties[PropertyEnum.DamageMult];
+                phantomAvatar.Properties[PropertyEnum.DamageMult] = (currentDmgMult <= 0f ? 1f : currentDmgMult) * (1f + dmgBoost);
+            }
 
             // Server-authoritative movement — real avatars have IsMovementAuthoritative=false
             // because the client drives them. Phantoms have no client, so we must
@@ -1919,6 +2076,16 @@ namespace MHServerEmu.Games.Entities.Avatars
             {
                 host.RegisterEnemyPhantom(phantomAvatar.Id, phantomPlayer.Id);
                 SchedulePhantomTick();
+
+                // Ultimate opener block — pre-seed the per-phantom ultimate
+                // cooldown so the very first thing an enemy phantom does on
+                // spawn ISN'T a screen-wide ultimate that one-shots you
+                // before you realise they're there. The player gets 15
+                // seconds to react and start fighting before an ultimate is
+                // possible; the phantom's regular kit still fires normally.
+                long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+                s_phantomNextUltimateMs[phantomAvatar.Id] = nowMs + EnemyPhantomUltimateOpenerBlockMs;
+
                 PhantomLogger.Info($"[PhantomHero:Enemy] {this} spawned HOSTILE '{avatarRef.GetName()}' (avatarId 0x{phantomAvatar.Id:X}) at {spawnPos.ToStringNames()} level {effectiveLevel}");
                 return phantomAvatar.Id;
             }

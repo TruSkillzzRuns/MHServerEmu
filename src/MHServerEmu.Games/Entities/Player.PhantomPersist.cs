@@ -1,0 +1,146 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using MHServerEmu.Core.Helpers;
+using MHServerEmu.Core.Logging;
+using MHServerEmu.DatabaseAccess.Models;
+
+namespace MHServerEmu.Games.Entities
+{
+    // Cross-session persistence for our phantom-heroes fork's per-player
+    // state: nemesis roster, preferred-power map, and the Rogue Encounter
+    // toggle. Stored as a JSON sidecar per DbGuid under Data/PhantomPersist
+    // so we don't have to touch the SQLite schema (which would need a
+    // migration for every fork user).
+    //
+    // Save fires on Player.ExitGame; load fires on Player.OnLoadingScreenFinished
+    // once the DbGuid is known. Idempotent — safe to call multiple times.
+    public partial class Player
+    {
+        private static readonly Logger PersistLogger = LogManager.CreateLogger();
+        private static readonly JsonSerializerOptions s_persistJsonOptions = new()
+        {
+            WriteIndented = false,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        };
+
+        private bool _phantomPersistLoaded;
+
+        private static string PhantomPersistDir()
+        {
+            string dir = Path.Combine(FileHelper.DataDirectory, "PhantomPersist");
+            try { if (Directory.Exists(dir) == false) Directory.CreateDirectory(dir); } catch { }
+            return dir;
+        }
+
+        private static string PhantomPersistPath(ulong dbGuid)
+            => Path.Combine(PhantomPersistDir(), $"{dbGuid:X}.json");
+
+        /// <summary>
+        /// Called from Player.OnLoadingScreenFinished. Idempotent — subsequent
+        /// calls are no-ops. Rehydrates the nemesis roster, preferred-power
+        /// map, and the Rogue Encounter toggle from the JSON sidecar.
+        /// </summary>
+        internal void LoadPhantomPersist()
+        {
+            if (_phantomPersistLoaded) return;
+            _phantomPersistLoaded = true;
+
+            ulong dbGuid = DatabaseUniqueId;
+            if (dbGuid == 0) return;
+
+            string path = PhantomPersistPath(dbGuid);
+            if (File.Exists(path) == false) return;
+
+            try
+            {
+                string json = File.ReadAllText(path);
+                var blob = JsonSerializer.Deserialize<PhantomPersistBlob>(json, s_persistJsonOptions);
+                if (blob == null) return;
+
+                // Nemesis roster
+                _nemeses.Clear();
+                if (blob.Nemeses != null)
+                {
+                    foreach (var n in blob.Nemeses) _nemeses.Add(n);
+                }
+
+                // Preferred powers
+                _preferredPowers.Clear();
+                if (blob.PreferredPowers != null)
+                {
+                    foreach (var kvp in blob.PreferredPowers) _preferredPowers[kvp.Key] = kvp.Value;
+                }
+
+                // Rogue Encounter toggle — use the field directly so the
+                // setter's scheduling side effect fires only if we're
+                // enabling and the caller isn't yet scheduled.
+                if (blob.RogueEncounterEnabled)
+                    RogueEncounterEnabled = true;
+
+                PersistLogger.Info($"[PhantomPersist] {GetName()}: loaded {_nemeses.Count} nemesis entries, {_preferredPowers.Count} preferred powers");
+            }
+            catch (Exception ex)
+            {
+                PersistLogger.Warn($"[PhantomPersist] load failed for 0x{dbGuid:X}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Called from Player.ExitGame. Writes the sidecar synchronously so
+        /// the file is on disk before we return control to the logout path.
+        /// </summary>
+        internal void SavePhantomPersist()
+        {
+            ulong dbGuid = DatabaseUniqueId;
+            if (dbGuid == 0) return;
+
+            // Only write if there's actually something worth persisting — no
+            // point littering the folder with empty stubs for players who
+            // never engaged with the phantom systems.
+            bool hasData = _nemeses.Count > 0
+                        || _preferredPowers.Count > 0
+                        || _rogueEncounterEnabled;
+            string path = PhantomPersistPath(dbGuid);
+            if (hasData == false)
+            {
+                try { if (File.Exists(path)) File.Delete(path); } catch { }
+                return;
+            }
+
+            try
+            {
+                var blob = new PhantomPersistBlob
+                {
+                    Version = 1,
+                    Nemeses = new List<NemesisEntry>(_nemeses),
+                    PreferredPowers = new Dictionary<ulong, ulong>(_preferredPowers),
+                    RogueEncounterEnabled = _rogueEncounterEnabled,
+                };
+                string json = JsonSerializer.Serialize(blob, s_persistJsonOptions);
+                // Write to a temp file + move so a crash mid-write can't
+                // corrupt the sidecar and lose the whole roster.
+                string tempPath = path + ".tmp";
+                File.WriteAllText(tempPath, json);
+                if (File.Exists(path)) File.Delete(path);
+                File.Move(tempPath, path);
+
+                PersistLogger.Info($"[PhantomPersist] {GetName()}: saved {_nemeses.Count} nemesis entries, {_preferredPowers.Count} preferred powers");
+            }
+            catch (Exception ex)
+            {
+                PersistLogger.Warn($"[PhantomPersist] save failed for 0x{dbGuid:X}: {ex.Message}");
+            }
+        }
+
+        private sealed class PhantomPersistBlob
+        {
+            public int Version { get; set; }
+            public List<NemesisEntry> Nemeses { get; set; }
+            public Dictionary<ulong, ulong> PreferredPowers { get; set; }
+            public bool RogueEncounterEnabled { get; set; }
+        }
+    }
+}

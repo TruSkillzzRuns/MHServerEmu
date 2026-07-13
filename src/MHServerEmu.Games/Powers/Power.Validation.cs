@@ -79,9 +79,27 @@ namespace MHServerEmu.Games.Powers
                 return PowerUseResult.InsufficientSecondaryResource;
 
             if (CheckCanTriggerEval() == false)
-                return PowerUseResult.RestrictiveCondition;
+            {
+                // Phantom heroes (both friendly squad members and enemy
+                // Rogue Encounter phantoms) don't share the full runtime
+                // state a real player's Avatar has — mission progression,
+                // combat flags, cosmic bonuses, etc. Many powers' EvalCanTrigger
+                // scripts probe those, and reject cleanly for a phantom
+                // owner. Without this bypass every ranged/melee power on
+                // an enemy Venom / Winter Soldier / etc. returned
+                // RestrictiveCondition against a real player, so phantoms
+                // stood there swinging with only their basic attack landing.
+                // Bypass EvalCanTrigger for phantom owners specifically —
+                // the outer Power.Validation checks (cooldown, range,
+                // resource, alliance) still gate them, so this doesn't
+                // free phantoms to spam heals or utility incorrectly, it
+                // just removes the "scripted mission gate" step that never
+                // applies to a phantom.
+                if (Owner is not MHServerEmu.Games.Entities.Avatars.Avatar av || av.IsPhantomHero == false)
+                    return PowerUseResult.RestrictiveCondition;
+            }
 
-            return PowerUseResult.Success;                
+            return PowerUseResult.Success;
         }
 
         public bool CheckCanTriggerEval()

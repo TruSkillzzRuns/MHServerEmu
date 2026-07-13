@@ -522,6 +522,10 @@ namespace MHServerEmu.Games.Entities
             // only recovery (see Avatar.PhantomHero.cs orphaning bug).
             try { PurgePhantomsOnExitGame(); } catch { /* best effort — don't block ExitGame */ }
 
+            // Persist nemesis roster / preferred powers / Rogue Encounter
+            // toggle so they survive logout. See Player.PhantomPersist.cs.
+            try { SavePhantomPersist(); } catch { /* best effort */ }
+
             SendMessage(NetMessageBeginExitGame.DefaultInstance);
             AOI?.SetRegion(0, true);
 
@@ -2668,6 +2672,13 @@ namespace MHServerEmu.Games.Entities
             if (IsOnLoadingScreen)
             {
                 IsOnLoadingScreen = false;
+
+                // Rehydrate nemesis roster / preferred powers / Rogue
+                // Encounter toggle from the JSON sidecar the first time
+                // this player finishes loading in a session. Guarded
+                // internally so cross-region hops don't reset the state.
+                try { LoadPhantomPersist(); } catch { /* best effort */ }
+
                 var region = GetRegion();
                 if (region == null) return;
                 region.LoadingScreenFinishedEvent.Invoke(new(this, region.PrototypeDataRef));

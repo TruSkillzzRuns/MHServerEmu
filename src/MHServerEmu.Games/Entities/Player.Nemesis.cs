@@ -23,9 +23,13 @@ namespace MHServerEmu.Games.Entities
         public const int NemesisMaxRank = 5;
 
         // Weighted chance a Rogue Encounter draws from the nemesis roster
-        // instead of picking a random hero. Only checked when the roster
-        // has at least one entry.
-        internal const double NemesisRogueChance = 0.40;
+        // instead of picking a random hero. Rolled independently for EACH
+        // spawn slot, so a 3-hostile encounter with an active nemesis on
+        // the roster is very likely to include them — and if you have
+        // multiple active nemeses, multiple slots can be nemeses in the
+        // same encounter. Only checked when the roster has at least one
+        // active (non-Defeated) entry.
+        internal const double NemesisRogueChance = 0.80;
 
         // Rank → suffix. Kept short so nameplates read like "PhantomWolverine
         // the Slayer" not a paragraph.
@@ -40,6 +44,14 @@ namespace MHServerEmu.Games.Entities
         };
 
         private readonly List<NemesisEntry> _nemeses = new();
+        // Debounce: OnKilled can fire multiple times during the death
+        // sequence — real-player auto-revive triggers OnKilled once when
+        // HP hits 0, then again if lingering damage puts them back at 0
+        // during the resurrect window. Without this, one "real" death was
+        // registering as rank 4-5. Only accept one kill per (heroRef,
+        // 5-second window).
+        private readonly Dictionary<ulong, long> _lastKillMsByHeroRef = new();
+        private const long NemesisKillDebounceMs = 5_000;
 
         public IReadOnlyList<NemesisEntry> Nemeses => _nemeses;
 
@@ -58,6 +70,15 @@ namespace MHServerEmu.Games.Entities
             string killerName = killerAvatar.GetOwnerOfType<Player>()?.GetName() ?? string.Empty;
             long nowMs = Game?.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond ?? 0;
 
+            // Debounce: swallow duplicate registers from the same hero
+            // within the death-sequence window.
+            if (_lastKillMsByHeroRef.TryGetValue((ulong)heroRef, out long lastMs)
+                && nowMs - lastMs < NemesisKillDebounceMs)
+            {
+                return;
+            }
+            _lastKillMsByHeroRef[(ulong)heroRef] = nowMs;
+
             NemesisEntry entry = _nemeses.FirstOrDefault(n => n.HeroRef == (ulong)heroRef);
             if (entry == null)
             {
@@ -66,6 +87,7 @@ namespace MHServerEmu.Games.Entities
                     HeroRef        = (ulong)heroRef,
                     Rank           = 1,
                     Kills          = 1,
+                    Defeated       = false,
                     LastKillerName = killerName,
                     LastKillMs     = nowMs,
                 };
@@ -76,27 +98,46 @@ namespace MHServerEmu.Games.Entities
             {
                 entry.Kills++;
                 if (entry.Rank < NemesisMaxRank) entry.Rank++;
+                bool wasDefeated = entry.Defeated;
+                entry.Defeated = false;
                 entry.LastKillerName = killerName;
                 entry.LastKillMs = nowMs;
-                NemesisLogger.Info($"[Nemesis] {GetName()}: '{heroRef.GetName()}' rank → {entry.Rank} (kills {entry.Kills})");
+                if (wasDefeated)
+                    NemesisLogger.Info($"[Nemesis] {GetName()}: DEFEATED nemesis '{heroRef.GetName()}' reactivated at rank {entry.Rank} (kills {entry.Kills})");
+                else
+                    NemesisLogger.Info($"[Nemesis] {GetName()}: '{heroRef.GetName()}' rank → {entry.Rank} (kills {entry.Kills})");
             }
         }
 
         /// <summary>
         /// Called when the player successfully kills a nemesis phantom.
-        /// Removes the entry if found — the loop closes.
+        /// Marks the entry Defeated (kept in the history) instead of
+        /// removing it — the roster is a permanent record.
         /// </summary>
         public bool RetireNemesis(ulong heroRef)
         {
             NemesisEntry entry = _nemeses.FirstOrDefault(n => n.HeroRef == heroRef);
             if (entry == null) return false;
-            _nemeses.Remove(entry);
-            NemesisLogger.Info($"[Nemesis] {GetName()}: retired '{((PrototypeId)heroRef).GetName()}' after revenge kill");
+            if (entry.Defeated) return false; // idempotent — corpse tick fires more than once per phantom
+            entry.Defeated = true;
+            entry.RevengeKills++;
+            NemesisLogger.Info($"[Nemesis] {GetName()}: DEFEATED '{((PrototypeId)heroRef).GetName()}' — revenge #{entry.RevengeKills}, rank retained at {entry.Rank}");
             return true;
         }
 
-        /// <summary>Banish from the app — same effect as a revenge kill.</summary>
-        public bool BanishNemesis(ulong heroRef) => RetireNemesis(heroRef);
+        /// <summary>
+        /// Banish from the app — permanently removes the entry from the
+        /// history. Distinct from RetireNemesis (which just marks the entry
+        /// Defeated for the roster's historical record).
+        /// </summary>
+        public bool BanishNemesis(ulong heroRef)
+        {
+            NemesisEntry entry = _nemeses.FirstOrDefault(n => n.HeroRef == heroRef);
+            if (entry == null) return false;
+            _nemeses.Remove(entry);
+            NemesisLogger.Info($"[Nemesis] {GetName()}: banished '{((PrototypeId)heroRef).GetName()}' from the history");
+            return true;
+        }
 
         /// <summary>
         /// Roll the roster for the next Rogue Encounter spawn. Returns null
@@ -107,20 +148,30 @@ namespace MHServerEmu.Games.Entities
         public NemesisEntry TryPickNemesisForRogue(MHServerEmu.Core.System.Random.GRandom rng)
         {
             if (_nemeses.Count == 0 || rng == null) return null;
-            if (rng.NextDouble() >= NemesisRogueChance) return null;
 
+            // Only ACTIVE nemeses are eligible for a Rogue Encounter respawn.
+            // Defeated ones stay in the history for display but sit out —
+            // if they're going to reactivate it has to be from killing the
+            // player again, not from a random roll.
             long totalWeight = 0;
-            for (int i = 0; i < _nemeses.Count; i++) totalWeight += _nemeses[i].Rank;
-            if (totalWeight <= 0) return _nemeses[0];
+            for (int i = 0; i < _nemeses.Count; i++)
+                if (_nemeses[i].Defeated == false) totalWeight += _nemeses[i].Rank;
+            if (totalWeight <= 0) return null;
+
+            if (rng.NextDouble() >= NemesisRogueChance) return null;
 
             long roll = (long)(rng.NextDouble() * totalWeight);
             long acc = 0;
             for (int i = 0; i < _nemeses.Count; i++)
             {
+                if (_nemeses[i].Defeated) continue;
                 acc += _nemeses[i].Rank;
                 if (roll < acc) return _nemeses[i];
             }
-            return _nemeses[^1];
+            // Fallback: return the last active one (guarded above so this exists).
+            for (int i = _nemeses.Count - 1; i >= 0; i--)
+                if (_nemeses[i].Defeated == false) return _nemeses[i];
+            return null;
         }
 
         /// <summary>Snapshot the nemesis list into MigrationData before a region hop.</summary>
@@ -141,12 +192,45 @@ namespace MHServerEmu.Games.Entities
 
         // ---- Helpers exposed for the rogue-encounter integration ----
 
+        // TOTAL HealthMaxMult by rank (replaces the base enemy multiplier
+        // for nemesis spawns, doesn't stack on top of it). Rank 0 is used
+        // only as a lookup fallback — the callsite skips this method for
+        // fresh non-nemesis rogues and uses EnemyPhantomHealthMult (3.0×)
+        // directly. Calibrated for the user's play pattern of 2-3 friendly
+        // phantoms — soft ramp so early ranks are barely noticeable and
+        // rank 5 caps at "tough mini-boss" not "solo raid boss".
         internal static float NemesisHealthMultForRank(int rank)
         {
-            // Rank 1 = 1.5x baseline (already 2x for enemy phantoms), stacking
-            // to 3.0x at rank 5. Enough to feel dangerous, not unkillable.
-            int r = Math.Clamp(rank, 1, NemesisMaxRank);
-            return 1.0f + 0.5f * r;
+            int r = Math.Clamp(rank, 0, NemesisMaxRank);
+            return r switch
+            {
+                0 => 3.0f,   // baseline enemy — used if this is ever called for a fresh rogue
+                1 => 3.2f,
+                2 => 3.5f,
+                3 => 4.0f,
+                4 => 5.0f,
+                5 => 6.5f,
+                _ => 3.0f,
+            };
+        }
+
+        // Fractional damage boost on top of the enemy phantom base curve.
+        // Rank 1 = +5%, up to rank 5 = +60%. Numbers calibrated so a rank
+        // 5 nemesis lands roughly 1.6× the damage of a fresh rogue — a
+        // meaningful threat without one-shotting a well-geared 60.
+        internal static float NemesisDmgBoostForRank(int rank)
+        {
+            int r = Math.Clamp(rank, 0, NemesisMaxRank);
+            return r switch
+            {
+                0 => 0.00f,
+                1 => 0.05f,
+                2 => 0.15f,
+                3 => 0.25f,
+                4 => 0.40f,
+                5 => 0.60f,
+                _ => 0.00f,
+            };
         }
 
         internal static string NemesisSuffixForRank(int rank)

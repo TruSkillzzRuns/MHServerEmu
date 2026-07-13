@@ -137,13 +137,29 @@ namespace MHServerEmu.Core.Network.Web
                     WebHandler handler = GetHandler(requestContext.LocalPath);
                     await handler?.HandleAsync(requestContext);
 
-                    httpContext.Response.Close();
+                    // The client may have disconnected mid-response (browser
+                    // reload, app poll timed out, etc.). Closing a response
+                    // for a dead connection throws HttpListenerException 1229
+                    // (ERROR_OPERATION_ABORTED). It's not a listener failure
+                    // — swallow it and keep serving.
+                    try { httpContext.Response.Close(); }
+                    catch (HttpListenerException) { }
+                    catch (ObjectDisposedException) { }
 
                     HandledRequests++;
                 }
                 catch (TaskCanceledException)
                 {
                     return;
+                }
+                catch (HttpListenerException hle)
+                {
+                    // Same client-disconnect scenario during
+                    // GetContextAsync / early read — the SDK surfaces these
+                    // as HttpListenerException. Don't tear down the listener.
+                    // The old behaviour turned a single dropped browser tab
+                    // or app-poll timeout into a permanent server outage.
+                    Logger.Warn($"HandleRequestAsync(): client-side error {hle.ErrorCode}: {hle.Message}");
                 }
                 catch (Exception e)
                 {

@@ -86,11 +86,20 @@ namespace MHServerEmu.DatabaseAccess.Models
     }
 
     /// <summary>
-    /// One nemesis on a player's revenge list — an enemy phantom hero that
-    /// has killed them. Rank climbs on each fresh kill; the next Rogue
-    /// Encounter has a chance to spawn the nemesis (buffed by rank + carrying
-    /// a name suffix) instead of a random hero. Player kills the nemesis to
-    /// close the loop; banishing from the app also clears the entry.
+    /// One nemesis on a player's persistent revenge history — an enemy
+    /// phantom hero that has killed them at least once. The list never
+    /// auto-clears; a Banish from the app is the only way to remove an
+    /// entry.
+    ///
+    /// * Active (Defeated == false): they've killed you and haven't been
+    ///   put down since. Eligible for Rogue Encounter respawn with the full
+    ///   HP/damage/star treatment for their current Rank.
+    /// * Defeated (Defeated == true): you got your revenge on their last
+    ///   incarnation. Rank is retained; still in the history but not picked
+    ///   for future ambushes unless they re-kill you and reactivate.
+    ///
+    /// When a Defeated nemesis kills you again, they reactivate and Rank
+    /// bumps one more step (up to NemesisMaxRank).
     /// </summary>
     public sealed class NemesisEntry
     {
@@ -103,6 +112,15 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// <summary>Total number of times this nemesis has killed the player.</summary>
         public int Kills;
 
+        /// <summary>Total number of times the player has taken revenge and killed this nemesis.</summary>
+        public int RevengeKills;
+
+        /// <summary>
+        /// True after a successful revenge kill; false while active. Cleared
+        /// automatically if they come back and kill the player again.
+        /// </summary>
+        public bool Defeated;
+
         /// <summary>
         /// The generated username of the phantom that last killed the
         /// player as this nemesis. Preserved so the next ambush uses the
@@ -111,7 +129,7 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// </summary>
         public string LastKillerName;
 
-        /// <summary>UTC millis of the most recent kill.</summary>
+        /// <summary>UTC millis of the most recent kill (by them, of you).</summary>
         public long LastKillMs;
     }
 

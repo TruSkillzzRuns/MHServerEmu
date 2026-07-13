@@ -707,6 +707,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         HeroName = heroName,
                         n.Rank,
                         n.Kills,
+                        n.RevengeKills,
+                        n.Defeated,
                         LastKillerName = n.LastKillerName ?? string.Empty,
                         Suffix = MHServerEmu.Games.Entities.Player.NemesisSuffixes[System.Math.Clamp(n.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)],
                         LastKillMs = n.LastKillMs,
