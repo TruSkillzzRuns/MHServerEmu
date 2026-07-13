@@ -167,38 +167,43 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // Downed handling. A killable phantom that hit 0 HP stays
                 // IsInWorld true but IsDead — same "downed" state real
                 // players enter, so friendly phantoms and the human caller
-                // can revive via ResurrectOtherAvatar. Track how long
-                // they've been down; if nobody rescues them within
-                // PhantomAutoReviveMs, revive them ourselves so the squad
-                // never permanently loses a member.
+                // can revive via ResurrectOtherAvatar. Phantoms stay down
+                // until someone actually revives them — no auto-revive.
                 long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
                 if (phantom.IsDead)
                 {
-                    if (s_phantomDownedSinceMs.TryGetValue(phantom.Id, out long downedSince) == false)
-                    {
+                    // Mark the down-start so the next-tick alive branch can
+                    // detect the IsDead → alive transition and refresh the
+                    // client-side pose.
+                    if (s_phantomDownedSinceMs.ContainsKey(phantom.Id) == false)
                         s_phantomDownedSinceMs[phantom.Id] = nowMs;
-                    }
-                    else if (nowMs - downedSince >= PhantomAutoReviveMs)
-                    {
-                        try
-                        {
-                            phantom.Resurrect();
-                            // Teleport back to the caller so they don't
-                            // pop back up in the middle of the fight that
-                            // killed them.
-                            Vector3 respawnPos = ChoosePhantomLeashPos(phantom.Region, callerPos, rng, phantom.Bounds.Radius);
-                            phantom.ChangeRegionPosition(respawnPos, null);
-                            s_phantomDownedSinceMs.Remove(phantom.Id);
-                            PhantomLogger.Info($"[PhantomHero:Down] auto-revived {phantom} after {nowMs - downedSince}ms downed");
-                        }
-                        catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Down] auto-revive failed: {ex.Message}"); }
-                    }
+
                     // While downed, skip movement + hunt — a corpse doesn't
                     // walk. The revive priority in the hunt on OTHER phantoms
                     // will still find and raise this one.
                     continue;
                 }
-                s_phantomDownedSinceMs.Remove(phantom.Id);
+
+                // Alive path: if we were tracking this phantom as downed,
+                // they got revived (by the caller or a friendly phantom via
+                // ResurrectOtherAvatar). Force a locomotor refresh so the
+                // client stops rendering the downed pose — without this the
+                // phantom stays visually flat on the ground until the leash
+                // eventually teleports them, which is what the user was
+                // seeing on-screen. Same primitives the leash uses:
+                // Locomotor.Stop() + ChangeRegionPosition to the current
+                // spot triggers a NetMessage the client can process.
+                if (s_phantomDownedSinceMs.Remove(phantom.Id))
+                {
+                    try
+                    {
+                        Vector3 herePos = phantom.RegionLocation.Position;
+                        phantom.Locomotor?.Stop();
+                        phantom.ChangeRegionPosition(herePos, null);
+                        PhantomLogger.Info($"[PhantomHero:Down] {phantom} revived — pose refreshed");
+                    }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Down] revive refresh failed: {ex.Message}"); }
+                }
 
                 // Watchdog + stuck detection + leash — shared with enemy phantoms.
                 PhantomSharedMaintenance(phantom, callerPos, rng);
@@ -234,7 +239,14 @@ namespace MHServerEmu.Games.Entities.Avatars
                     if (foe.IsDead)
                     {
                         if (s_enemyDeadSinceMs.TryGetValue(id, out long deadSince) == false)
+                        {
                             s_enemyDeadSinceMs[id] = nowMs;
+                            // First tick that sees the corpse — close the
+                            // revenge loop if this foe is on the host's
+                            // nemesis roster. Guarded by the "not already
+                            // tracked" check so we only retire once.
+                            try { host.RetireNemesis((ulong)foe.PrototypeDataRef); } catch { }
+                        }
                         else if (nowMs - deadSince >= EnemyPhantomCorpseMs)
                         {
                             try { if (foe.IsInWorld) foe.ExitWorld(); foe.Destroy(); } catch { /* keep ticking */ }
@@ -467,9 +479,41 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // consider the caller a first-class target.
                 if (enemyMode == false && we.Id == Id) continue;
                 if (we.IsDead || we.IsInWorld == false) continue;
-                // Only Agents — filters out props/destructibles/spawner markers.
-                if (we is not Agent) continue;
-                if (phantom.IsHostileTo(we) == false) continue;
+
+                if (enemyMode)
+                {
+                    // Enemy phantoms only hunt player-side avatars — the
+                    // caller (this human), other real players in the region,
+                    // or the caller's friendly phantoms. The hostile-alliance
+                    // trick that lets players damage them also makes mob
+                    // factions look like valid targets in the sweep, and
+                    // whichever mob is closest steals every hunt tick — so
+                    // enemy phantoms end up wandering to a Hydra grunt while
+                    // the player they were meant to hunt stands 40m behind
+                    // them. Restrict to Avatars only and the fantasy holds.
+                    if (we is not Avatar avCand) continue;
+                    if (avCand.Id == Id)
+                    {
+                        // Caller — always a valid target.
+                    }
+                    else
+                    {
+                        Player avOwner = avCand.GetOwnerOfType<Player>();
+                        if (avOwner == null) continue;
+                        bool isRealPlayer = avOwner.PlayerConnection != null;
+                        bool isFriendlyPhantom = avOwner.PhantomCreatorId != 0
+                            && avOwner.PhantomCreatorId == this.PhantomHost?.Id;
+                        // Skip other enemy phantoms (PhantomCreatorId == 0)
+                        // and unrelated foreign phantoms.
+                        if (isRealPlayer == false && isFriendlyPhantom == false) continue;
+                    }
+                }
+                else
+                {
+                    // Friendly phantoms: original sweep — any hostile Agent.
+                    if (we is not Agent) continue;
+                    if (phantom.IsHostileTo(we) == false) continue;
+                }
                 float d = Vector3.DistanceSquared2D(we.RegionLocation.Position, phantomPos);
                 // Skip anything the engine won't accept as a valid target yet.
                 // Dramatic-entrance bosses (Doom, Loki, terminal bosses...) spawn
@@ -602,9 +646,11 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         // Killable-phantom balance knobs.
         private const float PhantomHealthMult = 2.0f;       // +200% HealthMax (real players carry defensive layers phantoms don't have)
-        private const long PhantomAutoReviveMs = 25_000;    // if nothing else revives them, respawn at the caller
 
         // Per-phantom "downed since" timestamp — 0 when alive.
+        // Populated on the first tick that observes IsDead; removed on the
+        // first alive tick after a revive so the alive branch can detect
+        // the transition and force a client-side pose refresh.
         private static readonly Dictionary<ulong, long> s_phantomDownedSinceMs = new();
 
         // Per-phantom next-attack timestamp (ms). Enforces at least ~800ms
@@ -1159,11 +1205,18 @@ namespace MHServerEmu.Games.Entities.Avatars
             //   Otherwise sort survivors by score desc, weighted-random among
             //   the top 5. Favors real cooldown-worthy hits while still varying,
             //   and always fires the basic (0 cd) when nothing bigger is available.
+            // Skill Rotation opt-in — user picks a preferred power per hero
+            // in the app. If it's in the candidate pool AND ready AND in
+            // range, it wins outright (same tier as an ultimate). Blank
+            // (Invalid) falls through to the default weighted picker.
+            PrototypeId preferredPowerRef = PhantomHost?.GetPreferredPower(phantom.PrototypeDataRef) ?? PrototypeId.Invalid;
+
             var candidates = ListPool<(PrototypeId, long)>.Instance.Get();
             try
             {
                 long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
                 PrototypeId readyUltimate = PrototypeId.Invalid;
+                PrototypeId readyPreferred = PrototypeId.Invalid;
 
                 foreach (var kvp in phantom.PowerCollection)
                 {
@@ -1207,6 +1260,11 @@ namespace MHServerEmu.Games.Entities.Avatars
 
                     long cdMs = (long)power.GetCooldownDuration().TotalMilliseconds;
                     candidates.Add((rec.PowerPrototypeRef, cdMs));
+
+                    // Note whether the user's preferred power made it through
+                    // every gate (in range, not on cooldown, not blacklisted).
+                    if (preferredPowerRef != PrototypeId.Invalid && rec.PowerPrototypeRef == preferredPowerRef)
+                        readyPreferred = preferredPowerRef;
                 }
 
                 if (candidates.Count == 0 && readyUltimate == PrototypeId.Invalid)
@@ -1217,6 +1275,10 @@ namespace MHServerEmu.Games.Entities.Avatars
                 if (chosenIsUltimate)
                 {
                     chosenPower = readyUltimate;
+                }
+                else if (readyPreferred != PrototypeId.Invalid)
+                {
+                    chosenPower = readyPreferred;
                 }
                 else
                 {
@@ -1524,6 +1586,15 @@ namespace MHServerEmu.Games.Entities.Avatars
         public ulong SpawnEnemyPhantomHero(PrototypeId avatarRefOverride, int level, out string error)
             => SpawnPhantomHeroCore(avatarRefOverride, level, null, lockLevel: true, 0, null, out error, enemy: true);
 
+        /// <summary>
+        /// Spawn a HOSTILE phantom carrying nemesis flavor — a fixed username
+        /// (so it recognizably returns), rank-based HP scaling, and a name
+        /// suffix applied to the avatar's nameplate. Used by Rogue Encounter
+        /// when the roll picks a nemesis instead of a random hero.
+        /// </summary>
+        public ulong SpawnNemesisPhantomHero(PrototypeId avatarRef, int level, string killerName, int rank, out string error)
+            => SpawnPhantomHeroCore(avatarRef, level, killerName, lockLevel: true, 0, null, out error, enemy: true, nemesisRank: rank);
+
         // Cached mutually-hostile alliance for enemy phantoms, resolved from
         // the loaded client data at runtime (first alliance that is hostile
         // both ways with the player alliance).
@@ -1558,7 +1629,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             return s_enemyAllianceRef;
         }
 
-        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error, bool enemy = false, bool invincible = false)
+        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error, bool enemy = false, bool invincible = false, int nemesisRank = 0)
         {
             if (enemy && ResolveHostileAllianceRef() == PrototypeId.Invalid)
             {
@@ -1785,6 +1856,16 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // loop target players/friendly phantoms, mobs ignore them,
                 // and players able to damage them.
                 phantomAvatar.Properties[PropertyEnum.AllianceOverride] = ResolveHostileAllianceRef();
+
+                // Nemesis-only HP boost — layered ON TOP of the base
+                // PhantomHealthMult so returning nemeses feel meaningfully
+                // tougher than a fresh random Rogue Encounter spawn.
+                if (nemesisRank > 0)
+                {
+                    float rankMult = Player.NemesisHealthMultForRank(nemesisRank);
+                    phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = PhantomHealthMult * rankMult;
+                    phantomAvatar.ResetResources(false);
+                }
             }
             else if (invincible)
             {

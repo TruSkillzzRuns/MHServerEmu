@@ -616,14 +616,22 @@ namespace MHServerEmu.Games.MetaGames
                 // HARDFix for TrainingRoom
                 if (PrototypeDataRef == (PrototypeId)11068099654406640132) // TrainingRoom
                 {
+                    // Skip for phantom Avatars — their synthetic Player has
+                    // no MissionManager and no CH00 missions to complete, so
+                    // this hardfix NREs when a Phantom Heroes restore drops
+                    // a phantom into the Training Room. Only run for real
+                    // players entering the room.
+                    if (avatar.IsPhantomHero) return;
+                    if (player?.MissionManager == null) return;
+
                     var manager = player.MissionManager;
                     var mission = manager.FindMissionByDataRef((PrototypeId)3126128604301631533); // CH00TrainingPathingController
-                    mission.RunCompleted(); 
+                    mission?.RunCompleted();
                     mission = manager.FindMissionByDataRef((PrototypeId)15270503549571702218); // CH00NPEEternitySplinter
-                    mission.RunCompleted();
+                    mission?.RunCompleted();
                     mission = manager.FindMissionByDataRef((PrototypeId)17508547083537161214); // CH00NPETrainingRoom
-                    if (mission.State == MissionState.Completed)
-                        Region.PopulationManager.DespawnSpawnGroups((PrototypeId)17508547083537161214); 
+                    if (mission != null && mission.State == MissionState.Completed)
+                        Region.PopulationManager.DespawnSpawnGroups((PrototypeId)17508547083537161214);
                 }
             }
         }

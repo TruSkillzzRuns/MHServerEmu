@@ -150,6 +150,9 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/phantoms/costume", new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsCostumeWebHandler());
             _webService.RegisterHandler("/webapi/phantoms/gear",    new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsGearWebHandler());
             _webService.RegisterHandler("/webapi/phantoms/squads",  new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsSquadsWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/rogue-encounter", new MHServerEmu.WebFrontend.Handlers.WebApi.RogueEncounterWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/nemesis",         new MHServerEmu.WebFrontend.Handlers.WebApi.NemesisWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/rotation",        new MHServerEmu.WebFrontend.Handlers.WebApi.RotationWebHandler());
 
             // OmegaDev2 Command Console + logs.
             _webService.RegisterHandler("/webapi/console/exec", new MHServerEmu.WebFrontend.Handlers.WebApi.ConsoleExecWebHandler());

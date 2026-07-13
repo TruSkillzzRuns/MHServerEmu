@@ -427,6 +427,12 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             base.OnKilled(killer, killFlags, directKiller);
 
+            // Nemesis capture — if this avatar belongs to a real human and
+            // was killed by an enemy phantom hero, register that phantom on
+            // the human's nemesis roster. Ignore friendly phantom deaths,
+            // mob deaths, and any death not caused by an enemy phantom.
+            TryRegisterNemesisKill(killer, directKiller);
+
             // Deplete resources if needed
             foreach (PrimaryResourceManaBehaviorPrototype primaryManaBehaviorProto in GetPrimaryResourceManaBehaviors())
             {

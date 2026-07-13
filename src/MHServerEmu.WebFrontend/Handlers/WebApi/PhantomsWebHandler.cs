@@ -27,6 +27,7 @@ using MHServerEmu.Games.Entities;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
+using MHServerEmu.Games.Powers;
 
 namespace MHServerEmu.WebFrontend.Handlers.WebApi
 {
@@ -426,6 +427,351 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         }
     }
 
+    public class RogueEncounterWebHandler : WebHandler
+    {
+        // GET  /webapi/phantoms/rogue-encounter/status?player=
+        //  → { Ok, Enabled, CooldownRemainingMs }
+        //
+        // POST /webapi/phantoms/rogue-encounter
+        //   body: { playerName, enabled: bool }         — toggle on/off
+        //   body: { playerName, trigger: true }         — fire one now
+        protected override async Task Get(WebRequestContext context)
+        {
+            Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p => new
+            {
+                Ok = true,
+                Enabled = p.RogueEncounterEnabled,
+                CooldownRemainingMs = p.RogueEncounterCooldownRemainingMs,
+            });
+            await context.SendJsonAsync(result);
+        }
+
+        protected override async Task Post(WebRequestContext context)
+        {
+            string body = await context.ReadUtf8StringAsync();
+
+            string playerName = null;
+            bool? enabled = null;
+            bool trigger = false;
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
+                // GetBoolean() throws on a JSON null, so the app's
+                // trigger-only calls (enabled=null, trigger=true) blew up
+                // the whole parse block and never reached the trigger step.
+                // Read booleans only when the JSON value is actually True/False.
+                if (root.TryGetProperty("enabled", out var en) &&
+                    (en.ValueKind == JsonValueKind.True || en.ValueKind == JsonValueKind.False))
+                    enabled = en.GetBoolean();
+                if (root.TryGetProperty("trigger", out var tr) &&
+                    (tr.ValueKind == JsonValueKind.True || tr.ValueKind == JsonValueKind.False))
+                    trigger = tr.GetBoolean();
+            }
+            catch (Exception ex)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = $"bad request: {ex.Message}" });
+                return;
+            }
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                string message = null;
+                if (enabled.HasValue)
+                {
+                    p.RogueEncounterEnabled = enabled.Value;
+                    message = enabled.Value ? "Rogue Encounter enabled" : "Rogue Encounter disabled";
+                }
+                if (trigger)
+                {
+                    string tr = p.TriggerRogueEncounterNow();
+                    message = message == null ? tr : $"{message}; {tr}";
+                }
+                return new
+                {
+                    Ok = true,
+                    Message = message ?? "no-op",
+                    Enabled = p.RogueEncounterEnabled,
+                    CooldownRemainingMs = p.RogueEncounterCooldownRemainingMs,
+                };
+            });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    public class RotationWebHandler : WebHandler
+    {
+        // GET  /webapi/phantoms/rotation?player=&hero=0x...
+        //   → { Ok, HeroRef, HeroName, PreferredPower, Powers:[{Ref, Name, Level}] }
+        //
+        // POST /webapi/phantoms/rotation
+        //   body: { playerName, heroRef: 0x..., powerRef: 0x... | "" | null }
+        //     empty / null powerRef = clear the preference (fall back to default AI).
+        protected override async Task Get(WebRequestContext context)
+        {
+            string playerQ = PhantomsWebUtil.QueryParam(context, "player");
+            string heroQ = PhantomsWebUtil.QueryParam(context, "hero");
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerQ, null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            if (!PhantomsWebUtil.TryParseRef(heroQ, out ulong heroRefUlong))
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "hero query parameter required (0x-prefixed PrototypeId)" });
+                return;
+            }
+            PrototypeId heroRef = (PrototypeId)heroRefUlong;
+            AvatarPrototype heroProto = heroRef.As<AvatarPrototype>();
+            if (heroProto == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "hero is not an AvatarPrototype" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                var powers = new System.Collections.Generic.List<object>();
+                var seen = new System.Collections.Generic.HashSet<ulong>();
+                var progEntries = new System.Collections.Generic.List<PowerProgressionEntryPrototype>();
+
+                // Ask for the full unlock range (level 0 → 60). Passing
+                // level=-1 alone returns nothing because the underlying
+                // filter also requires either an exact-level match or
+                // retrieveForLevelRange=true. This is level 60 with the
+                // range flag on → every ability unlocked by level 60.
+                if (heroProto.GetPowersUnlockedAtLevel(progEntries, level: 60, retrieveForLevelRange: true, startingLevel: 0))
+                {
+                    foreach (var entry in progEntries)
+                    {
+                        PrototypeId powerRef = entry?.PowerAssignment?.Ability ?? PrototypeId.Invalid;
+                        if (powerRef == PrototypeId.Invalid) continue;
+                        if (seen.Add((ulong)powerRef) == false) continue;
+
+                        // Filter out toggles / travel / passives — only powers
+                        // the phantom AI would actually rotate through.
+                        var pp = powerRef.As<PowerPrototype>();
+                        if (pp == null) continue;
+                        if (pp is MovementPowerPrototype) continue;
+                        if (pp.IsToggled) continue;
+                        if (pp.IsTravelPower) continue;
+                        if (pp.Activation == PowerActivationType.Passive) continue;
+                        if (pp.PowerCategory != PowerCategoryType.NormalPower) continue;
+
+                        string powerRefName = powerRef.GetName() ?? string.Empty;
+                        // Prefer the in-game display name from the locale
+                        // table (LocaleStringId); fall back to the pretty
+                        // filename if the locale is missing an entry.
+                        string displayName = string.Empty;
+                        if (pp.DisplayName != MHServerEmu.Games.GameData.LocaleStringId.Blank)
+                        {
+                            try
+                            {
+                                var loc = MHServerEmu.Games.Locales.LocaleManager.Instance?.CurrentLocale;
+                                if (loc != null)
+                                    displayName = loc.GetLocaleString(pp.DisplayName) ?? string.Empty;
+                            }
+                            catch { }
+                        }
+                        if (string.IsNullOrWhiteSpace(displayName))
+                            displayName = PhantomsWebUtil.PrettyPowerName(powerRefName);
+
+                        powers.Add(new
+                        {
+                            Ref = "0x" + ((ulong)powerRef).ToString("X"),
+                            Name = displayName,
+                            FullRef = powerRefName,
+                            Level = entry.Level,
+                        });
+                    }
+                }
+
+                ulong pref = 0;
+                p.PreferredPowers.TryGetValue((ulong)heroRef, out pref);
+
+                return new
+                {
+                    Ok = true,
+                    HeroRef = "0x" + ((ulong)heroRef).ToString("X"),
+                    HeroName = heroRef.GetName() ?? string.Empty,
+                    PreferredPower = pref == 0 ? string.Empty : ("0x" + pref.ToString("X")),
+                    Powers = powers,
+                };
+            });
+            await context.SendJsonAsync(result);
+        }
+
+        protected override async Task Post(WebRequestContext context)
+        {
+            string body = await context.ReadUtf8StringAsync();
+
+            string playerName = null;
+            string heroRefStr = null;
+            string powerRefStr = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
+                if (root.TryGetProperty("heroRef",    out var hr)) heroRefStr = hr.GetString();
+                // powerRef may be JSON null to clear the preference.
+                if (root.TryGetProperty("powerRef", out var pr) &&
+                    pr.ValueKind != JsonValueKind.Null &&
+                    pr.ValueKind != JsonValueKind.Undefined)
+                    powerRefStr = pr.GetString();
+            }
+            catch (System.Exception ex)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = $"bad request: {ex.Message}" });
+                return;
+            }
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+            if (!PhantomsWebUtil.TryParseRef(heroRefStr, out ulong heroRef))
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "heroRef required" });
+                return;
+            }
+            ulong powerRef = 0;
+            if (!string.IsNullOrWhiteSpace(powerRefStr) && !PhantomsWebUtil.TryParseRef(powerRefStr, out powerRef))
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "powerRef not a ulong / hex" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                p.SetPreferredPower(heroRef, powerRef);
+                return new
+                {
+                    Ok = true,
+                    Message = powerRef == 0
+                        ? "preferred power cleared (default AI)"
+                        : "preferred power set",
+                    PreferredPower = powerRef == 0 ? string.Empty : ("0x" + powerRef.ToString("X")),
+                };
+            });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    public class NemesisWebHandler : WebHandler
+    {
+        // GET  /webapi/phantoms/nemesis?player=
+        //   → { Ok, Nemeses:[{ HeroRef, HeroName, Rank, Kills, LastKillerName, Suffix }] }
+        //
+        // POST /webapi/phantoms/nemesis
+        //   body: { playerName, action: "banish", heroRef: 0x... }
+        //   body: { playerName, action: "clear" }
+        protected override async Task Get(WebRequestContext context)
+        {
+            Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                var list = new System.Collections.Generic.List<object>();
+                foreach (var n in p.Nemeses)
+                {
+                    string heroName = ((PrototypeId)n.HeroRef).GetName() ?? string.Empty;
+                    list.Add(new
+                    {
+                        HeroRef = "0x" + n.HeroRef.ToString("X"),
+                        HeroName = heroName,
+                        n.Rank,
+                        n.Kills,
+                        LastKillerName = n.LastKillerName ?? string.Empty,
+                        Suffix = MHServerEmu.Games.Entities.Player.NemesisSuffixes[System.Math.Clamp(n.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)],
+                        LastKillMs = n.LastKillMs,
+                    });
+                }
+                return new { Ok = true, Nemeses = list };
+            });
+            await context.SendJsonAsync(result);
+        }
+
+        protected override async Task Post(WebRequestContext context)
+        {
+            string body = await context.ReadUtf8StringAsync();
+
+            string playerName = null;
+            string action = null;
+            string heroRefStr = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
+                if (root.TryGetProperty("action",     out var ac)) action = ac.GetString();
+                if (root.TryGetProperty("heroRef",    out var hr)) heroRefStr = hr.GetString();
+            }
+            catch (System.Exception ex)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = $"bad request: {ex.Message}" });
+                return;
+            }
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                if (string.Equals(action, "clear", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    int n = 0;
+                    while (p.Nemeses.Count > 0) { p.BanishNemesis(p.Nemeses[0].HeroRef); n++; }
+                    return new { Ok = true, Message = $"cleared {n} nemeses" };
+                }
+                if (string.Equals(action, "banish", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(heroRefStr))
+                        return (object)new { Ok = false, Error = "heroRef required for banish" };
+                    ulong heroRef = 0;
+                    string s = heroRefStr.Trim();
+                    if (s.StartsWith("0x", System.StringComparison.OrdinalIgnoreCase)) s = s[2..];
+                    if (!ulong.TryParse(s, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out heroRef)
+                        && !ulong.TryParse(s, out heroRef))
+                        return (object)new { Ok = false, Error = "heroRef not a ulong / hex" };
+                    bool ok = p.BanishNemesis(heroRef);
+                    return (object)new { Ok = ok, Message = ok ? "nemesis banished" : "no matching nemesis" };
+                }
+                return (object)new { Ok = false, Error = "unknown action (banish|clear)" };
+            });
+            await context.SendJsonAsync(result);
+        }
+    }
+
     /// <summary>
     /// Shared plumbing for the phantom endpoints: target-player lookup (same
     /// reflection route as ItemGiveWebHandler) and game-thread marshaling.
@@ -469,6 +815,45 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             s = s.Trim();
             if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) s = s[2..];
             return ulong.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out ulong v) ? v : 0;
+        }
+
+        public static bool TryParseRef(string s, out ulong value)
+        {
+            value = ParseRef(s);
+            return value != 0;
+        }
+
+        /// <summary>
+        /// Turn a raw prototype path like
+        /// "Powers/Player/Wolverine/BerserkerRage.prototype" into a short,
+        /// human-readable name like "Berserker Rage".
+        /// </summary>
+        public static string PrettyPowerName(string protoPath)
+        {
+            if (string.IsNullOrEmpty(protoPath)) return protoPath ?? string.Empty;
+            string s = protoPath;
+            int slash = s.LastIndexOf('/');
+            if (slash >= 0 && slash + 1 < s.Length) s = s[(slash + 1)..];
+            if (s.EndsWith(".prototype", StringComparison.OrdinalIgnoreCase)) s = s[..^".prototype".Length];
+
+            // Insert a space before each uppercase letter that isn't at the
+            // start and isn't part of an existing run of uppercase (so
+            // "BerserkerRage" → "Berserker Rage" but "TPMoraleBoost" stays
+            // as "TP Morale Boost").
+            var sb = new System.Text.StringBuilder(s.Length + 8);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (i > 0 && char.IsUpper(c))
+                {
+                    char prev = s[i - 1];
+                    char next = i + 1 < s.Length ? s[i + 1] : '\0';
+                    if (char.IsLower(prev) || (char.IsUpper(prev) && char.IsLower(next)))
+                        sb.Append(' ');
+                }
+                sb.Append(c);
+            }
+            return sb.ToString();
         }
 
         public static Player FindTargetPlayer(string playerName, string playerDbId, out string error)

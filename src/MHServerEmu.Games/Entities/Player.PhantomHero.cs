@@ -280,8 +280,19 @@ namespace MHServerEmu.Games.Entities
             // Enemy phantoms never migrate — they die with the region.
             PurgeEnemyPhantoms();
 
-            if (_phantomDescriptors.Count == 0) return;
             var mig = PlayerConnection?.MigrationData;
+
+            // Rogue Encounter is a per-player setting, not a per-phantom
+            // one — persist it whether or not there are phantoms to snapshot
+            // so the toggle survives every region hop.
+            if (mig != null)
+            {
+                mig.RogueEncounterEnabled = _rogueEncounterEnabled;
+                SnapshotNemesesForTransfer(mig);
+                SnapshotPreferredPowersForTransfer(mig);
+            }
+
+            if (_phantomDescriptors.Count == 0) return;
             if (mig == null)
             {
                 // No migration bus — treat as ExitGame-style cleanup.
@@ -315,7 +326,17 @@ namespace MHServerEmu.Games.Entities
         internal int RestorePhantomsFromMigration(Avatar caller)
         {
             var mig = PlayerConnection?.MigrationData;
-            if (mig == null || mig.PhantomIntents.Count == 0 || caller == null) return 0;
+            if (mig == null || caller == null) return 0;
+
+            // Rogue Encounter opt-in survives region hops. The setter
+            // reschedules the tick automatically when flipped on.
+            if (mig.RogueEncounterEnabled && RogueEncounterEnabled == false)
+                RogueEncounterEnabled = true;
+
+            RestoreNemesesFromMigration(mig);
+            RestorePreferredPowersFromMigration(mig);
+
+            if (mig.PhantomIntents.Count == 0) return 0;
             int spawned = 0;
             foreach (var intent in mig.PhantomIntents)
             {
@@ -328,7 +349,16 @@ namespace MHServerEmu.Games.Entities
                     if (id != 0) spawned++;
                     else PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} failed: {error}");
                 }
-                catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} threw: {ex.Message}"); }
+                catch (System.Exception ex)
+                {
+                    // Full stack trace — the previous "threw: NRE" one-liner
+                    // swallowed the location that would tell us which line
+                    // in SpawnPhantomHeroCore failed.
+                    PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} threw ({ex.GetType().Name}): {ex.Message}\n" +
+                        $"  avatarRef=0x{intent.AvatarRef:X} level={intent.Level} costumeRef=0x{intent.CostumeRef:X} " +
+                        $"gearCount={(intent.GearRefs?.Count ?? 0)} invincible={intent.Invincible} lockLevel={intent.LockLevel}\n" +
+                        $"{ex.StackTrace}");
+                }
             }
             mig.PhantomIntents.Clear();
             PhantomHostLogger.Info($"[Phantom] restore from migration: {spawned} phantom(s) re-spawned");

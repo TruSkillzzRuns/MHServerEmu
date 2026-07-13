@@ -24,6 +24,30 @@ namespace MHServerEmu.DatabaseAccess.Models
         // this on OnEnteredWorld and re-spawns them fresh in the new region.
         public List<PhantomIntent> PhantomIntents { get; } = new();
 
+        /// <summary>
+        /// Whether the Rogue Encounter opt-in was on before the last region
+        /// transfer. Copied out by SnapshotPhantomsForTransfer and read back
+        /// after the new Player entity finishes loading in the next region
+        /// so the setting doesn't reset every time the player warps.
+        /// </summary>
+        public bool RogueEncounterEnabled { get; set; }
+
+        /// <summary>
+        /// Nemesis roster — enemy phantom heroes that have killed this player.
+        /// Each entry tracks the hero and how many times they've closed the
+        /// kill loop; higher rank = tougher when they show up again.
+        /// Cross-region persistent alongside RogueEncounterEnabled.
+        /// </summary>
+        public List<NemesisEntry> Nemeses { get; } = new();
+
+        /// <summary>
+        /// Per-hero preferred power priority. Key = avatar PrototypeId (as
+        /// ulong), value = the PowerPrototypeId the phantom AI should reach
+        /// for first when it's off cooldown and in range. 0 = no preference.
+        /// Persists across region transfers.
+        /// </summary>
+        public Dictionary<ulong, ulong> PreferredPowers { get; } = new();
+
         public MigrationData() { }
 
         public List<(ulong, ulong)> GetOrCreatePropertyList(ulong entityDbId)
@@ -56,7 +80,39 @@ namespace MHServerEmu.DatabaseAccess.Models
             MatchQueueStatus = null;
             CommunityStatus.Clear();
             PhantomIntents.Clear();
+            Nemeses.Clear();
+            PreferredPowers.Clear();
         }
+    }
+
+    /// <summary>
+    /// One nemesis on a player's revenge list — an enemy phantom hero that
+    /// has killed them. Rank climbs on each fresh kill; the next Rogue
+    /// Encounter has a chance to spawn the nemesis (buffed by rank + carrying
+    /// a name suffix) instead of a random hero. Player kills the nemesis to
+    /// close the loop; banishing from the app also clears the entry.
+    /// </summary>
+    public sealed class NemesisEntry
+    {
+        /// <summary>Hero PrototypeId as ulong.</summary>
+        public ulong HeroRef;
+
+        /// <summary>Rank climbs on repeat deaths. 1..5, capped.</summary>
+        public int Rank;
+
+        /// <summary>Total number of times this nemesis has killed the player.</summary>
+        public int Kills;
+
+        /// <summary>
+        /// The generated username of the phantom that last killed the
+        /// player as this nemesis. Preserved so the next ambush uses the
+        /// same recognizable name ("VenomousGhost042 has returned…").
+        /// Never a real player's account name.
+        /// </summary>
+        public string LastKillerName;
+
+        /// <summary>UTC millis of the most recent kill.</summary>
+        public long LastKillMs;
     }
 
     /// <summary>
