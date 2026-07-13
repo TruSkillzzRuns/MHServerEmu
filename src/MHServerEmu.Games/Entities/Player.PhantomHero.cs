@@ -32,6 +32,16 @@ namespace MHServerEmu.Games.Entities
         private readonly List<ulong> _phantomPlayerIds = new();
         private readonly List<PhantomIntent> _phantomDescriptors = new();
 
+        // Keyed by phantom runtime id, value is the DbGuid the client's
+        // party UI currently has for that member. Used by SyncPhantomParty
+        // to emit an explicit PartyMemberInfoClientUpdate/ePME_Remove when
+        // a phantom drops off the roster — without this the client keeps
+        // the removed member visible with stale/zero HP forever, and
+        // subsequent spawn/clear cycles accumulate ghost members past the
+        // client's 5-member cap. Adapted from lordunborn's fork
+        // (github.com/lordunborn/MHServerEmu, commit 79514463).
+        private readonly Dictionary<ulong, ulong> _syncedPhantomMemberDbIds = new();
+
         public IReadOnlyList<ulong> PhantomAvatarIds => _phantomAvatarIds;
         public IReadOnlyList<ulong> PhantomPlayerIds => _phantomPlayerIds;
         public int PhantomHeroCount => _phantomAvatarIds.Count;
@@ -135,6 +145,57 @@ namespace MHServerEmu.Games.Entities
             _phantomDescriptors.RemoveAt(idx);
             SyncPhantomParty();
             return true;
+        }
+
+        /// <summary>
+        /// Look up the stored descriptor for a live friendly phantom. Used by
+        /// the tick loop's team-up death-respawn hook so it can capture the
+        /// (avatarRef, level, username) recipe BEFORE the phantom is unregistered.
+        /// Returns default(PhantomIntent) if the id isn't tracked.
+        /// </summary>
+        internal PhantomIntent GetPhantomDescriptor(ulong avatarId)
+        {
+            int idx = _phantomAvatarIds.IndexOf(avatarId);
+            if (idx < 0) return default;
+            return _phantomDescriptors[idx];
+        }
+
+        // ---- Team-up death respawn queue ----
+        // When a friendly team-up phantom dies, its (descriptor, dueAtMs) is
+        // enqueued here. The tick loop drains this list and re-spawns each
+        // team-up on its due time — 90s after death, so the fight has time to
+        // resolve without the team-up popping back mid-fight.
+        internal sealed class TeamUpRespawnEntry
+        {
+            public PhantomIntent Descriptor;
+            public long DueAtMs;
+        }
+        private readonly List<TeamUpRespawnEntry> _teamUpRespawnQueue = new();
+
+        internal void EnqueueTeamUpRespawn(PhantomIntent descriptor, long dueAtMs)
+        {
+            _teamUpRespawnQueue.Add(new TeamUpRespawnEntry { Descriptor = descriptor, DueAtMs = dueAtMs });
+        }
+
+        /// <summary>
+        /// Non-zero if there are pending team-up respawns waiting to fire — the
+        /// tick loop uses this to keep itself alive even when every live phantom
+        /// has been cleared so the respawn actually happens on schedule.
+        /// </summary>
+        internal int TeamUpRespawnQueueCount => _teamUpRespawnQueue.Count;
+
+        internal List<TeamUpRespawnEntry> DrainTeamUpRespawnsDue(long nowMs)
+        {
+            List<TeamUpRespawnEntry> ready = null;
+            for (int i = _teamUpRespawnQueue.Count - 1; i >= 0; i--)
+            {
+                if (_teamUpRespawnQueue[i].DueAtMs <= nowMs)
+                {
+                    (ready ??= new List<TeamUpRespawnEntry>()).Add(_teamUpRespawnQueue[i]);
+                    _teamUpRespawnQueue.RemoveAt(i);
+                }
+            }
+            return ready;
         }
 
         /// <summary>
@@ -423,6 +484,45 @@ namespace MHServerEmu.Games.Entities
 
             ulong groupId = ComputeSyntheticGroupId();
 
+            // Anyone tracked as synced last time but no longer in the live
+            // roster needs an explicit per-member Remove event. The client's
+            // party roster is keyed incrementally (see PartyManager.cs
+            // OnPartyMemberInfoServerUpdate) and does NOT drop stale members
+            // just because a later PartyInfoClientUpdate snapshot happens to
+            // omit them. Without this, despawned phantoms leave "ghost"
+            // members that accumulate past the 5-member cap on repeated
+            // spawn/clear cycles.
+            List<ulong> staleRuntimeIds = null;
+            foreach (var kvp in _syncedPhantomMemberDbIds)
+            {
+                if (_phantomPlayerIds.Contains(kvp.Key)) continue;
+                (staleRuntimeIds ??= new List<ulong>()).Add(kvp.Key);
+            }
+            if (staleRuntimeIds != null)
+            {
+                foreach (ulong runtimeId in staleRuntimeIds)
+                {
+                    ulong staleMemberDbId = _syncedPhantomMemberDbIds[runtimeId];
+                    try
+                    {
+                        SendMessage(PartyMemberInfoClientUpdate.CreateBuilder()
+                            .SetGroupId(groupId)
+                            .SetMemberDbGuid(staleMemberDbId)
+                            .SetMemberEvent(PartyMemberEvent.ePME_Remove)
+                            .Build());
+                    }
+                    catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party] member-remove failed: {ex.Message}"); }
+
+                    // Also drop the community party-circle registration so
+                    // the AvatarSlotInfo cache stays clean across
+                    // spawn/clear cycles.
+                    try { Community?.RemoveMember(staleMemberDbId, MHServerEmu.Games.Social.Communities.CircleId.__Party); }
+                    catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party] community remove failed: {ex.Message}"); }
+
+                    _syncedPhantomMemberDbIds.Remove(runtimeId);
+                }
+            }
+
             // Empty list = teardown. Send a client update with a null
             // PartyInfo to hide the group HUD on the client.
             if (_phantomAvatarIds.Count == 0)
@@ -466,10 +566,88 @@ namespace MHServerEmu.Games.Entities
             {
                 Player phantom = mgr.GetEntity<Player>(_phantomPlayerIds[i]);
                 if (phantom == null) continue;
-                partyInfoBuilder.AddMembers(PartyMemberInfo.CreateBuilder()
+                var phantomMemberInfo = PartyMemberInfo.CreateBuilder()
                     .SetPlayerDbId(phantom.DatabaseUniqueId)
                     .SetPlayerName(phantom.GetName())
-                    .Build());
+                    .Build();
+                partyInfoBuilder.AddMembers(phantomMemberInfo);
+
+                // First-time sync for this phantom: (1) explicit Add event
+                // for the party HUD, and (2) register the phantom in the
+                // human's Community.__Party circle + broadcast its
+                // AvatarSlotInfo. The party UI's HP-bar wiring resolves
+                // party members via CommunityMember.GetAvatarSlotInfo (see
+                // Player.OnPartyCircleChanged) — without the community
+                // registration + broadcast, member.GetAvatarSlotInfo
+                // returns null for phantoms and the party UI shows a
+                // nameplate but no HP bar.
+                if (_syncedPhantomMemberDbIds.ContainsKey(_phantomPlayerIds[i]) == false)
+                {
+                    try
+                    {
+                        SendMessage(PartyMemberInfoClientUpdate.CreateBuilder()
+                            .SetGroupId(groupId)
+                            .SetMemberDbGuid(phantom.DatabaseUniqueId)
+                            .SetMemberEvent(PartyMemberEvent.ePME_Add)
+                            .SetMemberInfo(phantomMemberInfo)
+                            .Build());
+                    }
+                    catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party] member-add failed: {ex.Message}"); }
+
+                    // Community party-circle registration + broadcast.
+                    // For avatar phantoms the standard RequestLocalBroadcast
+                    // (which internally calls phantom.BuildCommunityBroadcast)
+                    // works — it reads CurrentAvatar. Team-up phantoms have
+                    // no CurrentAvatar, so we build the broadcast manually
+                    // with the team-up's own proto ref + level; without this
+                    // the party HUD shows the nameplate but no HP bar for
+                    // team-up phantoms.
+                    try
+                    {
+                        if (Community != null)
+                        {
+                            bool added = Community.AddMember(phantom.DatabaseUniqueId, phantom.GetName(), MHServerEmu.Games.Social.Communities.CircleId.__Party);
+                            var member = Community.GetMember(phantom.DatabaseUniqueId);
+                            bool broadcast = false;
+                            if (member != null)
+                            {
+                                var teamUpAgent = mgr.GetEntity<Agent>(_phantomAvatarIds[i]);
+                                if (teamUpAgent != null && teamUpAgent.IsTeamUpAgent)
+                                {
+                                    var teamUpBroadcast = Gazillion.CommunityMemberBroadcast.CreateBuilder()
+                                        .SetMemberPlayerDbId(phantom.DatabaseUniqueId)
+                                        .SetCurrentRegionRefId((ulong)(teamUpAgent.Region?.PrototypeDataRef ?? MHServerEmu.Games.GameData.PrototypeId.Invalid))
+                                        .AddSlots(Gazillion.CommunityMemberAvatarSlot.CreateBuilder()
+                                            .SetAvatarRefId((ulong)teamUpAgent.PrototypeDataRef)
+                                            .SetCostumeRefId(0)
+                                            .SetLevel((uint)teamUpAgent.CharacterLevel)
+                                            .SetPrestigeLevel(0))
+                                        .SetCurrentPlayerName(phantom.GetName())
+                                        .SetIsOnline(1)
+                                        .Build();
+                                    Community.ReceiveMemberBroadcast(teamUpBroadcast);
+                                    broadcast = true;
+                                }
+                                else
+                                {
+                                    broadcast = Community.RequestLocalBroadcast(member);
+                                }
+                            }
+                            PhantomHostLogger.Info($"[Phantom:Party] community register '{phantom.GetName()}' 0x{phantom.DatabaseUniqueId:X}: added={added} memberFound={member != null} broadcasted={broadcast}");
+                        }
+                        else
+                        {
+                            PhantomHostLogger.Warn($"[Phantom:Party] community register skipped — Community is null on {GetName()}");
+                        }
+                    }
+                    catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party] community register failed: {ex.Message}"); }
+                }
+
+                // Record what the client now knows about, keyed by the
+                // phantom's runtime id so the next SyncPhantomParty can
+                // emit a Remove for this DbGuid even after the entity is
+                // gone. See the stale-cleanup block above.
+                _syncedPhantomMemberDbIds[_phantomPlayerIds[i]] = phantom.DatabaseUniqueId;
             }
 
             try

@@ -91,6 +91,44 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         ProtoRef = $"0x{(ulong)avatarRef:X16}",
                         Name = shortName,
                         DisplayName = displayName,
+                        Kind = "avatar",
+                        PortraitPath = portraitCandidates.Count > 0 ? portraitCandidates[0] : null,
+                        PortraitCandidates = portraitCandidates,
+                    });
+                }
+
+                // Team-up phantoms — same shape as avatar entries, but marked
+                // Kind=teamup so the app can route them to the team-up spawn
+                // endpoint. Team-ups don't carry the same rich portrait set
+                // as avatars — most only have PortraitPath.
+                foreach (var (teamUpRef, shortName) in Avatar.GetAllPhantomTeamUpRefs())
+                {
+                    var teamUpProto = teamUpRef.As<AgentTeamUpPrototype>();
+                    if (teamUpProto == null) continue;
+
+                    string displayName = null;
+                    if (teamUpProto.DisplayName != LocaleStringId.Invalid && locale != null)
+                    {
+                        displayName = locale.GetLocaleString(teamUpProto.DisplayName);
+                        if (string.IsNullOrWhiteSpace(displayName)) displayName = null;
+                    }
+
+                    var portraitCandidates = new List<string>(2);
+                    void AddCandidate2(AssetId assetId)
+                    {
+                        if (assetId == 0) return;
+                        string assetName = GameDatabase.GetAssetName(assetId);
+                        if (string.IsNullOrEmpty(assetName) == false && portraitCandidates.Contains(assetName) == false)
+                            portraitCandidates.Add(assetName);
+                    }
+                    AddCandidate2(teamUpProto.PortraitPath);
+
+                    heroes.Add(new
+                    {
+                        ProtoRef = $"0x{(ulong)teamUpRef:X16}",
+                        Name = shortName,
+                        DisplayName = displayName,
+                        Kind = "teamup",
                         PortraitPath = portraitCandidates.Count > 0 ? portraitCandidates[0] : null,
                         PortraitCandidates = portraitCandidates,
                     });

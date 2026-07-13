@@ -226,9 +226,17 @@ namespace MHServerEmu.Games.Entities
             if (members.Count > 50)
                 return "Squad too large (max 50).";
 
+            // Accept both Avatar refs and AgentTeamUp refs — the spawn
+            // dispatch in Avatar.SpawnPhantomHeroFromIntent routes each ref
+            // to the right path at spawn time. Rejecting team-ups here would
+            // block the whole squad even if only one team-up was in it.
             foreach (var m in members)
-                if (((PrototypeId)m.AvatarRef).As<GameData.Prototypes.AvatarPrototype>() == null)
-                    return $"0x{m.AvatarRef:X16} is not an avatar prototype.";
+            {
+                var protoRef = (PrototypeId)m.AvatarRef;
+                if (protoRef.As<GameData.Prototypes.AvatarPrototype>() == null
+                 && protoRef.As<GameData.Prototypes.AgentTeamUpPrototype>() == null)
+                    return $"0x{m.AvatarRef:X16} is not an avatar or team-up prototype.";
+            }
 
             var squads = LoadPhantomSquadFile();
             if (squads.ContainsKey(squadName) == false && squads.Count >= PhantomSquadMaxCount)

@@ -57,17 +57,19 @@ namespace MHServerEmu.Games.Entities
 
         /// <summary>
         /// Register a nemesis kill. Called from Avatar.OnKilled when the
-        /// human's avatar is downed by an enemy phantom hero. Adds the hero
-        /// to the roster or bumps their rank if they were already on it.
+        /// human's avatar is downed by an enemy phantom hero — the killer
+        /// may be an Avatar phantom OR a team-up phantom (both are Agent).
+        /// Adds the hero/team-up to the roster or bumps their rank if they
+        /// were already on it.
         /// </summary>
-        public void RegisterNemesisKill(Avatar killerAvatar)
+        public void RegisterNemesisKill(Agent killer)
         {
-            if (killerAvatar == null) return;
+            if (killer == null) return;
 
-            PrototypeId heroRef = killerAvatar.PrototypeDataRef;
+            PrototypeId heroRef = killer.PrototypeDataRef;
             if (heroRef == PrototypeId.Invalid) return;
 
-            string killerName = killerAvatar.GetOwnerOfType<Player>()?.GetName() ?? string.Empty;
+            string killerName = killer.GetOwnerOfType<Player>()?.GetName() ?? string.Empty;
             long nowMs = Game?.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond ?? 0;
 
             // Debounce: swallow duplicate registers from the same hero
@@ -201,16 +203,20 @@ namespace MHServerEmu.Games.Entities
         // rank 5 caps at "tough mini-boss" not "solo raid boss".
         internal static float NemesisHealthMultForRank(int rank)
         {
+            // Rescaled after the PvP-damage-scaling bug fix — enemy phantoms
+            // now take full damage, so the rank curve is steeper. Rank 5
+            // nemesis lands at 20× HealthMax — a proper mini-boss encounter
+            // that can't be one-shot by a well-geared 60.
             int r = Math.Clamp(rank, 0, NemesisMaxRank);
             return r switch
             {
-                0 => 3.0f,   // baseline enemy — used if this is ever called for a fresh rogue
-                1 => 3.2f,
-                2 => 3.5f,
-                3 => 4.0f,
-                4 => 5.0f,
-                5 => 6.5f,
-                _ => 3.0f,
+                0 => 8.0f,   // baseline enemy — matches EnemyPhantomHealthMult
+                1 => 8.5f,
+                2 => 10.0f,
+                3 => 12.0f,
+                4 => 15.0f,
+                5 => 20.0f,
+                _ => 8.0f,
             };
         }
 

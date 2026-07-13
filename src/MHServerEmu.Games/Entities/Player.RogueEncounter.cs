@@ -29,6 +29,10 @@ namespace MHServerEmu.Games.Entities
         // 25% roll chance per eligibility check → expected value ~1 encounter
         // every 4 minutes of active play, floored by the cooldown above.
         private const double RogueEncounterRollChance = 0.25;
+        // Per-slot chance a rogue phantom is drawn from the team-up pool
+        // instead of the avatar pool. Kept low so avatar phantoms remain
+        // the "canonical" rogue face but team-up cameos happen occasionally.
+        private const double RogueEncounterTeamUpChance = 0.15;
 
         private bool _rogueEncounterEnabled;
         private long _rogueEncounterLastMs;
@@ -169,7 +173,13 @@ namespace MHServerEmu.Games.Entities
                 }
                 else
                 {
-                    id = avatar.SpawnEnemyPhantomHero(PrototypeId.Invalid, 0, out err);
+                    // Team-up cameo: small per-slot chance to draw from the
+                    // team-up pool instead of the avatar pool. SpawnEnemyPhantomHero
+                    // detects a team-up ref and dispatches to the team-up path.
+                    PrototypeId roll = rng.NextDouble() < RogueEncounterTeamUpChance
+                        ? PickRandomTeamUpRef(rng)
+                        : PrototypeId.Invalid;
+                    id = avatar.SpawnEnemyPhantomHero(roll, 0, out err);
                 }
                 if (id != 0) spawned++;
                 else firstError ??= err;
@@ -282,6 +292,18 @@ namespace MHServerEmu.Games.Entities
             return path.Contains("/Terminals/", System.StringComparison.OrdinalIgnoreCase)
                 || path.Contains("/Cosmic/", System.StringComparison.OrdinalIgnoreCase)
                 || path.Contains("BossChamber", System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Uniformly pick a random team-up ref from the resolved pool. Returns
+        /// PrototypeId.Invalid if the pool is empty (which routes the caller
+        /// back to the default avatar path).
+        /// </summary>
+        private static PrototypeId PickRandomTeamUpRef(MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            var pool = Avatar.GetAllPhantomTeamUpRefs();
+            if (pool.Count == 0) return PrototypeId.Invalid;
+            return pool[rng.Next(0, pool.Count)].TeamUpRef;
         }
 
         private sealed class RogueEncounterCheckEvent : CallMethodEvent<Player>

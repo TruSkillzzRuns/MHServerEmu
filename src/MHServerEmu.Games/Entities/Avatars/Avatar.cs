@@ -99,11 +99,9 @@ namespace MHServerEmu.Games.Entities.Avatars
         public bool IsUsingGamepadInput { get; set; } = false;
         public PrototypeId CurrentTransformMode { get; private set; } = PrototypeId.Invalid;
 
-        // Phantom heroes (SpawnPhantomHero) have no client — the server MUST be
-        // authoritative for their movement, or Locomotor.FollowEntity produces no
-        // visible walking on the real client's screen. Real avatars keep the
-        // default false so the client stays in charge.
-        public bool IsPhantomHero { get; internal set; }
+        // IsPhantomHero lives on Agent (base). Avatar overrides
+        // IsMovementAuthoritative to key off it so phantom avatars are
+        // server-driven while real avatars stay client-driven.
         public override bool IsMovementAuthoritative => IsPhantomHero;
         public override bool CanBeRepulsed => false;
         public override bool CanRepulseOthers => false;
@@ -598,7 +596,16 @@ namespace MHServerEmu.Games.Entities.Avatars
         {
             if (!Verify.IsNotNull(ultimateOwner)) return;
 
-            if (ultimateOwner is Avatar && ultimateOwner.Properties[PropertyEnum.PendingResurrectEntityId] == Id)
+            // Phantom heroes have no client to click the "Accept resurrect"
+            // dialog. If we send them the confirmation request they'd stay
+            // downed forever. Apply the revive immediately when the target is
+            // a phantom (its owning Player has no PlayerConnection).
+            bool targetIsPhantom = IsPhantomHero
+                || GetOwnerOfType<Player>()?.PlayerConnection == null;
+
+            if (targetIsPhantom == false
+                && ultimateOwner is Avatar
+                && ultimateOwner.Properties[PropertyEnum.PendingResurrectEntityId] == Id)
             {
                 // Ask this player for confirmation if this is a resurrect from another player.
                 ultimateOwner.Properties.RemoveProperty(PropertyEnum.PendingResurrectEntityId);
@@ -607,6 +614,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             else
             {
                 // Apply resurrection from other sources immediately.
+                if (ultimateOwner.Properties[PropertyEnum.PendingResurrectEntityId] == Id)
+                    ultimateOwner.Properties.RemoveProperty(PropertyEnum.PendingResurrectEntityId);
                 Resurrect();
             }
         }

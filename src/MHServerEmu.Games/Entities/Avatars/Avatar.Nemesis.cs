@@ -19,35 +19,35 @@ namespace MHServerEmu.Games.Entities.Avatars
             Player victimPlayer = GetOwnerOfType<Player>();
             if (victimPlayer == null || victimPlayer.PlayerConnection == null) return;
 
-            Avatar killerAvatar = ResolveNemesisKillerAvatar(killer, directKiller);
-            if (killerAvatar == null) return;
+            Agent killerAgent = ResolveNemesisKillerAgent(killer, directKiller);
+            if (killerAgent == null) return;
 
-            victimPlayer.RegisterNemesisKill(killerAvatar);
+            victimPlayer.RegisterNemesisKill(killerAgent);
         }
 
         /// <summary>
-        /// Walk the killer / directKiller chain and return the first Avatar
-        /// that is an ENEMY phantom (phantom hero with no PhantomCreatorId
-        /// on its owning Player). Returns null if the kill was mob-driven or
-        /// caused by a friendly phantom.
+        /// Walk the killer / directKiller chain and return the first Agent
+        /// that is an ENEMY phantom — Avatar phantom OR team-up phantom.
+        /// Returns null if the kill was mob-driven or caused by a friendly
+        /// phantom.
         /// </summary>
-        private static Avatar ResolveNemesisKillerAvatar(WorldEntity killer, WorldEntity directKiller)
+        private static Agent ResolveNemesisKillerAgent(WorldEntity killer, WorldEntity directKiller)
         {
-            if (IsEnemyPhantomKiller(killer) is Avatar a) return a;
-            if (IsEnemyPhantomKiller(directKiller) is Avatar b) return b;
+            if (IsEnemyPhantomKiller(killer) is Agent a) return a;
+            if (IsEnemyPhantomKiller(directKiller) is Agent b) return b;
             return null;
         }
 
-        private static Avatar IsEnemyPhantomKiller(WorldEntity we)
+        private static Agent IsEnemyPhantomKiller(WorldEntity we)
         {
-            if (we is not Avatar av) return null;
-            if (av.IsPhantomHero == false) return null;
-            Player owner = av.GetOwnerOfType<Player>();
+            if (we is not Agent ag) return null;
+            if (ag.IsPhantomHero == false) return null;
+            Player owner = ag.GetOwnerOfType<Player>();
             if (owner == null) return null;
             // Friendly phantoms carry PhantomCreatorId pointing at the human
             // that spawned them; enemy phantoms deliberately leave it 0.
             if (owner.PhantomCreatorId != 0) return null;
-            return av;
+            return ag;
         }
     }
 }

@@ -64,6 +64,35 @@ namespace MHServerEmu.Games.Entities
         public AgentPrototype AgentPrototype { get => Prototype as AgentPrototype; }
         public override bool IsTeamUpAgent { get => AgentPrototype is AgentTeamUpPrototype; }
         public Avatar TeamUpOwner { get => Game.EntityManager.GetEntity<Avatar>(Properties[PropertyEnum.TeamUpOwnerId]); }
+
+        // Phantom heroes (SpawnPhantomHero / SpawnTeamUpPhantomHero) have no
+        // client — the server MUST be authoritative for their movement, or
+        // Locomotor.FollowEntity produces no visible walking on the real
+        // client's screen. Real Agents keep the default WorldEntity behavior.
+        // Lives on Agent (base) so both Avatar phantoms and team-up phantoms
+        // can carry the flag.
+        public bool IsPhantomHero { get; internal set; }
+
+        // Team-up phantoms need to sit in the phantom Player's AvatarInPlay
+        // slot so the party HUD's HP-bar binding can find them. That slot's
+        // InventoryPrototype containment filter only accepts Avatar
+        // entities, and every move path (MoveEntityTo, AddEntity->CheckAddEntity)
+        // routes through the entity's own CanChangeInventoryLocation.
+        // Override it here to skip the containment check specifically for
+        // phantom team-ups going into AvatarInPlay — no other move is
+        // affected, and this is server-side only so no client SIP data
+        // needs to change.
+        public override InventoryResult CanChangeInventoryLocation(Inventory destInventory, out PropertyEnum propertyRestriction)
+        {
+            propertyRestriction = PropertyEnum.Invalid;
+            if (IsPhantomHero && IsTeamUpAgent && destInventory != null
+                && destInventory.Prototype?.ConvenienceLabel == InventoryConvenienceLabel.AvatarInPlay)
+            {
+                return InventoryResult.Success;
+            }
+            return base.CanChangeInventoryLocation(destInventory, out propertyRestriction);
+        }
+
         public override int Throwability { get => Properties[PropertyEnum.Throwability]; }
         public bool IsVisibleWhenDormant { get => AgentPrototype.WakeStartsVisible; }
         public override bool IsWakingUp { get => _wakeEndEvent.IsValid; }

@@ -160,6 +160,128 @@ namespace MHServerEmu.Commands.Implementations
             return player.RerollPhantomGear(@params.Length >= 1 ? @params[0] : null);
         }
 
+        [Command("enemy")]
+        [CommandDescription("Spawn HOSTILE phantom heroes that hunt you. Args: [count=1] [level=your level], or [heroname] [level].")]
+        [CommandInvokerType(CommandInvokerType.Client)]
+        [CommandUserLevel(AccountUserLevel.Admin)]
+        public string Enemy(string[] @params, NetClient client)
+        {
+            var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom enemy.");
+            var avatar = pc.Player?.CurrentAvatar;
+            if (avatar == null) return "No avatar in world.";
+
+            int level = 0;
+            if (@params.Length >= 2 && int.TryParse(@params[1], out int l)) level = System.Math.Clamp(l, 1, 60);
+
+            int count = 0;
+            if (@params.Length >= 1 && int.TryParse(@params[0], out count) == false)
+            {
+                var matches = Avatar.FindPhantomHeroRefs(@params[0]);
+                if (matches.Count == 0) return $"No hero matching '{@params[0]}'.";
+                if (matches.Count > 1) return "Multiple matches — be more specific.";
+
+                ulong heroId = avatar.SpawnEnemyPhantomHero(matches[0].AvatarRef, level, out string heroError);
+                return heroId != 0
+                    ? $"Enemy {matches[0].ShortName} inbound. Good luck."
+                    : $"Failed: {heroError}";
+            }
+
+            count = @params.Length >= 1 ? System.Math.Clamp(count, 1, 20) : 1;
+            int spawned = 0, failed = 0;
+            string firstError = null;
+            for (int i = 0; i < count; i++)
+            {
+                ulong id = avatar.SpawnEnemyPhantomHero(MHServerEmu.Games.GameData.PrototypeId.Invalid, level, out string error);
+                if (id != 0) spawned++;
+                else { failed++; firstError ??= error; }
+            }
+            return firstError == null
+                ? $"Enemy phantoms inbound: {spawned}. Good luck."
+                : $"Enemy phantoms: spawned={spawned} failed={failed}. First err: {firstError}";
+        }
+
+        [Command("teamup")]
+        [CommandDescription("Spawn a team-up as a phantom hero. Args: [teamupname] [level=your level] [enemy?]. e.g. !phantom teamup rocket 60 enemy")]
+        [CommandInvokerType(CommandInvokerType.Client)]
+        [CommandUserLevel(AccountUserLevel.Admin)]
+        public string TeamUp(string[] @params, NetClient client)
+        {
+            var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom teamup.");
+            var avatar = pc.Player?.CurrentAvatar;
+            if (avatar == null) return "No avatar in world.";
+            if (@params.Length < 1) return "Usage: !phantom teamup [name] [level] [enemy]";
+
+            var all = Avatar.GetAllPhantomTeamUpRefs();
+            var matches = new System.Collections.Generic.List<(MHServerEmu.Games.GameData.PrototypeId Ref, string ShortName)>();
+            string query = @params[0];
+            foreach (var (r, n) in all)
+            {
+                if (n.Equals(query, System.StringComparison.OrdinalIgnoreCase)) { matches.Clear(); matches.Add((r, n)); break; }
+                if (n.Contains(query, System.StringComparison.OrdinalIgnoreCase)) matches.Add((r, n));
+            }
+            if (matches.Count == 0) return $"No team-up matching '{query}'.";
+            if (matches.Count > 1)
+            {
+                var names = new System.Text.StringBuilder();
+                for (int i = 0; i < matches.Count && i < 8; i++)
+                {
+                    if (i > 0) names.Append(", ");
+                    names.Append(matches[i].ShortName);
+                }
+                return $"Multiple matches: {names}. Be more specific.";
+            }
+
+            int level = 0;
+            if (@params.Length >= 2 && int.TryParse(@params[1], out int l)) level = System.Math.Clamp(l, 1, 60);
+            bool enemy = @params.Length >= 3 && @params[2].Equals("enemy", System.StringComparison.OrdinalIgnoreCase);
+
+            ulong id = avatar.SpawnTeamUpPhantomHero(matches[0].Ref, level, out string err, enemy: enemy);
+            return id != 0
+                ? $"Team-up {matches[0].ShortName} {(enemy ? "inbound as HOSTILE" : "joined your side")}."
+                : $"Failed to spawn team-up {matches[0].ShortName}: {err}";
+        }
+
+        [Command("rogue")]
+        [CommandDescription("Rogue Encounter — spontaneous ambushes by hostile heroes while roaming. Args: on | off | status | trigger.")]
+        [CommandInvokerType(CommandInvokerType.Client)]
+        [CommandUserLevel(AccountUserLevel.Admin)]
+        public string Rogue(string[] @params, NetClient client)
+        {
+            var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom rogue.");
+            var player = pc.Player;
+            if (player == null) return "No player.";
+
+            string op = @params.Length >= 1 ? @params[0].ToLowerInvariant() : "status";
+            switch (op)
+            {
+                case "on":
+                    player.RogueEncounterEnabled = true;
+                    return "Rogue Encounter enabled. Watch your back.";
+                case "off":
+                    player.RogueEncounterEnabled = false;
+                    return "Rogue Encounter disabled.";
+                case "trigger":
+                    return player.TriggerRogueEncounterNow();
+                case "status":
+                    long cd = player.RogueEncounterCooldownRemainingMs / 1000;
+                    return $"Rogue Encounter: {(player.RogueEncounterEnabled ? "ON" : "off")}. Cooldown: {cd}s.";
+                default:
+                    return "Usage: phantom rogue on | off | status | trigger";
+            }
+        }
+
+        [Command("enemyclear")]
+        [CommandDescription("Despawn every enemy phantom.")]
+        [CommandInvokerType(CommandInvokerType.Client)]
+        [CommandUserLevel(AccountUserLevel.Admin)]
+        public string EnemyClear(string[] @params, NetClient client)
+        {
+            var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom enemyclear.");
+            var avatar = pc.Player?.CurrentAvatar;
+            if (avatar == null) return "No avatar in world.";
+            return $"Enemy phantoms despawned: {avatar.DespawnAllEnemyPhantoms()}.";
+        }
+
         [Command("clear")]
         [CommandDescription("Despawn every phantom you've spawned.")]
         [CommandInvokerType(CommandInvokerType.Client)]

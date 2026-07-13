@@ -1404,8 +1404,14 @@ namespace MHServerEmu.Games.Powers
                 pvpDamageMult *= Properties[PropertyEnum.PvPOutgoingDamageMult];
             }
 
-            // Damage modifiers that apply when both the owner and the target are players
-            if (IsPlayerPayload && target.CanBePlayerOwned())
+            // Damage modifiers that apply when both the owner and the target are players.
+            // Phantom heroes are avatar/team-up entities so CanBePlayerOwned() returns
+            // true for them, which would drag the human's damage through the PvP
+            // scaling curve (typically <0.01×) and reduce hits from ~80k to ~300
+            // against a rogue/nemesis phantom. Phantoms are PvE opponents by design,
+            // so skip PvP scaling when the target is a phantom hero.
+            bool targetIsPhantom = target is Entities.Agent targetAgent && targetAgent.IsPhantomHero;
+            if (IsPlayerPayload && target.CanBePlayerOwned() && targetIsPhantom == false)
             {
                 DifficultyGlobalsPrototype difficultyGlobals = GameDatabase.DifficultyGlobalsPrototype;
                 pvpDamageMult *= difficultyGlobals.PvPDamageMultiplier;

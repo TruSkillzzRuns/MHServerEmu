@@ -85,6 +85,28 @@ namespace MHServerEmu.Games.Entities.Avatars
         // not "vaguely nearby." 1500u ≈ two-thirds of a screen at default
         // zoom; if they wander beyond that the leash snaps them back.
         private const float PhantomFollowMaxDistSq = 1500f * 1500f;
+        // Enemy phantoms use a tighter leash — 900u instead of 1500u — so a
+        // rogue that got left behind (player died + revived at waypoint, or
+        // player just walked away from the fight) teleports onto the player
+        // faster and NEVER breaks pursuit. Combined with the "no candidates ->
+        // chase caller" fallback in UpdatePhantomHunt, rogues never idle.
+        private const float EnemyPhantomFollowMaxDistSq = 900f * 900f;
+        // Friendly team-up respawn cooldown after death (90s). Team-ups die
+        // permanently rather than entering the downed/revive flow avatar
+        // phantoms use, so instead the tick loop re-spawns them from the
+        // stored descriptor 90s later. Long enough that the current fight
+        // has resolved; short enough that the squad doesn't feel gutted.
+        private const long TeamUpRespawnDelayMs = 90_000;
+        // Idle-formation ring radius around the caller. When friendly
+        // phantoms have no hostile in range, they PathTo an evenly-spaced
+        // slot at this distance so they walk with you through hubs / between
+        // fights instead of teleport-leashing. Adapted from lordunborn's fork.
+        private const float PhantomIdleFollowStopDist = 200f;
+        // Bigger arrival zone than lord's 60u so phantoms don't twitch
+        // constantly correcting position — once they're within this radius
+        // of their slot they Stop and stay stopped until the caller moves
+        // meaningfully.
+        private const float PhantomFormationArriveDist = 120f;
         // Stuck detection: if the phantom's position barely changes across
         // this many ticks (500ms each) they're either wall-clipped or
         // pathed into an out-of-bounds corner — force a teleport back to
@@ -97,6 +119,14 @@ namespace MHServerEmu.Games.Entities.Avatars
         // Wider search — phantom will walk to any hostile in this radius.
         private const float PhantomSearchRange = 3500f;
         private const float PhantomSearchRangeSq = PhantomSearchRange * PhantomSearchRange;
+        // Cap on how far a friendly phantom will engage from the CALLER
+        // (not the phantom's own position). Without this, a phantom that
+        // starts 200u from the caller can spot an enemy 3500u further out
+        // and chase across the map — the "phantom sprints off after
+        // something you can't even see on screen" bug. ~1000u ≈ half a
+        // screen at default zoom, so this keeps the fight visible.
+        private const float PhantomFriendlyEngageMaxCallerDist = 1000f;
+        private const float PhantomFriendlyEngageMaxCallerDistSq = PhantomFriendlyEngageMaxCallerDist * PhantomFriendlyEngageMaxCallerDist;
         // Tick twice as often so movement + attack feel snappy.
         private static readonly TimeSpan PhantomTickInterval = TimeSpan.FromMilliseconds(500);
 
@@ -140,9 +170,26 @@ namespace MHServerEmu.Games.Entities.Avatars
             for (int i = 0; i < ids.Count; i++)
             {
                 ulong id = ids[i];
-                Avatar phantom = Game.EntityManager.GetEntity<Avatar>(id);
+                // Widened from Avatar to Agent so team-up phantoms (which
+                // are Agent, not Avatar) survive the tick and share the
+                // same maintenance path (level sync, downed detection,
+                // leash, party sync).
+                Agent phantom = Game.EntityManager.GetEntity<Agent>(id);
                 if (phantom == null || phantom.IsDestroyed || phantom.IsInWorld == false)
                 {
+                    // Team-up respawn hook: friendly team-up phantoms that
+                    // died get re-queued for spawn 90s later so the squad
+                    // heals itself instead of shrinking permanently. Avatar
+                    // phantoms use the downed/revive flow instead and never
+                    // enter this branch unless truly destroyed.
+                    var descriptor = host.GetPhantomDescriptor(id);
+                    if (descriptor.AvatarRef != 0
+                        && ((PrototypeId)descriptor.AvatarRef).As<AgentTeamUpPrototype>() != null)
+                    {
+                        long dueAt = (Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond) + TeamUpRespawnDelayMs;
+                        host.EnqueueTeamUpRespawn(descriptor, dueAt);
+                        PhantomLogger.Info($"[PhantomHero:TeamUp:Respawn] queued team-up '{((PrototypeId)descriptor.AvatarRef).GetName()}' respawn in {TeamUpRespawnDelayMs / 1000}s");
+                    }
                     (stale ??= new List<ulong>()).Add(id);
                     continue;
                 }
@@ -221,10 +268,33 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // Watchdog + stuck detection + leash — shared with enemy phantoms.
                 PhantomSharedMaintenance(phantom, callerPos, rng);
 
+                // Team-up phantoms use their own native AIController for
+                // target selection, power picking, and follow — running our
+                // full UpdatePhantomHunt on top of that would conflict. But
+                // without SOME follow logic they stack on top of the caller
+                // when idle. So: if no hostile is within engagement range,
+                // apply the same idle-formation slot the avatar phantoms use
+                // (unique hashed angle + distance per phantom → no stacking).
+                // If a hostile IS in range, leave the team-up brain alone.
+                if (phantom.IsTeamUpAgent)
+                {
+                    // Priority: revive any downed player/friendly-phantom
+                    // in range BEFORE deferring to the team-up brain. The
+                    // native AI doesn't know about downed avatars, so we
+                    // drive the resurrect-other cast ourselves using the
+                    // resurrect power we grant team-ups at spawn.
+                    if (TryTeamUpReviveDowned(phantom)) continue;
+
+                    if (HasHostileNearCaller(phantom, callerPos) == false)
+                        ApplyPhantomIdleFormation(phantom, callerPos);
+                    continue;
+                }
+
                 // Hunt: locomotor-walk toward the nearest hostile in a wider sweep,
                 // then attack once in range. Locomotor.FollowEntity refreshes each
                 // tick (250ms repath delay) so the phantom will keep advancing.
-                try { UpdatePhantomHunt(phantom, rng); } catch { /* keep ticking */ }
+                // Cast is safe: we skipped team-ups above via IsTeamUpAgent.
+                try { UpdatePhantomHunt((Avatar)phantom, rng); } catch { /* keep ticking */ }
             }
 
             if (stale != null)
@@ -239,7 +309,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                 for (int i = 0; i < enemyIds.Count; i++)
                 {
                     ulong id = enemyIds[i];
-                    Avatar foe = Game.EntityManager.GetEntity<Avatar>(id);
+                    // Widened for team-up phantoms.
+                    Agent foe = Game.EntityManager.GetEntity<Agent>(id);
                     if (foe == null || foe.IsDestroyed || foe.IsInWorld == false)
                     {
                         (enemyGone ??= new List<ulong>()).Add(id);
@@ -259,6 +330,13 @@ namespace MHServerEmu.Games.Entities.Avatars
                             // nemesis roster. Guarded by the "not already
                             // tracked" check so we only retire once.
                             try { host.RetireNemesis((ulong)foe.PrototypeDataRef); } catch { }
+                            // Drop the phantom's equipped gear as ground loot
+                            // for the killer. Uses the phantom's exact rolled
+                            // ItemSpec so what drops matches what was rolled at
+                            // spawn (level-band appropriate — cosmic at 60,
+                            // rare at 30, etc). Same one-shot guard so we don't
+                            // duplicate on subsequent corpse ticks.
+                            try { DropPhantomGear(foe, host); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] drop failed on {foe.Id:X}: {ex.Message}"); }
                         }
                         else if (nowMs - deadSince >= EnemyPhantomCorpseMs)
                         {
@@ -272,9 +350,14 @@ namespace MHServerEmu.Games.Entities.Avatars
 
                     PhantomSharedMaintenance(foe, callerPos, rng);
 
+                    // Team-up enemy phantoms use their native AI (hostile
+                    // alliance override is enough to make them target the
+                    // player). Skip our hunt so we don't fight their brain.
+                    if (foe.IsTeamUpAgent) continue;
+
                     // Hunt in enemy mode: no reviving, and the caller is a
-                    // valid (primary!) target.
-                    try { UpdatePhantomHunt(foe, rng, enemyMode: true); } catch { /* keep ticking */ }
+                    // valid (primary!) target. Cast safe — team-ups skipped above.
+                    try { UpdatePhantomHunt((Avatar)foe, rng, enemyMode: true); } catch { /* keep ticking */ }
                 }
 
                 if (enemyGone != null)
@@ -288,7 +371,36 @@ namespace MHServerEmu.Games.Entities.Avatars
                     }
             }
 
-            if (host.PhantomHeroCount > 0 || host.EnemyPhantomCount > 0)
+            // Drain any team-up phantom respawns whose 90s cooldown is up.
+            // Same code path Rogue Encounter / manual spawn use, so all the
+            // downstream tracking (party HUD, level sync, formation) works.
+            long nowMsDrain = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            var respawnsDue = host.DrainTeamUpRespawnsDue(nowMsDrain);
+            if (respawnsDue != null)
+            {
+                foreach (var entry in respawnsDue)
+                {
+                    try
+                    {
+                        var refId = (PrototypeId)entry.Descriptor.AvatarRef;
+                        ulong id = SpawnTeamUpPhantomHero(refId, entry.Descriptor.Level, out string err, enemy: false, nemesisRank: 0, usernameOverride: entry.Descriptor.Username);
+                        if (id == 0)
+                            PhantomLogger.Warn($"[PhantomHero:TeamUp:Respawn] respawn failed for {refId.GetName()}: {err} — re-queueing 30s");
+                        // On failure, re-queue in 30s so a transient issue
+                        // (region not loaded, entity budget) doesn't perma-lose
+                        // the team-up.
+                        if (id == 0)
+                            host.EnqueueTeamUpRespawn(entry.Descriptor, nowMsDrain + 30_000);
+                        else
+                            PhantomLogger.Info($"[PhantomHero:TeamUp:Respawn] respawned team-up '{refId.GetName()}' (id=0x{id:X})");
+                    }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp:Respawn] threw: {ex.Message}"); }
+                }
+            }
+
+            // Keep the tick alive if we have live phantoms OR pending
+            // (future) respawns so the queue actually drains.
+            if (host.PhantomHeroCount > 0 || host.EnemyPhantomCount > 0 || host.TeamUpRespawnQueueCount > 0)
                 SchedulePhantomTick();
         }
 
@@ -302,7 +414,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// teleports strays back to the caller (which for enemies keeps the
         /// fight ON the caller).
         /// </summary>
-        private void PhantomSharedMaintenance(Avatar phantom, Vector3 callerPos, MHServerEmu.Core.System.Random.GRandom rng)
+        private void PhantomSharedMaintenance(Agent phantom, Vector3 callerPos, MHServerEmu.Core.System.Random.GRandom rng)
         {
             // Stuck-power watchdog: a channeled power (or channel-style
             // ultimate) never ends for a phantom — no client exists to
@@ -348,9 +460,14 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
             else s_phantomStuckTrack[phantom.Id] = (curPos, 0);
 
-            // Leash: teleport back if stranded far or wall-stuck.
+            // Leash: teleport back if stranded far or wall-stuck. Enemy
+            // phantoms use a tighter leash so they aggressively re-close on
+            // the caller after death/revive or a run-away attempt.
+            bool isEnemyPhantom = phantom.IsPhantomHero
+                && phantom.GetOwnerOfType<Player>()?.PhantomCreatorId == 0;
+            float leashMaxDistSq = isEnemyPhantom ? EnemyPhantomFollowMaxDistSq : PhantomFollowMaxDistSq;
             float distSq = Vector3.DistanceSquared2D(curPos, callerPos);
-            if (distSq > PhantomFollowMaxDistSq || forceLeash)
+            if (distSq > leashMaxDistSq || forceLeash)
             {
                 Region r = phantom.Region;
                 Vector3 leashPos = ChoosePhantomLeashPos(r, callerPos, rng, phantom.Bounds.Radius);
@@ -400,6 +517,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
 
             Vector3 phantomPos = phantom.RegionLocation.Position;
+            Vector3 callerPos = RegionLocation.Position;
 
             // Enemy phantoms don't do triage — straight to the hunt.
             if (enemyMode)
@@ -523,9 +641,18 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
                 else
                 {
-                    // Friendly phantoms: original sweep — any hostile Agent.
+                    // Friendly phantoms: any hostile Agent...
                     if (we is not Agent) continue;
                     if (phantom.IsHostileTo(we) == false) continue;
+
+                    // ...but only if the enemy is close to the CALLER, not
+                    // just close to the phantom. Otherwise a phantom sitting
+                    // in idle formation next to you spots something 3500u
+                    // out and sprints off after it, then trips the leash and
+                    // teleports back — the "phantom keeps running away and
+                    // snapping back" behavior.
+                    float callerDistSq = Vector3.DistanceSquared2D(we.RegionLocation.Position, callerPos);
+                    if (callerDistSq > PhantomFriendlyEngageMaxCallerDistSq) continue;
                 }
                 float d = Vector3.DistanceSquared2D(we.RegionLocation.Position, phantomPos);
                 // Skip anything the engine won't accept as a valid target yet.
@@ -588,7 +715,34 @@ namespace MHServerEmu.Games.Entities.Avatars
                     return;
                 }
 
-                phantom.Locomotor?.Stop();
+                // Friendly mode idle — trail the caller organically.
+                //
+                // Each phantom picks a personal slot around the caller
+                // derived from a hash of its runtime id: a preferred angle
+                // (not the evenly-spaced-ring "marching" pattern) and a
+                // preferred distance (natural spread across the squad).
+                // Because every phantom's angle is unique, they don't
+                // converge on the same follow spot — no stacking.
+                //
+                // Arrival tolerance is generous (~120u) so once a phantom
+                // gets "close enough" to its slot they Stop, instead of
+                // micro-correcting every tick. Reads as a group of friends
+                // walking with you, not a locked drill formation.
+                var idleLoco = phantom.Locomotor;
+                if (idleLoco != null)
+                {
+                    Vector3 slotPos = ComputePhantomIdleSlot(phantom.Id, region);
+                    float slotDistSq = Vector3.DistanceSquared2D(phantomPos, slotPos);
+                    if (slotDistSq > PhantomFormationArriveDist * PhantomFormationArriveDist)
+                    {
+                        var idleOpts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(400) };
+                        idleLoco.PathTo(slotPos, ref idleOpts);
+                    }
+                    else
+                    {
+                        idleLoco.Stop();
+                    }
+                }
                 return;
             }
 
@@ -736,7 +890,12 @@ namespace MHServerEmu.Games.Entities.Avatars
         // top of the enemy values so returning nemeses feel meaningfully
         // more dangerous than a fresh rogue spawn.
         private const float PhantomHealthMult      = 2.0f;  // friendly: +200% HealthMax
-        private const float EnemyPhantomHealthMult = 3.0f;  // enemy:    +300% HealthMax
+        // Enemy pool got a big HP bump after the PvP-damage-scaling bug fix.
+        // Previously they took ~1000× reduced damage on the player's attacks,
+        // so 3.0× base HP felt tanky. With full damage now landing, they melt
+        // in ~2 shots unless we compensate — 8.0× keeps rogue encounters
+        // dangerous without going overboard.
+        private const float EnemyPhantomHealthMult = 8.0f;
 
         // Per-phantom "downed since" timestamp — 0 when alive.
         // Populated on the first tick that observes IsDead; removed on the
@@ -842,6 +1001,207 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 
         private static readonly HashSet<ulong> s_phantomLocoLogged = new();
+
+        /// <summary>
+        /// Per-phantom preferred idle slot around the caller. Each phantom
+        /// gets a personal (angle, distance) derived from a hash of its
+        /// runtime id: because the angle is unique per phantom, they never
+        /// converge on the same follow spot — no stacking. Distance varies
+        /// too, so a squad spreads at natural depths instead of a perfect
+        /// ring. Slot is always computed against the caller's current
+        /// position so it tracks as the caller walks around.
+        /// </summary>
+        private Vector3 ComputePhantomIdleSlot(ulong phantomId, Region region)
+        {
+            Vector3 callerPos = RegionLocation.Position;
+
+            // Hash-mix the id so consecutive phantom ids don't produce
+            // near-identical slots. Constants are arbitrary large primes.
+            ulong h = phantomId * 2654435761UL ^ (phantomId >> 16);
+            float angle = ((h & 0xFFFF) / 65535f) * MathF.PI * 2f;              // 0 .. 2π
+            float dist  = PhantomIdleFollowStopDist + (((h >> 16) & 0xFF) / 255f - 0.5f) * 140f; // 130 .. 270
+
+            Vector3 slot = callerPos + new Vector3(MathF.Cos(angle) * dist,
+                                                    MathF.Sin(angle) * dist, 0f);
+            return region != null ? RegionLocation.ProjectToFloor(region, slot) : slot;
+        }
+
+        /// <summary>
+        /// Walk (or Stop) a phantom toward its personal idle-formation slot
+        /// around the caller. Shared between avatar phantoms (called from
+        /// UpdatePhantomHunt's no-target branch) and team-up phantoms (called
+        /// from the tick loop when no hostile is in range).
+        /// </summary>
+        private void ApplyPhantomIdleFormation(Agent phantom, Vector3 callerPos)
+        {
+            var loco = phantom.Locomotor;
+            if (loco == null) return;
+            Region region = phantom.Region ?? Region;
+            Vector3 slotPos = ComputePhantomIdleSlot(phantom.Id, region);
+            float slotDistSq = Vector3.DistanceSquared2D(phantom.RegionLocation.Position, slotPos);
+            if (slotDistSq > PhantomFormationArriveDist * PhantomFormationArriveDist)
+            {
+                var idleOpts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(400) };
+                loco.PathTo(slotPos, ref idleOpts);
+            }
+            else
+            {
+                loco.Stop();
+            }
+        }
+
+        /// <summary>
+        /// Same revive-priority behavior avatar phantoms have, but driven from
+        /// the team-up code path (team-ups skip UpdatePhantomHunt). Sweeps for
+        /// a downed real player OR friendly phantom nearby; walks toward them
+        /// or fires the resurrect power granted at spawn. Returns true if the
+        /// team-up is now committed to a revive (caller should skip idle
+        /// formation for this tick).
+        /// </summary>
+        private bool TryTeamUpReviveDowned(Agent teamUp)
+        {
+            Region region = teamUp.Region;
+            if (region == null) return false;
+            // Skip if the team-up has no resurrect power (enemy team-ups
+            // deliberately never learn it).
+            PrototypeId resurrectPowerRef = AvatarPrototype?.ResurrectOtherEntityPower ?? PrototypeId.Invalid;
+            if (resurrectPowerRef == PrototypeId.Invalid) return false;
+            if (teamUp.GetPower(resurrectPowerRef) == null) return false;
+
+            Vector3 teamUpPos = teamUp.RegionLocation.Position;
+            Avatar downed = null;
+            float downedDistSq = PhantomReviveSearchRangeSq;
+
+            // Direct-check the caller first (matches avatar phantom revive path).
+            if (this.IsDead && this.IsInWorld && this.Region == region)
+            {
+                downed = this;
+                downedDistSq = Vector3.DistanceSquared2D(this.RegionLocation.Position, teamUpPos);
+            }
+            else
+            {
+                var sphere = new Sphere(teamUpPos, PhantomReviveSearchRange);
+                var ctx = new EntityRegionSPContext(EntityRegionSPContextFlags.PrimaryPartition);
+                foreach (WorldEntity we in region.IterateEntitiesInVolume(sphere, ctx))
+                {
+                    if (we is not Avatar candidate) continue;
+                    if (candidate.IsDead == false) continue;
+                    Player candOwner = candidate.GetOwnerOfType<Player>();
+                    if (candOwner == null) continue;
+                    bool isRealPlayer = candOwner.PlayerConnection != null;
+                    bool isFriendlyPhantom = candOwner.PhantomCreatorId != 0
+                        && candOwner.PhantomCreatorId == this.PhantomHost?.Id;
+                    if (isRealPlayer == false && isFriendlyPhantom == false) continue;
+                    float d = Vector3.DistanceSquared2D(candidate.RegionLocation.Position, teamUpPos);
+                    if (d < downedDistSq) { downedDistSq = d; downed = candidate; }
+                }
+            }
+
+            if (downed == null) return false;
+
+            // Guard against re-casting on someone already being resurrected.
+            if (teamUp.Properties[PropertyEnum.PendingResurrectEntityId] == downed.Id) return true;
+
+            if (downedDistSq > PhantomReviveCastRangeSq)
+            {
+                var loco = teamUp.Locomotor;
+                if (loco != null)
+                {
+                    var opts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(250) };
+                    loco.FollowEntity(downed.Id, 50f, 50f, ref opts, false);
+                }
+                return true;
+            }
+
+            try
+            {
+                var settings = new PowerActivationSettings(downed.Id, downed.RegionLocation.Position, teamUpPos);
+                settings.Flags |= PowerActivationSettingsFlags.NotifyOwner;
+                if (teamUp.ActivatePower(resurrectPowerRef, ref settings) == PowerUseResult.Success)
+                    teamUp.Properties[PropertyEnum.PendingResurrectEntityId] = downed.Id;
+            }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] ActivatePower(ResurrectOther) failed: {ex.Message}"); }
+            return true;
+        }
+
+        /// <summary>
+        /// Drop everything the phantom is currently wearing as ground loot for
+        /// the killer. Runs on the first tick after death (before the 4-second
+        /// corpse timer + Destroy). Uses the EXACT ItemSpec stored on each
+        /// equipped Item entity — the drops preserve every affix that was
+        /// rolled at spawn, and follow the same level-band tier the phantom
+        /// wears (Cosmic at level 60, Rare at level 30, etc — whatever
+        /// ApplyPhantomGear rolled).
+        ///
+        /// Team-up phantoms are skipped — they don't wear the avatar
+        /// equipment inventories, and giving them a drop table is a design
+        /// choice we haven't made yet.
+        /// </summary>
+        private static void DropPhantomGear(Agent phantom, Player killer)
+        {
+            if (phantom == null || killer == null) return;
+            if (phantom.Prototype is not AvatarPrototype avatarProto) return;
+            if (avatarProto.EquipmentInventories == null) return;
+
+            Game game = phantom.Game;
+            var lootMgr = game?.LootManager;
+            if (lootMgr == null) return;
+
+            using var inputSettings = ObjectPoolManager.Instance.Get<Loot.LootInputSettings>();
+            inputSettings.Initialize(Loot.LootContext.Drop, killer, phantom);
+
+            using var summary = ObjectPoolManager.Instance.Get<Loot.LootResultSummary>();
+            int dropped = 0;
+            foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
+            {
+                Inventory inv = phantom.GetInventoryByRef(assignment.Inventory);
+                if (inv == null) continue;
+                foreach (var entry in inv)
+                {
+                    Items.Item item = game.EntityManager.GetEntity<Items.Item>(entry.Id);
+                    if (item?.ItemSpec == null) continue;
+                    // Items equipped on the phantom are IsBoundToAccount=true
+                    // (equipping binds them). The pickup gate at
+                    // PlayerConnection.OnPickupInteraction rejects any bound
+                    // item, so the drops would sit uncollectible on the ground.
+                    // Clearing the binding affix on the spec BEFORE cloning
+                    // into the ground drop makes them normal, pickupable loot
+                    // — matches the "boss drops gear that binds when YOU
+                    // equip it" behavior the loot system expects.
+                    try { item.ItemSpec.SetBindingState(false); } catch { }
+                    summary.Add(new Loot.LootResult(item.ItemSpec));
+                    dropped++;
+                }
+            }
+
+            if (dropped > 0)
+            {
+                lootMgr.SpawnLootFromSummary(summary, inputSettings);
+                PhantomLogger.Info($"[PhantomHero:Loot] dropped {dropped} item(s) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
+            }
+        }
+
+        /// <summary>
+        /// Cheap check: is there any hostile Agent within friendly-engagement
+        /// range of the caller? Used to gate team-up idle formation so we
+        /// don't fight the team-up's native AI when it's actively pursuing
+        /// or attacking a target.
+        /// </summary>
+        private bool HasHostileNearCaller(Agent phantom, Vector3 callerPos)
+        {
+            Region region = phantom.Region ?? Region;
+            if (region == null) return false;
+            var sphere = new Sphere(callerPos, PhantomFriendlyEngageMaxCallerDist);
+            foreach (var we in region.IterateEntitiesInVolume(sphere, new(EntityRegionSPContextFlags.PrimaryPartition)))
+            {
+                if (we == null || we.IsInWorld == false || we.IsDead) continue;
+                if (we is not Agent) continue;
+                if (phantom.IsHostileTo(we) == false) continue;
+                if (we.IsDormant || we.IsUntargetable || we.IsUnaffectable) continue;
+                return true;
+            }
+            return false;
+        }
 
         // ================================================================
         //  Phantom damage-scaling curve
@@ -1218,7 +1578,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             return applied;
         }
 
-        private static void ApplyPhantomDamageScaling(Avatar phantom, int level, bool enemy = false)
+        private static void ApplyPhantomDamageScaling(Agent phantom, int level, bool enemy = false)
         {
             float t = Math.Clamp((level - 1) / 59f, 0f, 1f);
             t *= t; // quadratic — shallow through story levels, steep into endgame
@@ -1511,6 +1871,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         // so we can log which paths fail once and pull them out of the rotation.
         private static readonly object s_phantomResolvedLock = new();
         private static List<PrototypeId> s_phantomResolved;
+        private static List<PrototypeId> s_phantomTeamUpResolved;
 
         private static void EnsureResolvedPool()
         {
@@ -1530,8 +1891,37 @@ namespace MHServerEmu.Games.Entities.Avatars
                     resolved.Add(avatarRef);
                 }
                 s_phantomResolved = resolved;
-                PhantomLogger.Info($"[PhantomHero] pool built from client data: {resolved.Count} playable avatars");
+
+                var teamUps = new List<PrototypeId>(24);
+                foreach (PrototypeId teamUpRef in DataDirectory.Instance
+                    .IteratePrototypesInHierarchy<AgentTeamUpPrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
+                {
+                    if (teamUpRef == PrototypeId.Invalid) continue;
+                    if (teamUpRef.As<AgentTeamUpPrototype>() == null) continue;
+                    teamUps.Add(teamUpRef);
+                }
+                s_phantomTeamUpResolved = teamUps;
+
+                PhantomLogger.Info($"[PhantomHero] pool built from client data: {resolved.Count} playable avatars, {teamUps.Count} team-ups");
             }
+        }
+
+        /// <summary>
+        /// The full team-up pool, resolved from loaded client data. Used
+        /// by the OmegaDev2 catalog endpoint to list team-up phantoms
+        /// alongside avatar phantoms.
+        /// </summary>
+        public static List<(PrototypeId TeamUpRef, string ShortName)> GetAllPhantomTeamUpRefs()
+        {
+            var results = new List<(PrototypeId, string)>();
+            EnsureResolvedPool();
+            lock (s_phantomResolvedLock)
+            {
+                foreach (PrototypeId teamUpRef in s_phantomTeamUpResolved)
+                    results.Add((teamUpRef, ExtractPrototypeShortName(teamUpRef.GetName())));
+            }
+            results.Sort((a, b) => string.CompareOrdinal(a.Item2, b.Item2));
+            return results;
         }
 
         /// <summary>
@@ -1699,7 +2089,17 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// travel and by saved-squad spawns.
         /// </summary>
         public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, ulong costumeRef, out string error, List<ulong> gearRefs = null, bool invincible = false)
-            => SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, gearRefs, out error, enemy: false, invincible: invincible);
+        {
+            // Team-up intents (stored with an AgentTeamUpPrototype ref in
+            // AvatarRef) must go through the team-up spawn path, not the
+            // avatar one — SpawnPhantomHeroCore's avatarRef.As<AvatarPrototype>()
+            // returns null for a team-up ref and the phantom is silently lost
+            // on region change.
+            if (avatarRefOverride != PrototypeId.Invalid && avatarRefOverride.As<AgentTeamUpPrototype>() != null)
+                return SpawnTeamUpPhantomHero(avatarRefOverride, level, out error, enemy: false, nemesisRank: 0, usernameOverride: username);
+
+            return SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, gearRefs, out error, enemy: false, invincible: invincible);
+        }
 
         /// <summary>
         /// Spawns a HOSTILE phantom hero — full avatar kit (powers, gear,
@@ -1708,7 +2108,231 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// credit is never remapped to the human who spawned it.
         /// </summary>
         public ulong SpawnEnemyPhantomHero(PrototypeId avatarRefOverride, int level, out string error)
-            => SpawnPhantomHeroCore(avatarRefOverride, level, null, lockLevel: true, 0, null, out error, enemy: true);
+        {
+            // A caller-supplied team-up ref (Rogue Encounter, Enemy Phantoms
+            // tool in the app, nemesis roster respawn) has to go through the
+            // team-up spawn path — the avatar path chokes on non-Avatar refs
+            // the same way SpawnPhantomHeroFromIntent did before the fix.
+            if (avatarRefOverride != PrototypeId.Invalid && avatarRefOverride.As<AgentTeamUpPrototype>() != null)
+                return SpawnTeamUpPhantomHero(avatarRefOverride, level, out error, enemy: true);
+
+            return SpawnPhantomHeroCore(avatarRefOverride, level, null, lockLevel: true, 0, null, out error, enemy: true);
+        }
+
+        /// <summary>
+        /// Spawn a team-up as a phantom. Team-ups have their own AI, powers
+        /// and animations, so they engage targets without needing our AI
+        /// tick to drive power selection. We still register them in the
+        /// phantom tracking dicts so `!phantom clear`, cross-region purge,
+        /// leash and stuck detection all still apply. Friendly team-ups
+        /// use the caller's alliance and follow the caller; enemy team-ups
+        /// use the hostile alliance override.
+        /// </summary>
+        public ulong SpawnTeamUpPhantomHero(PrototypeId teamUpRef, int level, out string error, bool enemy = false, int nemesisRank = 0, string usernameOverride = null)
+        {
+            error = null;
+            if (IsInWorld == false) { error = "avatar not in world"; return 0; }
+            Region region = Region;
+            if (region == null) { error = "no region"; return 0; }
+
+            if (enemy && ResolveHostileAllianceRef() == PrototypeId.Invalid)
+            {
+                error = "no hostile alliance in loaded data";
+                return 0;
+            }
+
+            AgentTeamUpPrototype teamUpProto = teamUpRef.As<AgentTeamUpPrototype>();
+            if (teamUpProto == null) { error = "not an AgentTeamUpPrototype"; return 0; }
+
+            Player host = PhantomHost;
+            if (host == null) { error = "no Player host to register phantom against"; return 0; }
+
+            // Step 1: phantom Player as owner (same pattern as avatar spawn).
+            ulong phantomDbId = System.Threading.Interlocked.Increment(ref s_phantomDbIdSeed);
+            string username = string.IsNullOrEmpty(usernameOverride) ? NewPhantomUsername(Game.Random) : usernameOverride;
+            Player phantomPlayer;
+            using (var playerSettings = ObjectPoolManager.Instance.Get<EntitySettings>())
+            {
+                playerSettings.DbGuid = phantomDbId;
+                playerSettings.EntityRef = GameDatabase.GlobalsPrototype.DefaultPlayer;
+                playerSettings.OptionFlags = EntitySettingsOptionFlags.PopulateInventories;
+                playerSettings.PlayerConnection = null;
+                playerSettings.PlayerName = username;
+                playerSettings.ArchiveSerializeType = ArchiveSerializeType.Database;
+                playerSettings.ArchiveData = null;
+                phantomPlayer = Game.EntityManager.CreateEntity(playerSettings) as Player;
+            }
+            if (phantomPlayer == null) { error = "phantom Player entity create failed"; return 0; }
+            if (enemy == false) phantomPlayer.PhantomCreatorId = host.Id;
+
+            // Step 2: create the team-up Agent in the phantom's TeamUpLibrary
+            // (same slot Player.UnlockTeamUpAgent uses for real players)…
+            Inventory teamUpLibrary = phantomPlayer.GetInventory(InventoryConvenienceLabel.TeamUpLibrary);
+            if (teamUpLibrary == null) { error = "TeamUpLibrary missing on phantom Player"; DestroyPhantomPlayer(phantomPlayer); return 0; }
+
+            Agent teamUp;
+            using (var settings = ObjectPoolManager.Instance.Get<EntitySettings>())
+            {
+                settings.InventoryLocation = new(phantomPlayer.Id, teamUpLibrary.PrototypeDataRef);
+                settings.EntityRef = teamUpRef;
+                teamUp = Game.EntityManager.CreateEntity(settings) as Agent;
+            }
+            if (teamUp == null) { error = $"team-up create failed for {teamUpRef.GetName()}"; DestroyPhantomPlayer(phantomPlayer); return 0; }
+
+            // Mark as phantom BEFORE the AvatarInPlay move: the Agent
+            // override for CanChangeInventoryLocation keys off IsPhantomHero
+            // to skip the containment filter that would otherwise reject a
+            // team-up going into an Avatar-only inventory slot.
+            teamUp.IsPhantomHero = true;
+
+            // …then relocate into AvatarInPlay slot 0. The party HUD's HP
+            // binding walks the phantom Player's AvatarInPlay slot to find
+            // the "current avatar" entity. The high-level ChangeInventory-
+            // Location path runs the InventoryPrototype's containment
+            // filter, which rejects non-Avatar entities (the client's SIP
+            // data restricts AvatarInPlay to AvatarPrototype).
+            // Inventory.ChangeEntityInventoryLocation is the same low-level
+            // mover the filter path eventually calls — it does the move
+            // without the filter check, so we can place the team-up there
+            // server-side and let the client's HP-bar binding follow
+            // AvatarInPlay[0] to the team-up entity.
+            Inventory avatarInPlay = phantomPlayer.GetInventory(InventoryConvenienceLabel.AvatarInPlay);
+            if (avatarInPlay != null)
+            {
+                ulong? stackEntityId = null;
+                var moveResult = Inventory.ChangeEntityInventoryLocation(teamUp, avatarInPlay, 0, ref stackEntityId, false);
+                if (moveResult != InventoryResult.Success)
+                    PhantomLogger.Warn($"[PhantomHero:TeamUp] AvatarInPlay move failed ({moveResult}) — HP bar may not bind on client");
+            }
+
+            int effectiveLevel = level > 0 ? level : CharacterLevel;
+            teamUp.InitializeLevel(effectiveLevel);
+            teamUp.CombatLevel = effectiveLevel;
+            teamUp.Properties[PropertyEnum.PowerProgressionVersion] = teamUp.GetLatestPowerProgressionVersion();
+            teamUp.Properties[PropertyEnum.Health] = teamUp.Properties[PropertyEnum.HealthMax];
+
+            // Enter game so AOI broadcasts (mirrors SpawnPhantomHeroCore step 5).
+            try { phantomPlayer.EnterGame(); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] phantomPlayer.EnterGame() partial: {ex.Message}"); }
+            try { phantomPlayer.OnLoadingScreenFinished(); } catch { }
+
+            // Step 3: SetAsPersistent(this, true) does the world entry —
+            // it computes a position near this avatar and calls EnterWorld
+            // internally. Then AssignTeamUpAgentPowers grants the team-up's
+            // native power set. See Avatar.SpawnTeamUpAgent for the full
+            // real-player flow we're mirroring.
+            try
+            {
+                teamUp.SetAsPersistent(this, true);
+                teamUp.AssignTeamUpAgentPowers();
+                // Friendly team-ups also learn the caller's ResurrectOther
+                // power so they can revive downed party members. Enemy team-
+                // ups deliberately skip this — no reviving the player they
+                // just took down.
+                if (enemy == false)
+                {
+                    PrototypeId resurrectPowerRef = AvatarPrototype?.ResurrectOtherEntityPower ?? PrototypeId.Invalid;
+                    if (resurrectPowerRef != PrototypeId.Invalid)
+                    {
+                        try { teamUp.AssignPower(resurrectPowerRef, new PowerIndexProperties(0, teamUp.CharacterLevel, teamUp.CombatLevel)); }
+                        catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] AssignPower(ResurrectOther) failed: {ex.Message}"); }
+                    }
+                }
+                AlliancePrototype alliancePlaceholder = Alliance;
+                if (enemy)
+                {
+                    PrototypeId hostileRef = ResolveHostileAllianceRef();
+                    if (hostileRef != PrototypeId.Invalid)
+                        alliancePlaceholder = hostileRef.As<AlliancePrototype>();
+                }
+                teamUp.SetSummonedAllianceOverride(alliancePlaceholder);
+            }
+            catch (Exception ex)
+            {
+                error = $"team-up world entry failed: {ex.Message}";
+                try { if (teamUp.IsInWorld) teamUp.ExitWorld(); teamUp.Destroy(); } catch { }
+                DestroyPhantomPlayer(phantomPlayer);
+                return 0;
+            }
+
+            if (teamUp.IsInWorld == false)
+            {
+                error = "team-up SetAsPersistent did not enter world";
+                try { teamUp.Destroy(); } catch { }
+                DestroyPhantomPlayer(phantomPlayer);
+                return 0;
+            }
+
+            // HP + damage curve: same enemy/friendly split as avatar phantoms
+            // so team-up phantoms feel calibrated the same way. Nemesis rank
+            // stacks on the enemy base.
+            if (enemy)
+            {
+                float enemyHpBase = EnemyPhantomHealthMult;
+                float hpMult = nemesisRank > 0
+                    ? Player.NemesisHealthMultForRank(nemesisRank)
+                    : enemyHpBase;
+                teamUp.Properties[PropertyEnum.HealthMaxMult] = hpMult;
+                try
+                {
+                    var globals = GameDatabase.PopulationGlobalsPrototype;
+                    if (globals != null)
+                    {
+                        var rankProto = nemesisRank > 0
+                            ? globals.GetRankByEnum(Rank.Boss)
+                            : globals.GetRankByEnum(Rank.MiniBoss);
+                        if (rankProto != null)
+                            teamUp.Properties[PropertyEnum.Rank] = rankProto.DataRef;
+                    }
+                }
+                catch { }
+            }
+            else
+            {
+                teamUp.Properties[PropertyEnum.HealthMaxMult] = PhantomHealthMult;
+            }
+            teamUp.Properties[PropertyEnum.Health] = teamUp.Properties[PropertyEnum.HealthMax];
+            ApplyPhantomDamageScaling(teamUp, effectiveLevel, enemy);
+            if (enemy && nemesisRank > 0)
+            {
+                float dmgBoost = Player.NemesisDmgBoostForRank(nemesisRank);
+                float currentDmgMult = teamUp.Properties[PropertyEnum.DamageMult];
+                teamUp.Properties[PropertyEnum.DamageMult] = (currentDmgMult <= 0f ? 1f : currentDmgMult) * (1f + dmgBoost);
+            }
+
+            // IsPhantomHero was set earlier (before the AvatarInPlay move
+            // so the containment-filter override could see it). Just make
+            // sure we're simulated so power activation doesn't
+            // OwnerNotSimulated-reject.
+            try { teamUp.SetSimulated(true); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] SetSimulated(true) failed: {ex.Message}"); }
+
+            // Register into the same tracking dicts avatar phantoms use so
+            // !phantom clear, cross-region purge, party HUD sync, leash, and
+            // nemesis retirement all reuse the existing plumbing.
+            if (enemy)
+            {
+                host.RegisterEnemyPhantom(teamUp.Id, phantomPlayer.Id);
+            }
+            else
+            {
+                var descriptor = new MHServerEmu.DatabaseAccess.Models.PhantomIntent
+                {
+                    AvatarRef = (ulong)teamUpRef,
+                    Level = effectiveLevel,
+                    Username = username,
+                    LockLevel = false,
+                    CostumeRef = 0,
+                    GearRefs = null,
+                    Invincible = false,
+                };
+                host.RegisterPhantom(teamUp.Id, phantomPlayer.Id, descriptor);
+            }
+            SchedulePhantomTick();
+
+            PhantomLogger.Info($"[PhantomHero:TeamUp] {this} spawned {(enemy ? "HOSTILE" : "friendly")} team-up '{teamUpRef.GetName()}' (agentId 0x{teamUp.Id:X}) at {teamUp.RegionLocation.Position.ToStringNames()} level {effectiveLevel}");
+            return teamUp.Id;
+        }
 
         /// <summary>
         /// Spawn a HOSTILE phantom carrying nemesis flavor — a fixed username
@@ -1717,7 +2341,17 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// when the roll picks a nemesis instead of a random hero.
         /// </summary>
         public ulong SpawnNemesisPhantomHero(PrototypeId avatarRef, int level, string killerName, int rank, out string error)
-            => SpawnPhantomHeroCore(avatarRef, level, killerName, lockLevel: true, 0, null, out error, enemy: true, nemesisRank: rank);
+        {
+            // Team-up nemeses go through the team-up spawn path so the
+            // AgentTeamUpPrototype dispatch, native AI, and inventory
+            // containment override all apply. usernameOverride is the killer
+            // name from the roster entry so the returning team-up carries
+            // the same recognizable name it did when it killed the player.
+            if (avatarRef != PrototypeId.Invalid && avatarRef.As<AgentTeamUpPrototype>() != null)
+                return SpawnTeamUpPhantomHero(avatarRef, level, out error, enemy: true, nemesisRank: rank, usernameOverride: killerName);
+
+            return SpawnPhantomHeroCore(avatarRef, level, killerName, lockLevel: true, 0, null, out error, enemy: true, nemesisRank: rank);
+        }
 
         // Cached mutually-hostile alliance for enemy phantoms, resolved from
         // the loaded client data at runtime (first alliance that is hostile
