@@ -1,0 +1,5092 @@
+{
+ "_credit": {
+  "source": "itembase.mhbugle.com — Marvel Heroes Omega Item Base",
+  "creator": "AlexBond",
+  "usage": "Used with permission for a non-commercial fan project.",
+  "note": "Loadouts derived from community build guides on the Item Base; credit to the original guide authors and the mhbugle community."
+ },
+ "Angela": {
+  "slug": "angela",
+  "display": "Angela",
+  "url": "https://itembase.mhbugle.com/build/3175/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xC38D003D53A6198B",
+    "name": "Sabretooth's Furry Mane",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0xA3E6C183512319E9",
+    "name": "Bullseye Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x5D7ED6CE1EA118CA",
+    "name": "Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xF4AF8B1B03971FF3",
+    "name": "High Commander's Armor",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x5F738BA3E2801BBB",
+    "name": "Witch Hunter's Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x0A48C74AE27B1BBB",
+    "name": "Blades of Ichor",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xC7BFA937664715C5",
+    "name": "Insignia of Gamora",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "AntMan": {
+  "slug": "ant-man",
+  "display": "Ant-Man",
+  "url": "https://itembase.mhbugle.com/build/4750/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x93C7B92C428C2371",
+    "name": "Wizard's Cosmically Enhanced Id Machine",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xF1A5C69A03671FEF",
+    "name": "Kraven's Lion Vest",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x14E646BDE4981BD3",
+    "name": "Belt of the Yellow Jacket",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xD568997DE4A31BD4",
+    "name": "Wings of the Wasp",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xC270ECFA660415BF",
+    "name": "Insignia of She-Hulk",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "BlackWidow": {
+  "slug": "black-widow",
+  "display": "Black Widow",
+  "url": "https://itembase.mhbugle.com/build/5791/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xE5E2209C53731987",
+    "name": "Cybernetic Implant",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x207A8652FE081CCD",
+    "name": "War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x8CA75AF12C261541",
+    "name": "Relic of the Gibborim",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x8E70CF9CA7C816EA",
+    "name": "M'Kraan Crystal",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x17BA69C6E0130D51",
+    "name": "Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xF1A5C69A03671FEF",
+    "name": "Kraven's Lion Vest",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x95CC105359871D6A",
+    "name": "Drop Leg Holster Rig",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x033B3B76666C15C8",
+    "name": "Insignia of Elektra",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "CaptainAmerica": {
+  "slug": "captain-america",
+  "display": "Captain America",
+  "url": "https://itembase.mhbugle.com/build/1713/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xAA4CFEE6539B198A",
+    "name": "Sacred White Gorilla Necklace",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xC38D003D53A6198B",
+    "name": "Sabretooth's Furry Mane",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xDC06E49AA7DE16EC",
+    "name": "Shield of Perseus",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0x9CEA7CD0B0BF1E6A",
+    "name": "Skrull's Mighty Hammer",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x9EA1319ED4301EFE",
+    "name": "Stark Industries Support Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x6E47A108D3FD1EFA",
+    "name": "Invaders Photograph",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xF7A5C709D4081EFB",
+    "name": "Boondockers",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x362B18C9D4131EFC",
+    "name": "The Captain's Mask",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x9CD52B89662D15C3",
+    "name": "Insignia of Captain America",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "MsMarvel": {
+  "slug": "captain-marvel",
+  "display": "Captain Marvel",
+  "url": "https://itembase.mhbugle.com/build/9232/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xE5E2209C53731987",
+    "name": "Cybernetic Implant",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xB39BBD6E53881988",
+    "name": "Improved Arc Reactor",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xE75082D78DFE1A86",
+    "name": "Hand of Doom",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x6264B1ED85091AAB",
+    "name": "HYDRA Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x8CA75AF12C261541",
+    "name": "Relic of the Gibborim",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x8E70CF9CA7C816EA",
+    "name": "M'Kraan Crystal",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0xD81540D46B9B111D",
+    "name": "Stone of Jordan",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xAF71E34620561CAF",
+    "name": "Air Force Flight Suit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x0BED2E2820991CB5",
+    "name": "Aviator's Scarf",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xEB055CC220421CAD",
+    "name": "Kree Battle Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x2A8B8302204D1CAE",
+    "name": "Warbird's Mask",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x9FD310F6665D15C7",
+    "name": "Insignia of Groot",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Hawkeye": {
+  "slug": "hawkeye",
+  "display": "Hawkeye",
+  "url": "https://itembase.mhbugle.com/build/9027/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x82C372518E151A88",
+    "name": "Flag of the Skrull Empire",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xF1A5C69A03671FEF",
+    "name": "Kraven's Lion Vest",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x9AC1672901811C38",
+    "name": "Hulkbuster Arrows",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x033B3B76666C15C8",
+    "name": "Insignia of Elektra",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Hulk": {
+  "slug": "hulk",
+  "display": "Hulk",
+  "url": "https://itembase.mhbugle.com/build/9417/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x23B5643EB0541E60",
+    "name": "Portal's Darkhawk Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xD2BB06CA664515C5",
+    "name": "Insignia of Eric O'Grady",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "IronMan": {
+  "slug": "iron-man",
+  "display": "Iron Man",
+  "url": "https://itembase.mhbugle.com/build/21/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xE75082D78DFE1A86",
+    "name": "Hand of Doom",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x312CBAC553C2198D",
+    "name": "Tanya's Love Letter",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x6264B1ED85091AAB",
+    "name": "HYDRA Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x8CA75AF12C261541",
+    "name": "Relic of the Gibborim",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x8E70CF9CA7C816EA",
+    "name": "M'Kraan Crystal",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x83B5D3F57B72117F",
+    "name": "Xavier's School for Gifted Youngsters Class Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0x779C85A0B0C01E6A",
+    "name": "Heavily Modified Mercenary Assault Rifle",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x50A4B9B302831C44",
+    "name": "Hulkbuster-Plated Compact Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x2F0A6374663115C3",
+    "name": "Insignia of Drax the Destroyer",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "SheHulk": {
+  "slug": "she-hulk",
+  "display": "She-Hulk",
+  "url": "https://itembase.mhbugle.com/build/9224/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xAA4CFEE6539B198A",
+    "name": "Sacred White Gorilla Necklace",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x6264B1ED85091AAB",
+    "name": "HYDRA Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x7AAE933D1A911CB9",
+    "name": "Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xF8A9515D020C1C3B",
+    "name": "Savagely Torn Outfit",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x39278E9D02171C3C",
+    "name": "Fantastic Four Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xC270ECFA660415BF",
+    "name": "Insignia of She-Hulk",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Thor": {
+  "slug": "thor",
+  "display": "Thor",
+  "url": "https://itembase.mhbugle.com/build/1555/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xE75082D78DFE1A86",
+    "name": "Hand of Doom",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x283EF10153941989",
+    "name": "The Doomsaw",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xD61C765DA7B216E8",
+    "name": "Norn Stones",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x23B5643EB0541E60",
+    "name": "Portal's Darkhawk Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x9CD52B89662D15C3",
+    "name": "Insignia of Captain America",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Vision": {
+  "slug": "vision",
+  "display": "Vision",
+  "url": "https://itembase.mhbugle.com/build/9162/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x1993B61B539F198A",
+    "name": "Starktech Sentinel Adaptive Plating",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x1B2114508E0A1A87",
+    "name": "Skrull Energy Rifle Focusing Crystal",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x8E70CF9CA7C816EA",
+    "name": "M'Kraan Crystal",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x77FD77E5B0681E62",
+    "name": "Apocalypse Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x6812D1F2B0A31E66",
+    "name": "HYDRA Belt-Mounted Sonar Targeting System",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xF25F3CB03AC4194B",
+    "name": "Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x5D5BF449662215C2",
+    "name": "Insignia of Wasp",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "WarMachine": {
+  "slug": "war-machine",
+  "display": "War Machine",
+  "url": "https://itembase.mhbugle.com/build/4460/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xAA4CFEE6539B198A",
+    "name": "Sacred White Gorilla Necklace",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x8CA75AF12C261541",
+    "name": "Relic of the Gibborim",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xFD6049B0A79216E5",
+    "name": "Golden Bow of Apollo",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x936C17BCB0801E64",
+    "name": "Mzee's Hardened Shell",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x85A22EA35A291D71",
+    "name": "Integrated Tank Treads",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x5D5BF449662215C2",
+    "name": "Insignia of Wasp",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Beast": {
+  "slug": "beast",
+  "display": "Beast",
+  "url": "https://itembase.mhbugle.com/build/9052/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x46CF170D42CB2375",
+    "name": "Siege's Cosmically Enhanced Targeting System",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x207A8652FE081CCD",
+    "name": "War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x8CA75AF12C261541",
+    "name": "Relic of the Gibborim",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3860C2ACA7E116EC",
+    "name": "Salvaged Alien Weapon",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xF1A5C69A03671FEF",
+    "name": "Kraven's Lion Vest",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xD2AF0368C78A1B66",
+    "name": "Uncanny X-Men Shorts",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xA4E52703663115C3",
+    "name": "Insignia of Oracle",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Cable": {
+  "slug": "cable",
+  "display": "Cable",
+  "url": "https://itembase.mhbugle.com/build/3129/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xE804B7F58E0A1A87",
+    "name": "A.R.M.O.R. M-26 Anti-Reality Grenade",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x92FD104453EC1991",
+    "name": "Hood of the Reaper",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x9846BA0CDBBB1C1C",
+    "name": "Skrull Medallion Of Bravery",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x1D883B5AA7D316EB",
+    "name": "The Warlock's Eye",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x83B5D3F57B72117F",
+    "name": "Xavier's School for Gifted Youngsters Class Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xC8069502B09A1E66",
+    "name": "Standard Issue X-Men Uniform",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xABBD2671C4B01B3C",
+    "name": "Forge's Bionic Arm Harness",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x4308EC32C4C61B3E",
+    "name": "Techno-Organic Virus Inhibitor",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xE9C9DB5B665715C6",
+    "name": "Insignia of Havok",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Colossus": {
+  "slug": "colossus",
+  "display": "Colossus",
+  "url": "https://itembase.mhbugle.com/build/9507/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x2225FED6EE5222E2",
+    "name": "Magneto Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x936C17BCB0801E64",
+    "name": "Mzee's Hardened Shell",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xE65B920421B01CBF",
+    "name": "Courage of Colossus",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x6878E78F65ED15BD",
+    "name": "Insignia of Archangel",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Cyclops": {
+  "slug": "cyclops",
+  "display": "Cyclops",
+  "url": "https://itembase.mhbugle.com/build/2519/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x00B17DB68DF41A85",
+    "name": "Doop Ectoplasm",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x5CA6188E53701986",
+    "name": "Cyclops Was Right T-Shirt",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xE804B7F58E0A1A87",
+    "name": "A.R.M.O.R. M-26 Anti-Reality Grenade",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xFD6049B0A79216E5",
+    "name": "Golden Bow of Apollo",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x29F3651A031A1C4D",
+    "name": "Clan Rebellion Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x5B5782B7668215CA",
+    "name": "Insignia of Cyclops",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Deadpool": {
+  "slug": "deadpool",
+  "display": "Deadpool",
+  "url": "https://itembase.mhbugle.com/build/3819/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xB39BBD6E53881988",
+    "name": "Improved Arc Reactor",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x8CA75AF12C261541",
+    "name": "Relic of the Gibborim",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x8E70CF9CA7C816EA",
+    "name": "M'Kraan Crystal",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0xD701FB7E38170FCA",
+    "name": "S.H.I.E.L.D Graduation Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x0E53894A03761FF1",
+    "name": "Mechanical Arms of Doc Octopus",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xC44BD0D41D381C95",
+    "name": "Katanas of Gratuitous Violence",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xDA951ED71D421C96",
+    "name": "Luscious Loafers of Lasting 1337ness",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x033B3B76666C15C8",
+    "name": "Insignia of Elektra",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "EmmaFrost": {
+  "slug": "emma-frost",
+  "display": "Emma Frost",
+  "url": "https://itembase.mhbugle.com/build/2696/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xF220472753B1198C",
+    "name": "Arnim Zola's ESP Box",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x98E7828353C0198D",
+    "name": "Vibro-Smashers",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x035955046458272D",
+    "name": "Infernal War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x1D883B5AA7D316EB",
+    "name": "The Warlock's Eye",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x17BA69C6E0130D51",
+    "name": "Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x7AAE933D1A911CB9",
+    "name": "Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x6642F00D3D611D16",
+    "name": "Fur Trimmed Stole of the White Queen",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xA7CC2FCD3D6C1D17",
+    "name": "Generation X Academy Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x5B5782B7668215CA",
+    "name": "Insignia of Cyclops",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Gambit": {
+  "slug": "gambit",
+  "display": "Gambit",
+  "url": "https://itembase.mhbugle.com/build/1126/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x1B2114508E0A1A87",
+    "name": "Skrull Energy Rifle Focusing Crystal",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x82C372518E151A88",
+    "name": "Flag of the Skrull Empire",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x05FFDA538E401A8C",
+    "name": "Advanced Reserve Electrical Generator",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x9846BA0CDBBB1C1C",
+    "name": "Skrull Medallion Of Bravery",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x4FFE105CA7BD16E9",
+    "name": "Cosmic Control Rod",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xA186808EE34F1BC5",
+    "name": "X-Ternals Mantle",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAD556CFBE2F81BBD",
+    "name": "Le Diable Blanc's Blindfold",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x6CDBB33BE3031BBE",
+    "name": "Marauder Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0xE9C9DB5B665715C6",
+    "name": "Insignia of Havok",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Iceman": {
+  "slug": "iceman",
+  "display": "Iceman",
+  "url": "https://itembase.mhbugle.com/build/3092/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x68C41A5953D6198F",
+    "name": "Iron Legion Armor Sheath",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x98E7828353C0198D",
+    "name": "Vibro-Smashers",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x9846BA0CDBBB1C1C",
+    "name": "Skrull Medallion Of Bravery",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3CEE9670A78716E4",
+    "name": "Neptune's Trident",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x77FD77E5B0681E62",
+    "name": "Apocalypse Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x17008547B0B91E67",
+    "name": "Cerebra Helmet Interface",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x0921A9B1669815CC",
+    "name": "Insignia of Iceman",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "JeanGrey": {
+  "slug": "jean-grey",
+  "display": "Jean Grey",
+  "url": "https://itembase.mhbugle.com/build/55/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x05FFDA538E401A8C",
+    "name": "Advanced Reserve Electrical Generator",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xE75082D78DFE1A86",
+    "name": "Hand of Doom",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x035955046458272D",
+    "name": "Infernal War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x12A9E09F6C041662",
+    "name": "Relic of Lemuria",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x4FFE105CA7BD16E9",
+    "name": "Cosmic Control Rod",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0x44EE5D251E371C9C",
+    "name": "Gloves of the Twelve",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x842193F41E451C9D",
+    "name": "Cosmic Egg of the Phoenix",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xF25F3CB03AC4194B",
+    "name": "Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0xE9C9DB5B665715C6",
+    "name": "Insignia of Havok",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Juggernaut": {
+  "slug": "juggernaut",
+  "display": "Juggernaut",
+  "url": "https://itembase.mhbugle.com/build/9035/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xB1DC970053B5198C",
+    "name": "Rhino's Indestructible Horn",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xB39BBD6E53881988",
+    "name": "Improved Arc Reactor",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xE5E2209C53731987",
+    "name": "Cybernetic Implant",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0xACADC20D59EC2427",
+    "name": "Hulk Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x8CA75AF12C261541",
+    "name": "Relic of the Gibborim",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3860C2ACA7E116EC",
+    "name": "Salvaged Alien Weapon",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x117E3AE95C711D8A",
+    "name": "Crimson Armor of Cyttorak",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x15D27BA1B0CF1E6A",
+    "name": "Oscorp Prototype Generator",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x491283285C871D8C",
+    "name": "X-Men Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xF3DDABE065F915BE",
+    "name": "Insignia of Spider-Woman",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "KittyPryde": {
+  "slug": "kitty-pryde",
+  "display": "Kitty Pryde",
+  "url": "https://itembase.mhbugle.com/build/9078/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x32F9753842992372",
+    "name": "Cosmically Enhanced A.R.M.O.R M-26 Anti-Reality Grenade",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xC38D003D53A6198B",
+    "name": "Sabretooth's Furry Mane",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x207A8652FE081CCD",
+    "name": "War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3CEE9670A78716E4",
+    "name": "Neptune's Trident",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x83B5D3F57B72117F",
+    "name": "Xavier's School for Gifted Youngsters Class Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xF1A5C69A03671FEF",
+    "name": "Kraven's Lion Vest",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x9FD310F6665D15C7",
+    "name": "Insignia of Groot",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Magik": {
+  "slug": "magik",
+  "display": "Magik",
+  "url": "https://itembase.mhbugle.com/build/9054/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x82C372518E151A88",
+    "name": "Flag of the Skrull Empire",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x92FD104453EC1991",
+    "name": "Hood of the Reaper",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xA729D4D26D4519EE",
+    "name": "Elektra's Mask",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x401136125CE6244C",
+    "name": "Skrull X-Men Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xDE6A3C07AB1116F7",
+    "name": "Uru-Forged Battle Helmet",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3CEE9670A78716E4",
+    "name": "Neptune's Trident",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xC8069502B09A1E66",
+    "name": "Standard Issue X-Men Uniform",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xFFB92720C70A1B5D",
+    "name": "Earth-4210 Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x4EDCB6BAB0C11E67",
+    "name": "Octobot Controller",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x017C1118669915CC",
+    "name": "Insignia of Phoenix",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Magneto": {
+  "slug": "magneto",
+  "display": "Magneto",
+  "url": "https://itembase.mhbugle.com/build/1266/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x4A0375392C8F1CBB",
+    "name": "Advanced S.H.I.E.L.D. Motion Analyzer",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xE75082D78DFE1A86",
+    "name": "Hand of Doom",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x035955046458272D",
+    "name": "Infernal War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xFD6049B0A79216E5",
+    "name": "Golden Bow of Apollo",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x7AAE933D1A911CB9",
+    "name": "Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x0921A9B1669815CC",
+    "name": "Insignia of Iceman",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Nightcrawler": {
+  "slug": "nightcrawler",
+  "display": "Nightcrawler",
+  "url": "https://itembase.mhbugle.com/build/8992/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xA729D4D26D4519EE",
+    "name": "Elektra's Mask",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x7AAE933D1A911CB9",
+    "name": "Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x96C2745F994D1E54",
+    "name": "Black Gloves of the Priesthood",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x574CAB9F99581E55",
+    "name": "Fairy Tale Swashbuckler's Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xCEAECD9E99631E56",
+    "name": "Great White Shark",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x5B5782B7668215CA",
+    "name": "Insignia of Cyclops",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Psylocke": {
+  "slug": "psylocke",
+  "display": "Psylocke",
+  "url": "https://itembase.mhbugle.com/build/2400/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xF220472753B1198C",
+    "name": "Arnim Zola's ESP Box",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x1D883B5AA7D316EB",
+    "name": "The Warlock's Eye",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xF1A5C69A03671FEF",
+    "name": "Kraven's Lion Vest",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x17008547B0B91E67",
+    "name": "Cerebra Helmet Interface",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x5B5782B7668215CA",
+    "name": "Insignia of Cyclops",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Rogue": {
+  "slug": "rogue",
+  "display": "Rogue",
+  "url": "https://itembase.mhbugle.com/build/4638/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x32F9753842992372",
+    "name": "Cosmically Enhanced A.R.M.O.R M-26 Anti-Reality Grenade",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x46CF170D42CB2375",
+    "name": "Siege's Cosmically Enhanced Targeting System",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x207A8652FE081CCD",
+    "name": "War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xDC06E49AA7DE16EC",
+    "name": "Shield of Perseus",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0xD701FB7E38170FCA",
+    "name": "S.H.I.E.L.D Graduation Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xC8069502B09A1E66",
+    "name": "Standard Issue X-Men Uniform",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x54DA2DE3B07F1E63",
+    "name": "Stark Sentinel Adaptive Reactor",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x57D511C1C9041B6E",
+    "name": "Age of Apocalypse Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x965BCE01C90F1B6F",
+    "name": "Anna Marie's Bomber Jacket",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x5B5782B7668215CA",
+    "name": "Insignia of Cyclops",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Storm": {
+  "slug": "storm",
+  "display": "Storm",
+  "url": "https://itembase.mhbugle.com/build/1513/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x46CF170D42CB2375",
+    "name": "Siege's Cosmically Enhanced Targeting System",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xFD6049B0A79216E5",
+    "name": "Golden Bow of Apollo",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x17BA69C6E0130D51",
+    "name": "Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x23B5643EB0541E60",
+    "name": "Portal's Darkhawk Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x82B49468CA901B7E",
+    "name": "Cloak of the Sky Goddess",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xF25F3CB03AC4194B",
+    "name": "Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x5D5BF449662215C2",
+    "name": "Insignia of Wasp",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Wolverine": {
+  "slug": "wolverine",
+  "display": "Wolverine",
+  "url": "https://itembase.mhbugle.com/build/9155/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2EF78FB353D7198F",
+    "name": "Kraven's Last Hunt",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xE2B0EB6B3F2C1D1F",
+    "name": "Worn Leather Jacket",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x151B1C123F8A1D27",
+    "name": "Team X Utility Belt",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xF25F3CB03AC4194B",
+    "name": "Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xF5B7849C3FDD1D2E",
+    "name": "Master Ogun's Sword",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xF4FBD9478546112E",
+    "name": "Insignia of Taskmaster",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "X23": {
+  "slug": "x-23",
+  "display": "X-23",
+  "url": "https://itembase.mhbugle.com/build/1320/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xC38D003D53A6198B",
+    "name": "Sabretooth's Furry Mane",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0xC9AE83AD6DE61E40",
+    "name": "Medallion of the Dark Dimension",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x36DFF644AAFB16F5",
+    "name": "Uru-Forged Battle Breastplate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xC72A58B1880E1A31",
+    "name": "All New X-Men Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x27C22A5B87B71A29",
+    "name": "Kinney Family Locket",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x1FAA7B81B0A31E65",
+    "name": "Batroc's Savate Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xEFC5ADA565F715BE",
+    "name": "Insignia of Quicksilver",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "HumanTorch": {
+  "slug": "human-torch",
+  "display": "Human Torch",
+  "url": "https://itembase.mhbugle.com/build/3954/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xC8D683EB53EB1991",
+    "name": "The Book of Demonicus",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x1B2114508E0A1A87",
+    "name": "Skrull Energy Rifle Focusing Crystal",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x4FFE105CA7BD16E9",
+    "name": "Cosmic Control Rod",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x23B5643EB0541E60",
+    "name": "Portal's Darkhawk Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x441A02FE5C5A1D86",
+    "name": "Future Foundation Belt",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xF25F3CB03AC4194B",
+    "name": "Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x5B928AFB662515C2",
+    "name": "Insignia of Frankie Raye",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "InvisibleWoman": {
+  "slug": "invisible-woman",
+  "display": "Invisible Woman",
+  "url": "https://itembase.mhbugle.com/build/9480/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEEB322664264236F",
+    "name": "Cosmically Enhanced A.R.M.O.R Dimensional Power Portal Generator ",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x46CF170D42CB2375",
+    "name": "Siege's Cosmically Enhanced Targeting System",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x4FFE105CA7BD16E9",
+    "name": "Cosmic Control Rod",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x23B5643EB0541E60",
+    "name": "Portal's Darkhawk Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x8A03D2F7DA361F39",
+    "name": "Malice's Cape",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x5B928AFB662515C2",
+    "name": "Insignia of Frankie Raye",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "MrFantastic": {
+  "slug": "mr-fantastic",
+  "display": "Mr. Fantastic",
+  "url": "https://itembase.mhbugle.com/build/9561/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x283EF10153941989",
+    "name": "The Doomsaw",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xC07EB3678DBA1A80",
+    "name": "Mental Focus Headband",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x66C505DFA78616E4",
+    "name": "Ultimate Nullifier",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x17BA69C6E0130D51",
+    "name": "Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x4B8D0D37DA2B1F38",
+    "name": "Future Foundation Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x01B91954660E15C0",
+    "name": "Insignia of Mister Fantastic",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Thing": {
+  "slug": "thing",
+  "display": "Thing",
+  "url": "https://itembase.mhbugle.com/build/9478/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x46CF170D42CB2375",
+    "name": "Siege's Cosmically Enhanced Targeting System",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x17BA69C6E0130D51",
+    "name": "Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x0E53894A03761FF1",
+    "name": "Mechanical Arms of Doc Octopus",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x25B1E1B1C83C1B65",
+    "name": "UCWF Championship Belt",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x4BCFE903EBD717FC",
+    "name": "Pants",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xE0C7CEEAC82D1B63",
+    "name": "Hammer of Angrir",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x9FD310F6665D15C7",
+    "name": "Insignia of Groot",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Nova": {
+  "slug": "nova",
+  "display": "Nova",
+  "url": "https://itembase.mhbugle.com/build/2052/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x96F2A6B0533D1982",
+    "name": "Edge of Infinity",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x1B2114508E0A1A87",
+    "name": "Skrull Energy Rifle Focusing Crystal",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x4FFE105CA7BD16E9",
+    "name": "Cosmic Control Rod",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x23B5643EB0541E60",
+    "name": "Portal's Darkhawk Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xE688AE2FACC31B05",
+    "name": "Nova Centurion Standard-Issue Belt",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x1FAA7B81B0A31E65",
+    "name": "Batroc's Savate Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0xEFC5ADA565F715BE",
+    "name": "Insignia of Quicksilver",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "RocketRaccoon": {
+  "slug": "rocket-raccoon",
+  "display": "Rocket Raccoon",
+  "url": "https://itembase.mhbugle.com/build/391/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xE75082D78DFE1A86",
+    "name": "Hand of Doom",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x067803048E4F1A8D",
+    "name": "Ultron Encephalo-Beam",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x035955046458272D",
+    "name": "Infernal War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xDC06E49AA7DE16EC",
+    "name": "Shield of Perseus",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x54781AE503771FF1",
+    "name": "Doomsday Chair",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xB6738C99B83B1EB8",
+    "name": "Chitauri Turret Control Device",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x17008547B0B91E67",
+    "name": "Cerebra Helmet Interface",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x9FD310F6665D15C7",
+    "name": "Insignia of Groot",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "SilverSurfer": {
+  "slug": "silver-surfer",
+  "display": "Silver Surfer",
+  "url": "https://itembase.mhbugle.com/build/327/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x68C41A5953D6198F",
+    "name": "Iron Legion Armor Sheath",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x4A0375392C8F1CBB",
+    "name": "Advanced S.H.I.E.L.D. Motion Analyzer",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x9846BA0CDBBB1C1C",
+    "name": "Skrull Medallion Of Bravery",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xFD6049B0A79216E5",
+    "name": "Golden Bow of Apollo",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xE8D313A89D341E79",
+    "name": "Herald's Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x295DCC689D3F1E7A",
+    "name": "Love of Shalla-Bal",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xC9B5BE829CE81E72",
+    "name": "Mantle of the Keeper",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x5B928AFB662515C2",
+    "name": "Insignia of Frankie Raye",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Starlord": {
+  "slug": "star-lord",
+  "display": "Star-Lord",
+  "url": "https://itembase.mhbugle.com/build/3204/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x68C41A5953D6198F",
+    "name": "Iron Legion Armor Sheath",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x82C372518E151A88",
+    "name": "Flag of the Skrull Empire",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x2FB69EA253BE198D",
+    "name": "Kevlar Plated Helmet",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x4FFE105CA7BD16E9",
+    "name": "Cosmic Control Rod",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xC8069502B09A1E66",
+    "name": "Standard Issue X-Men Uniform",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x5E5DCF36665215C6",
+    "name": "Insignia of Rocket Raccoon",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "BlackCat": {
+  "slug": "black-cat",
+  "display": "Black Cat",
+  "url": "https://itembase.mhbugle.com/build/3034/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xF361563653CA198E",
+    "name": "Spider-Clone Serum",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x82C372518E151A88",
+    "name": "Flag of the Skrull Empire",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x9846BA0CDBBB1C1C",
+    "name": "Skrull Medallion Of Bravery",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x1855D5861BA01C83",
+    "name": "Agent Felicia's Body Suit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x81B7B3871BAB1C84",
+    "name": "Felicia's Leather Jacket",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x1FAA7B81B0A31E65",
+    "name": "Batroc's Savate Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x690279C41BC11C86",
+    "name": "Mask of the Noir Cat",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xB26651A9666A15C8",
+    "name": "Insignia of Mockingbird",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Blade": {
+  "slug": "blade",
+  "display": "Blade",
+  "url": "https://itembase.mhbugle.com/build/3405/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xC38D003D53A6198B",
+    "name": "Sabretooth's Furry Mane",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xF361563653CA198E",
+    "name": "Spider-Clone Serum",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xAA4CFEE6539B198A",
+    "name": "Sacred White Gorilla Necklace",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x936C17BCB0801E64",
+    "name": "Mzee's Hardened Shell",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x5D132DC3C5881B4C",
+    "name": "Eric Brooks' Custom Glaive",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xB26651A9666A15C8",
+    "name": "Insignia of Mockingbird",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Daredevil": {
+  "slug": "daredevil",
+  "display": "Daredevil",
+  "url": "https://itembase.mhbugle.com/build/9602/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x82C372518E151A88",
+    "name": "Flag of the Skrull Empire",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xA0566C2153C7198E",
+    "name": "Siege's Targeting System",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x36DFF644AAFB16F5",
+    "name": "Uru-Forged Battle Breastplate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xC8069502B09A1E66",
+    "name": "Standard Issue X-Men Uniform",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x750F063E3A881CF7",
+    "name": "Blades of the Beast",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x4D2DCBAAB1041E6D",
+    "name": "Sanjaku-Tenugui",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x11DCEE60855A1130",
+    "name": "Insignia of Iron Fist",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Elektra": {
+  "slug": "elektra",
+  "display": "Elektra",
+  "url": "https://itembase.mhbugle.com/build/9479/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xA72B8BA78E1F1A89",
+    "name": "Black Cat's Advanced Grappling Hook",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xC38D003D53A6198B",
+    "name": "Sabretooth's Furry Mane",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3860C2ACA7E116EC",
+    "name": "Salvaged Alien Weapon",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x7AAE933D1A911CB9",
+    "name": "Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x7B8535A501401C38",
+    "name": "Elfskin Cloak of Whispers",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xBA0BEA65014B1C39",
+    "name": "High-Altitude Rocket Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xB5DE3D6F00F41C31",
+    "name": "Mask of the Chaste",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x033B3B76666C15C8",
+    "name": "Insignia of Elektra",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "IronFist": {
+  "slug": "iron-fist",
+  "display": "Iron Fist",
+  "url": "https://itembase.mhbugle.com/build/9544/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x3ECBB2D36D3A19ED",
+    "name": "Elektra's Bandana",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x82C372518E151A88",
+    "name": "Flag of the Skrull Empire",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x7AAE933D1A911CB9",
+    "name": "Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x7DA05DB821221CBC",
+    "name": "Orson Randall's Bandoliers",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x951597FB21381CBE",
+    "name": "Hood of Bihar",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xC270ECFA660415BF",
+    "name": "Insignia of She-Hulk",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "LukeCage": {
+  "slug": "luke-cage",
+  "display": "Luke Cage",
+  "url": "https://itembase.mhbugle.com/build/4771/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x98E7828353C0198D",
+    "name": "Vibro-Smashers",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x4987956E4242236D",
+    "name": "Cosmically Enhanced A.R.M.O.R. Issued Nano-Poison",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE2FD8E891D141C8C",
+    "name": "Cage's Knuckledusters",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x93AA22CB1D351C8F",
+    "name": "Impenetrable Leather Jacket",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x54DA2DE3B07F1E63",
+    "name": "Stark Sentinel Adaptive Reactor",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xCBC69B0A1D4B1C91",
+    "name": "Luke's Badass Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x99B0B00C1D611C93",
+    "name": "Silver Shades of the New Avenger",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x4245C973666A15C8",
+    "name": "Insignia of the Heroes for Hire",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "MoonKnight": {
+  "slug": "moon-knight",
+  "display": "Moon Knight",
+  "url": "https://itembase.mhbugle.com/build/2416/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x46CF170D42CB2375",
+    "name": "Siege's Cosmically Enhanced Targeting System",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x6940030453D8198F",
+    "name": "Sentinel Targeting Unit",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xC8D683EB53EB1991",
+    "name": "The Book of Demonicus",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xF0676D49539A198A",
+    "name": "Advanced Circlet of Cyttorak",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x89FBFD9B11442346",
+    "name": "Malekith Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x83B5D3F57B72117F",
+    "name": "Xavier's School for Gifted Youngsters Class Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x279D29735D331D93",
+    "name": "Lockley's Advanced Carbonadium Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x7CB341A95C711D82",
+    "name": "Golden Mantle of Khonshu",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x5749C214B0AC1E66",
+    "name": "\"Last Chance\" Serrated Boot Knife",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x24DFF8685C871D84",
+    "name": "Crescent Launchers",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xCEA3008F664315C5",
+    "name": "Insignia of Spider-Man",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Punisher": {
+  "slug": "punisher",
+  "display": "Punisher",
+  "url": "https://itembase.mhbugle.com/build/9557/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x4A0375392C8F1CBB",
+    "name": "Advanced S.H.I.E.L.D. Motion Analyzer",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xD0B559578E2B1A8A",
+    "name": "Nick Fury Was Right T-Shirt",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0x548F4CC7B0691E63",
+    "name": "Bow of the Einherjar",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xF1A5C69A03671FEF",
+    "name": "Kraven's Lion Vest",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xC15CF6B7212C1CB8",
+    "name": "The Whole 9 Yards",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x35F13AB121181CB6",
+    "name": "Standard Issue USMC Jungle Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xF47FE57121231CB7",
+    "name": "Davy Crockett Nuclear Device",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x033B3B76666C15C8",
+    "name": "Insignia of Elektra",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Spiderman": {
+  "slug": "spider-man",
+  "display": "Spider-Man",
+  "url": "https://itembase.mhbugle.com/build/1572/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x769B367253ED1991",
+    "name": "Webbed Wings",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x0105E48253E11990",
+    "name": "Superior Spider-Mask",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xF361563653CA198E",
+    "name": "Spider-Clone Serum",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x9846BA0CDBBB1C1C",
+    "name": "Skrull Medallion Of Bravery",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x23B5643EB0541E60",
+    "name": "Portal's Darkhawk Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xDD7F42753D1D1D11",
+    "name": "Superior Clawed Gloves",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x1CF19DB53D281D12",
+    "name": "Spider-Armor MK II Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xF2216F22B0BF1E67",
+    "name": "Brutally Awesome Summer Shades",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x9CD52B89662D15C3",
+    "name": "Insignia of Captain America",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "DoctorStrange": {
+  "slug": "dr-strange",
+  "display": "Dr. Strange",
+  "url": "https://itembase.mhbugle.com/build/9055/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xF220472753B1198C",
+    "name": "Arnim Zola's ESP Box",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xF51603EAAAF116F4",
+    "name": "Uru-Forged War Helm",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x1D883B5AA7D316EB",
+    "name": "The Warlock's Eye",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x17BA69C6E0130D51",
+    "name": "Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xF1A5C69A03671FEF",
+    "name": "Kraven's Lion Vest",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x74E30AFEBA0C1EC6",
+    "name": "Defender's Black Coat",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xB56DD53EBA171EC7",
+    "name": "Disciple of Dormammu Sash",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x6CF6B353664715C5",
+    "name": "Insignia of Scarlet Witch",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "GhostRider": {
+  "slug": "ghost-rider",
+  "display": "Ghost Rider",
+  "url": "https://itembase.mhbugle.com/build/2547/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xE75082D78DFE1A86",
+    "name": "Hand of Doom",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xC8D683EB53EB1991",
+    "name": "The Book of Demonicus",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x401136125CE6244C",
+    "name": "Skrull X-Men Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x3498DC2AAAFC16F5",
+    "name": "Uru-Forged War Ballista",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xFD6049B0A79216E5",
+    "name": "Golden Bow of Apollo",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x657C39895C7D1D88",
+    "name": "Quentin Carnival Jumpsuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xA4F2E6495C881D89",
+    "name": "Blood Signed Contract",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x3D1080485C931D8A",
+    "name": "Craig \"Crash\" Simpson's Engineer Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x033B3B76666C15C8",
+    "name": "Insignia of Elektra",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "ScarletWitch": {
+  "slug": "scarlet-witch",
+  "display": "Scarlet Witch",
+  "url": "https://itembase.mhbugle.com/build/1328/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x05FFDA538E401A8C",
+    "name": "Advanced Reserve Electrical Generator",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xE75082D78DFE1A86",
+    "name": "Hand of Doom",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xE5E2209C53731987",
+    "name": "Cybernetic Implant",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x8CA75AF12C261541",
+    "name": "Relic of the Gibborim",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x1D883B5AA7D316EB",
+    "name": "The Warlock's Eye",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0xD81540D46B9B111D",
+    "name": "Stone of Jordan",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x7B6CB0179A081E5E",
+    "name": "Mark of the Nexus Being",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x9592EB491C081895",
+    "name": "Cape",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x8D435E3399D81E5A",
+    "name": "Genoshan Royal Slippers",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x5D5BF449662215C2",
+    "name": "Insignia of Wasp",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "BlackBolt": {
+  "slug": "black-bolt",
+  "display": "Black Bolt",
+  "url": "https://itembase.mhbugle.com/build/2024/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x312CBAC553C2198D",
+    "name": "Tanya's Love Letter",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x82C372518E151A88",
+    "name": "Flag of the Skrull Empire",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3EA9BC1EA79C16E6",
+    "name": "Gungnir",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xC8069502B09A1E66",
+    "name": "Standard Issue X-Men Uniform",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x22DEC4F73A661CF9",
+    "name": "Bladed Wings",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0xD2BB06CA664515C5",
+    "name": "Insignia of Eric O'Grady",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "BlackPanther": {
+  "slug": "black-panther",
+  "display": "Black Panther",
+  "url": "https://itembase.mhbugle.com/build/972/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x3ECBB2D36D3A19ED",
+    "name": "Elektra's Bandana",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x207A8652FE081CCD",
+    "name": "War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x47885A06AB3216FA",
+    "name": "Uru-Forged War Axe",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3CEE9670A78716E4",
+    "name": "Neptune's Trident",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x9A106208963A1E3A",
+    "name": "Thrice-Blessed Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x9F1A2F89960A1E36",
+    "name": "Blessed Belt of the Panther God",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x2CC5677496061E36",
+    "name": "Boots of the Coal Tiger",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xA0A24CA096381E3A",
+    "name": "Wakandan Ceremonial Necklace",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xF4FBD9478546112E",
+    "name": "Insignia of Taskmaster",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "NickFury": {
+  "slug": "nick-fury",
+  "display": "Nick Fury",
+  "url": "https://itembase.mhbugle.com/build/4522/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xD0B559578E2B1A8A",
+    "name": "Nick Fury Was Right T-Shirt",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3CEE9670A78716E4",
+    "name": "Neptune's Trident",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0x779C85A0B0C01E6A",
+    "name": "Heavily Modified Mercenary Assault Rifle",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xF1A5C69A03671FEF",
+    "name": "Kraven's Lion Vest",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x192A35EB20A61CBA",
+    "name": "Leather Trenchcoat",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x882B9DF4B0F31E6C",
+    "name": "Skrull Military Uniform",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x384C98C1205A1CB3",
+    "name": "Classic Machine Gun",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x9CD52B89662D15C3",
+    "name": "Insignia of Captain America",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "SquirrelGirl": {
+  "slug": "squirrel-girl",
+  "display": "Squirrel Girl",
+  "url": "https://itembase.mhbugle.com/build/9409/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xCAC10B484324237A",
+    "name": "Ultron's Cosmically Enhanced Encephalo-Beam",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x82C372518E151A88",
+    "name": "Flag of the Skrull Empire",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x058975D39F7F1B0C",
+    "name": "S.H.I.E.L.D. Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x7AAE933D1A911CB9",
+    "name": "Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x7326CE329C871E6D",
+    "name": "Squirrel Systems Utility Belt",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x1FAA7B81B0A31E65",
+    "name": "Batroc's Savate Boots",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x4EDCB6BAB0C11E67",
+    "name": "Octobot Controller",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xEFC5ADA565F715BE",
+    "name": "Insignia of Quicksilver",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Taskmaster": {
+  "slug": "taskmaster",
+  "display": "Taskmaster",
+  "url": "https://itembase.mhbugle.com/build/4690/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x283EF10153941989",
+    "name": "The Doomsaw",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x067803048E4F1A8D",
+    "name": "Ultron Encephalo-Beam",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xAD7ABA2BAB0716F6",
+    "name": "Uru-Forged War Gauntlets",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xA50CF071A7A816E7",
+    "name": "Savage Axe of Ares",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x7AAE933D1A911CB9",
+    "name": "Bodysuit",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xA9CCFC3A5CB01D89",
+    "name": "Videotape Collection",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x033B3B76666C15C8",
+    "name": "Insignia of Elektra",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Carnage": {
+  "slug": "carnage",
+  "display": "Carnage",
+  "url": "https://itembase.mhbugle.com/build/6992/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x46CF170D42CB2375",
+    "name": "Siege's Cosmically Enhanced Targeting System",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xE1181E4D8E061A87",
+    "name": "White Suit Jacket",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x2A099FBCA4EA1B6A",
+    "name": "Medallion of the Sinister Six",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xDC06E49AA7DE16EC",
+    "name": "Shield of Perseus",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x936C17BCB0801E64",
+    "name": "Mzee's Hardened Shell",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x243DE71EFEE21C1C",
+    "name": "Web of Carnage",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x0D06F29DFEED1C1D",
+    "name": "Gettin' Hitched",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xF4FBD9478546112E",
+    "name": "Insignia of Taskmaster",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "DrDoom": {
+  "slug": "dr-doom",
+  "display": "Dr. Doom",
+  "url": "https://itembase.mhbugle.com/build/267/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xE75082D78DFE1A86",
+    "name": "Hand of Doom",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x46CF170D42CB2375",
+    "name": "Siege's Cosmically Enhanced Targeting System",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x035955046458272D",
+    "name": "Infernal War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x3498DC2AAAFC16F5",
+    "name": "Uru-Forged War Ballista",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x1D883B5AA7D316EB",
+    "name": "The Warlock's Eye",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x9DEF2A385C3C1D88",
+    "name": "Armor of Hazareth Three",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x5C61F5F85C471D89",
+    "name": "Mantle of the Future Warlord",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x17008547B0B91E67",
+    "name": "Cerebra Helmet Interface",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0x01B91954660E15C0",
+    "name": "Insignia of Mister Fantastic",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "GreenGoblin": {
+  "slug": "green-goblin",
+  "display": "Green Goblin",
+  "url": "https://itembase.mhbugle.com/build/9477/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x46CF170D42CB2375",
+    "name": "Siege's Cosmically Enhanced Targeting System",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xA72B8BA78E1F1A89",
+    "name": "Black Cat's Advanced Grappling Hook",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x507D557E5A8F2431",
+    "name": "Doctor Doom Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0x15FE7100AB4816FC",
+    "name": "Uru-Forged War Belt",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3860C2ACA7E116EC",
+    "name": "Salvaged Alien Weapon",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x36C529CD025B0DE4",
+    "name": "Midtown Guardian's Signet",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x23B5643EB0541E60",
+    "name": "Portal's Darkhawk Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xAE8418B403801FF1",
+    "name": "Coat of the Skull",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xE747F458788D1DDA",
+    "name": "Goblin Glider",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x26C92B9878981DDB",
+    "name": "H.A.M.M.E.R. Security Card",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xEFC5ADA565F715BE",
+    "name": "Insignia of Quicksilver",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Loki": {
+  "slug": "loki",
+  "display": "Loki",
+  "url": "https://itembase.mhbugle.com/build/8939/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x59695D4353CB198E",
+    "name": "The Broken Crown",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xF220472753B1198C",
+    "name": "Arnim Zola's ESP Box",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x035955046458272D",
+    "name": "Infernal War Skrull Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xF51603EAAAF116F4",
+    "name": "Uru-Forged War Helm",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x1D883B5AA7D316EB",
+    "name": "The Warlock's Eye",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x17BA69C6E0130D51",
+    "name": "Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0xB09F9B34AC0F1AFB",
+    "name": "Armor of Invincibility",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x711144F4AC1A1AFC",
+    "name": "Ikol",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0xE8F322F5AC251AFD",
+    "name": "Golden Apples of Idunn",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6847A09B03721FF0",
+    "name": "Cobra's Hood",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0x6CF6B353664715C5",
+    "name": "Insignia of Scarlet Witch",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Ultron": {
+  "slug": "ultron",
+  "display": "Ultron",
+  "url": "https://itembase.mhbugle.com/build/9550/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0xE5E2209C53731987",
+    "name": "Cybernetic Implant",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0xEE38416253C9198E",
+    "name": "Crossbones's Teaching Credentials",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0x1B2114508E0A1A87",
+    "name": "Skrull Energy Rifle Focusing Crystal",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0xCE215E2D4253236E",
+    "name": "Cosmically Enhanced A.R.M.O.R. Supercharged Power Cell",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x9846BA0CDBBB1C1C",
+    "name": "Skrull Medallion Of Bravery",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0x3CEE9670A78716E4",
+    "name": "Neptune's Trident",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x17BA69C6E0130D51",
+    "name": "Ring",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x77FD77E5B0681E62",
+    "name": "Apocalypse Armor",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0xFBBF5469E82C1BFA",
+    "name": "Crimson Cowl",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x17008547B0B91E67",
+    "name": "Cerebra Helmet Interface",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0xAB32AB35266D18D4",
+    "name": "Essence of Jinn",
+    "cat": "Crafting"
+   },
+   "Insignia": {
+    "ref": "0xD2BB06CA664515C5",
+    "name": "Insignia of Eric O'Grady",
+    "cat": "Insignia"
+   }
+  }
+ },
+ "Venom": {
+  "slug": "venom",
+  "display": "Venom",
+  "url": "https://itembase.mhbugle.com/build/1896/",
+  "slots": {
+   "Artifact1": {
+    "ref": "0x2096C18D8E111A88",
+    "name": "Gem of the Kursed",
+    "cat": "Artifact"
+   },
+   "Artifact2": {
+    "ref": "0x98E7828353C0198D",
+    "name": "Vibro-Smashers",
+    "cat": "Artifact"
+   },
+   "Artifact3": {
+    "ref": "0xF1267C5853E11990",
+    "name": "Ultron Bi-Level Concussion Projector",
+    "cat": "Artifact"
+   },
+   "Artifact4": {
+    "ref": "0x321A01D38DE91A84",
+    "name": "Fist of Apocalypse",
+    "cat": "Artifact"
+   },
+   "Medal": {
+    "ref": "0x6264B1ED85091AAB",
+    "name": "HYDRA Agent Medallion",
+    "cat": "Medal"
+   },
+   "Relic": {
+    "ref": "0x440D28DD820316B7",
+    "name": "Relic of Atlantis",
+    "cat": "Relic"
+   },
+   "UruForged": {
+    "ref": "0xD470AEC0AB3D16FB",
+    "name": "Uru-Forged War Plate",
+    "cat": "Armor"
+   },
+   "Legendary": {
+    "ref": "0xDC06E49AA7DE16EC",
+    "name": "Shield of Perseus",
+    "cat": "Legendary"
+   },
+   "Ring": {
+    "ref": "0x9645738D38AB0FCF",
+    "name": "Sling Ring of the Kamar-Taj",
+    "cat": "Ring"
+   },
+   "Gear1": {
+    "ref": "0xE4563F45B03D1E5F",
+    "name": "Fragment of Twilight",
+    "cat": "Armor"
+   },
+   "Gear2": {
+    "ref": "0x936C17BCB0801E64",
+    "name": "Mzee's Hardened Shell",
+    "cat": "Armor"
+   },
+   "Gear3": {
+    "ref": "0x81E60AA0B09E1E66",
+    "name": "Girdle of Frost Giant Strength",
+    "cat": "Armor"
+   },
+   "Gear4": {
+    "ref": "0x7CE82C70C9831B77",
+    "name": "False Visage of the Spider",
+    "cat": "Armor"
+   },
+   "Gear5": {
+    "ref": "0x6369F7E5B0B41E66",
+    "name": "Mask of the Goat",
+    "cat": "Armor"
+   },
+   "Insignia": {
+    "ref": "0xF4FBD9478546112E",
+    "name": "Insignia of Taskmaster",
+    "cat": "Insignia"
+   }
+  }
+ }
+}

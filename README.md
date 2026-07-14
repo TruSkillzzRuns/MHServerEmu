@@ -21,6 +21,12 @@ prototype system — is verbatim [Crypto137/MHServerEmu](https://github.com/Cryp
 Full credit to the upstream authors; this fork just adds a mod on top of their
 work.
 
+The nemesis system's best-in-slot loadouts (worn/dropped by rank-5 nemeses)
+are courtesy of **AlexBond's** [itembase.mhbugle.com](https://itembase.mhbugle.com/)
+— the Marvel Heroes Omega Item Base — used with permission. See
+[`src/MHServerEmu.Games/Data/Game/PhantomHeroes/NOTICE.md`](src/MHServerEmu.Games/Data/Game/PhantomHeroes/NOTICE.md)
+for full attribution.
+
 ## Try it
 
 ```

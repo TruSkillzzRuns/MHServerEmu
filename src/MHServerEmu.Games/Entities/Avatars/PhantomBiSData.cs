@@ -23,11 +23,14 @@ namespace MHServerEmu.Games.Entities.Avatars
     {
         private static readonly Logger Logger = LogManager.CreateLogger();
 
-        // avatarRef -> (uiSlot -> itemRef). Loaded from an OPTIONAL curated
-        // BiS table at Data/Game/PhantomHeroes/PhantomBiSGear.json (absent by
-        // default). If a hero isn't in the file, we synthesize a loadout at
-        // runtime from the loaded game data (see GenerateLoadout) — so this
-        // feature works with or without an external override file.
+        // avatarRef -> (uiSlot -> itemRef). Loaded from the curated BiS
+        // table at Data/Game/PhantomHeroes/PhantomBiSGear.json — a mapping of
+        // community build recommendations from itembase.mhbugle.com (the
+        // Marvel Heroes Omega "Item Base", by AlexBond), used with permission.
+        // See NOTICE.md alongside the JSON for full attribution. If a hero
+        // isn't in the file, we synthesize a loadout at runtime from the
+        // loaded game data (see GenerateLoadout) — so this feature works with
+        // or without the override file.
         private static Dictionary<PrototypeId, Dictionary<EquipmentInvUISlot, PrototypeId>> s_byAvatar;
         // Runtime-generated loadouts, cached per avatar so we only score the
         // item pools once per hero.
