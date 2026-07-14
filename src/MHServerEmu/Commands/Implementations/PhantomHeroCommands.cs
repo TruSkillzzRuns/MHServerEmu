@@ -270,6 +270,38 @@ namespace MHServerEmu.Commands.Implementations
             }
         }
 
+        [Command("testnemesis")]
+        [CommandDescription("Spawn a hostile nemesis phantom at a specific rank + level for testing loot tiers. Args: [heroname] [rank 1-5] [level 1-60].")]
+        [CommandInvokerType(CommandInvokerType.Client)]
+        [CommandUserLevel(AccountUserLevel.Admin)]
+        public string TestNemesis(string[] @params, NetClient client)
+        {
+            var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom testnemesis.");
+            var avatar = pc.Player?.CurrentAvatar;
+            if (avatar == null) return "No avatar in world.";
+            if (@params.Length < 1) return "Usage: phantom testnemesis [heroname] [rank 1-5] [level 1-60]";
+
+            var matches = Avatar.FindPhantomHeroRefs(@params[0]);
+            if (matches.Count == 0) return $"No hero matching '{@params[0]}'.";
+            if (matches.Count > 1)
+            {
+                var names = new System.Text.StringBuilder();
+                for (int i = 0; i < matches.Count && i < 8; i++) { if (i > 0) names.Append(", "); names.Append(matches[i].ShortName); }
+                if (matches.Count > 8) names.Append(", ...");
+                return $"Multiple matches: {names}. Be more specific.";
+            }
+
+            int rank = 5, level = 60;
+            if (@params.Length >= 2 && int.TryParse(@params[1], out int r)) rank = System.Math.Clamp(r, 1, 5);
+            if (@params.Length >= 3 && int.TryParse(@params[2], out int l)) level = System.Math.Clamp(l, 1, 60);
+
+            string display = $"★{rank} TEST {matches[0].ShortName}";
+            ulong id = avatar.SpawnNemesisPhantomHero(matches[0].AvatarRef, level, display, rank, out string error);
+            return id != 0
+                ? $"Spawned rank-{rank} level-{level} nemesis {matches[0].ShortName}. Kill it to test the loot tier."
+                : $"Failed: {error}";
+        }
+
         [Command("enemyclear")]
         [CommandDescription("Despawn every enemy phantom.")]
         [CommandInvokerType(CommandInvokerType.Client)]

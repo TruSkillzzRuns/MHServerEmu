@@ -214,8 +214,8 @@ namespace MHServerEmu.Games.Entities
                 1 => 8.5f,
                 2 => 10.0f,
                 3 => 12.0f,
-                4 => 15.0f,
-                5 => 20.0f,
+                4 => 22.0f,  // buffed — a genuine wall
+                5 => 32.0f,  // buffed — proper raid-boss HP pool
                 _ => 8.0f,
             };
         }
@@ -233,8 +233,8 @@ namespace MHServerEmu.Games.Entities
                 1 => 0.05f,
                 2 => 0.15f,
                 3 => 0.25f,
-                4 => 0.40f,
-                5 => 0.60f,
+                4 => 0.60f,  // buffed — hits noticeably harder
+                5 => 0.80f,  // buffed — a hard hitter without one-shotting
                 _ => 0.00f,
             };
         }

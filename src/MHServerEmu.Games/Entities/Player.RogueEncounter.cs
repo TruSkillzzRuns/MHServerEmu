@@ -33,6 +33,10 @@ namespace MHServerEmu.Games.Entities
         // instead of the avatar pool. Kept low so avatar phantoms remain
         // the "canonical" rogue face but team-up cameos happen occasionally.
         private const double RogueEncounterTeamUpChance = 0.15;
+        // Per-slot chance a NON-roster slot spawns a random hero as a full
+        // rank-5 nemesis boss — a rare "surprise boss" ambush even when you
+        // have no active nemeses. At level 60 it wears+drops the BiS jackpot.
+        private const double RogueEncounterSurpriseRank5Chance = 0.08;
 
         private bool _rogueEncounterEnabled;
         private long _rogueEncounterLastMs;
@@ -165,6 +169,22 @@ namespace MHServerEmu.Games.Entities
                         ? $"{stars} {killerBase}"
                         : $"{stars} {killerBase} {suffix}";
                     id = avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out err);
+                    if (id != 0)
+                    {
+                        nemesisSpawnedCount++;
+                        firstNemesisName ??= displayName;
+                    }
+                }
+                else if (rng.NextDouble() < RogueEncounterSurpriseRank5Chance)
+                {
+                    // Surprise boss: a random hero (Invalid ref -> the spawn
+                    // path rolls one) ambushes as a full rank-5 nemesis even
+                    // though it isn't on the roster. At level 60 the rank-5
+                    // spawn path makes it wear + drop the BiS jackpot.
+                    string stars = new string('★', NemesisMaxRank);
+                    string suffix = NemesisSuffixForRank(NemesisMaxRank);
+                    string displayName = $"{stars} Phantom {suffix}";
+                    id = avatar.SpawnNemesisPhantomHero(PrototypeId.Invalid, 0, displayName, NemesisMaxRank, out err);
                     if (id != 0)
                     {
                         nemesisSpawnedCount++;

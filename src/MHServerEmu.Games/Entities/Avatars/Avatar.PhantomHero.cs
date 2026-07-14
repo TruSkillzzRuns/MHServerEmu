@@ -366,7 +366,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                         host.UnregisterEnemyPhantom(id);
                         s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id);
                         s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id);
-                        s_enemyDeadSinceMs.Remove(id);
+                        s_enemyDeadSinceMs.Remove(id); s_enemyPhantomRankLevel.Remove(id);
                         PruneBlacklistFor(id); PrunePowerBlacklistFor(id);
                     }
             }
@@ -407,6 +407,12 @@ namespace MHServerEmu.Games.Entities.Avatars
         // Enemy-phantom corpse timers (avatar id -> death timestamp ms).
         private const long EnemyPhantomCorpseMs = 4000;
         private static readonly Dictionary<ulong, long> s_enemyDeadSinceMs = new();
+
+        // Nemesis rank + level per enemy phantom (avatar id -> (rank, level)),
+        // recorded at spawn so the death-drop path can apply the rank/level
+        // loot tiering (BiS jackpot, down-tier drops, loot-splosion). Plain
+        // rogues (rank 0) simply aren't in this dict.
+        private static readonly Dictionary<ulong, (int rank, int level)> s_enemyPhantomRankLevel = new();
 
         /// <summary>
         /// Per-phantom upkeep shared by friendly and enemy phantoms: the
@@ -1137,6 +1143,9 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// equipment inventories, and giving them a drop table is a design
         /// choice we haven't made yet.
         /// </summary>
+        // Default number of items in a rank-5 sub-60 loot-splosion.
+        private const int LootSplosionCount = 10;
+
         private static void DropPhantomGear(Agent phantom, Player killer)
         {
             if (phantom == null || killer == null) return;
@@ -1147,10 +1156,34 @@ namespace MHServerEmu.Games.Entities.Avatars
             var lootMgr = game?.LootManager;
             if (lootMgr == null) return;
 
+            // Nemesis rank/level drives the loot tier. Plain rogues (not in the
+            // dict) are rank 0 -> just drop worn gear.
+            int rank = 0, level = phantom.CharacterLevel;
+            if (s_enemyPhantomRankLevel.TryGetValue(phantom.Id, out var rl)) { rank = rl.rank; level = rl.level; }
+
             using var inputSettings = ObjectPoolManager.Instance.Get<Loot.LootInputSettings>();
             inputSettings.Initialize(Loot.LootContext.Drop, killer, phantom);
-
             using var summary = ObjectPoolManager.Instance.Get<Loot.LootResultSummary>();
+
+            var rng = game.Random;
+
+            // Rank 5 below level 60: skip the worn-gear drop entirely and
+            // explode a pile of random loot instead. 20-59 = terminal-boss
+            // tier (top of the level band); below 20 = plain level-appropriate.
+            if (rank >= Player.NemesisMaxRank && level < 60)
+            {
+                int rolled = RollSplosionInto(summary, avatarProto, killer, lootMgr, rng, level, LootSplosionCount);
+                if (rolled > 0)
+                {
+                    lootMgr.SpawnLootFromSummary(summary, inputSettings);
+                    PhantomLogger.Info($"[PhantomHero:Loot] rank-5 lvl-{level} loot-splosion: {rolled} item(s) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
+                }
+                return;
+            }
+
+            // Everyone else: drop worn gear. For rank-5 level-60 the worn set
+            // IS the BiS loadout, so this is the BiS jackpot; for ranks 0-4 it
+            // is the random level-band gear they were rolled with.
             int dropped = 0;
             foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
             {
@@ -1160,25 +1193,140 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     Items.Item item = game.EntityManager.GetEntity<Items.Item>(entry.Id);
                     if (item?.ItemSpec == null) continue;
-                    // Items equipped on the phantom are IsBoundToAccount=true
-                    // (equipping binds them). The pickup gate at
-                    // PlayerConnection.OnPickupInteraction rejects any bound
-                    // item, so the drops would sit uncollectible on the ground.
-                    // Clearing the binding affix on the spec BEFORE cloning
-                    // into the ground drop makes them normal, pickupable loot
-                    // — matches the "boss drops gear that binds when YOU
-                    // equip it" behavior the loot system expects.
+                    // Equipped items bind on equip; clear the binding affix so
+                    // the ground drop is pickupable (see OnPickupInteraction).
                     try { item.ItemSpec.SetBindingState(false); } catch { }
                     summary.Add(new Loot.LootResult(item.ItemSpec));
                     dropped++;
                 }
             }
 
-            if (dropped > 0)
+            // Rank 3/4 bonus: add down-tier BiS items on top of the worn drop.
+            //   Rank 3 -> ~50% chance of 1 down-tier BiS item.
+            //   Rank 4 -> 0, 1, or 2 down-tier BiS items (uniform).
+            int bonus = 0;
+            if ((rank == 3 || rank == 4) && PhantomBiSData.TryGetLoadout(avatarProto.DataRef, game, out var bisLoadout) && bisLoadout.Count > 0)
+            {
+                int want = rank == 3 ? (rng.NextFloat() < 0.5f ? 1 : 0) : rng.Next(0, 3);
+                bonus = AddDownTierBiSInto(summary, bisLoadout, killer, lootMgr, rng, level, want);
+            }
+
+            if (dropped + bonus > 0)
             {
                 lootMgr.SpawnLootFromSummary(summary, inputSettings);
-                PhantomLogger.Info($"[PhantomHero:Loot] dropped {dropped} item(s) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
+                PhantomLogger.Info($"[PhantomHero:Loot] dropped {dropped} worn + {bonus} down-tier BiS item(s) (rank {rank}) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
             }
+        }
+
+        /// <summary>
+        /// Roll <paramref name="count"/> random items across the avatar's equip
+        /// slots and add them to the drop summary. Used for rank-5 sub-60
+        /// loot-splosions. Level ≥20 pulls the top of the level band
+        /// (terminal-boss feel); below 20 uses the plain level band.
+        /// </summary>
+        private static int RollSplosionInto(Loot.LootResultSummary summary, AvatarPrototype avatarProto,
+            Player killer, LootManager lootMgr, MHServerEmu.Core.System.Random.GRandom rng, int level, int count)
+        {
+            EnsureRarityTiers();
+            s_rarityByTier.TryGetValue(5, out PrototypeId bannedUltimateRef);
+            List<PrototypeId> band = GetPhantomGearAllowedRarities(level);
+
+            // Collect the equip slots we can roll from.
+            var slots = new List<EquipmentInvUISlot>();
+            foreach (var assignment in avatarProto.EquipmentInventories)
+            {
+                if (assignment.UnlocksAtCharacterLevel > level) continue;
+                var uiSlot = assignment.UISlot;
+                bool core = uiSlot >= EquipmentInvUISlot.Gear01 && uiSlot <= EquipmentInvUISlot.Gear05;
+                bool special = uiSlot is EquipmentInvUISlot.Artifact01 or EquipmentInvUISlot.Artifact02
+                    or EquipmentInvUISlot.Artifact03 or EquipmentInvUISlot.Artifact04 or EquipmentInvUISlot.Medal
+                    or EquipmentInvUISlot.Relic or EquipmentInvUISlot.Insignia or EquipmentInvUISlot.Ring
+                    or EquipmentInvUISlot.Legendary or EquipmentInvUISlot.UruForged;
+                if (core || special) slots.Add(uiSlot);
+            }
+            if (slots.Count == 0) return 0;
+
+            int added = 0;
+            for (int i = 0; i < count; i++)
+            {
+                EquipmentInvUISlot uiSlot = slots[rng.Next(0, slots.Count)];
+                var picker = new MHServerEmu.Core.Collections.Picker<Prototype>(rng);
+                LootUtilities.BuildInventoryLootPicker(picker, avatarProto.DataRef, uiSlot);
+                ItemSpec spec = null;
+                while (spec == null && picker.Empty() == false)
+                {
+                    if (picker.PickRemove(out Prototype proto) == false || proto == null) break;
+                    var s = lootMgr.CreateItemSpec(proto.DataRef, LootContext.Drop, killer, level);
+                    if (s == null) continue;
+                    if (bannedUltimateRef != PrototypeId.Invalid && s.RarityProtoRef == bannedUltimateRef) continue;
+                    spec = s;
+                }
+                if (spec != null)
+                {
+                    try { spec.SetBindingState(false); } catch { }
+                    summary.Add(new Loot.LootResult(spec));
+                    added++;
+                }
+            }
+            return added;
+        }
+
+        /// <summary>
+        /// Pick <paramref name="want"/> random slots from the hero's BiS loadout
+        /// and add each item at ONE rarity tier below its level-band top (the
+        /// "down-tier" version). Used for the rank 3/4 bonus drop.
+        /// </summary>
+        private static int AddDownTierBiSInto(Loot.LootResultSummary summary,
+            IReadOnlyDictionary<EquipmentInvUISlot, PrototypeId> bisLoadout,
+            Player killer, LootManager lootMgr, MHServerEmu.Core.System.Random.GRandom rng, int level, int want)
+        {
+            if (want <= 0) return 0;
+            PrototypeId downTierRarity = GetDownTierRarity(level);
+
+            var keys = new List<EquipmentInvUISlot>(bisLoadout.Keys);
+            // Fisher-Yates partial shuffle so we pick distinct random slots.
+            for (int i = keys.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(0, i + 1);
+                (keys[i], keys[j]) = (keys[j], keys[i]);
+            }
+
+            int added = 0;
+            for (int i = 0; i < keys.Count && added < want; i++)
+            {
+                PrototypeId itemRef = bisLoadout[keys[i]];
+                if (itemRef == PrototypeId.Invalid) continue;
+                // Build the BiS item at the down-tier rarity; if the item can't
+                // exist at that rarity, fall back to its natural roll so the
+                // drop still lands.
+                ItemSpec spec = lootMgr.CreateItemSpec(itemRef, LootContext.Drop, killer, level, downTierRarity)
+                             ?? lootMgr.CreateItemSpec(itemRef, LootContext.Drop, killer, level);
+                if (spec == null) continue;
+                try { spec.SetBindingState(false); } catch { }
+                summary.Add(new Loot.LootResult(spec));
+                added++;
+            }
+            return added;
+        }
+
+        /// <summary>
+        /// The rarity one tier below the top of the level band — the "down-tier"
+        /// rarity for rank 3/4 bonus drops. Falls back to the band top if there
+        /// is no lower tier.
+        /// </summary>
+        private static PrototypeId GetDownTierRarity(int level)
+        {
+            List<PrototypeId> band = GetPhantomGearAllowedRarities(level);
+            if (band.Count == 0) return PrototypeId.Invalid;
+            EnsureRarityTiers();
+            // Find the highest tier present in the band, then step one down.
+            int topTier = 0;
+            foreach (var kvp in s_rarityByTier)
+                if (band.Contains(kvp.Value) && kvp.Key > topTier) topTier = kvp.Key;
+            for (int t = topTier - 1; t >= 1; t--)
+                if (s_rarityByTier.TryGetValue(t, out PrototypeId r) && r != PrototypeId.Invalid)
+                    return r;
+            return band[0];
         }
 
         /// <summary>
@@ -1416,7 +1564,8 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// level band table above. Returns the applied item proto refs for
         /// descriptor storage.
         /// </summary>
-        internal static List<ulong> ApplyPhantomGear(Player phantomPlayer, Avatar phantomAvatar, int level, List<ulong> gearOverride)
+        internal static List<ulong> ApplyPhantomGear(Player phantomPlayer, Avatar phantomAvatar, int level, List<ulong> gearOverride,
+            IReadOnlyDictionary<EquipmentInvUISlot, PrototypeId> bisLoadout = null)
         {
             var applied = new List<ulong>();
             AvatarPrototype avatarProto = phantomAvatar.AvatarPrototype;
@@ -1473,6 +1622,14 @@ namespace MHServerEmu.Games.Entities.Avatars
                 PrototypeId overrideItemRef = PrototypeId.Invalid;
                 if (useOverride && overrideIdx < gearOverride.Count)
                     overrideItemRef = (PrototypeId)gearOverride[overrideIdx++];
+
+                // BiS override (rank-5 level-60 nemesis): wear the community
+                // best-in-slot item for this slot. Tried first; if it fails to
+                // build in-band the normal random roll below still runs, so a
+                // slot is never left empty just because one BiS ref didn't
+                // resolve.
+                if (bisLoadout != null && bisLoadout.TryGetValue(uiSlot, out PrototypeId bisRef) && bisRef != PrototypeId.Invalid)
+                    overrideItemRef = bisRef;
 
                 var picker = new MHServerEmu.Core.Collections.Picker<Prototype>(rng);
                 LootUtilities.BuildInventoryLootPicker(picker, avatarProto.DataRef, assignment.UISlot);
@@ -2313,6 +2470,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (enemy)
             {
                 host.RegisterEnemyPhantom(teamUp.Id, phantomPlayer.Id);
+                if (nemesisRank > 0)
+                    s_enemyPhantomRankLevel[teamUp.Id] = (nemesisRank, effectiveLevel);
             }
             else
             {
@@ -2481,7 +2640,18 @@ namespace MHServerEmu.Games.Entities.Avatars
             // slot (or the stored set on squad/migration restore). Fills
             // hero-specific weapon slots too, which un-breaks WeaponMissing
             // powers. The applied refs go on the descriptor below.
-            List<ulong> appliedGearRefs = ApplyPhantomGear(phantomPlayer, phantomAvatar, effectiveLevel, gearRefs);
+            //
+            // Rank-5 level-60 nemeses WEAR the community best-in-slot set for
+            // their hero — a real gear-check fight, and (because the drop path
+            // drops what's worn) a full BiS jackpot on defeat. Everyone else
+            // rolls the normal level-banded random gear.
+            IReadOnlyDictionary<EquipmentInvUISlot, PrototypeId> bisLoadout = null;
+            if (enemy && nemesisRank >= Player.NemesisMaxRank && effectiveLevel >= 60
+                && PhantomBiSData.TryGetLoadout(avatarRef, Game, out var bis))
+            {
+                bisLoadout = bis;
+            }
+            List<ulong> appliedGearRefs = ApplyPhantomGear(phantomPlayer, phantomAvatar, effectiveLevel, gearRefs, bisLoadout);
 
             // Step 5: pick a spawn point close to the caller and enter the
             // world. Two goals:
@@ -2709,6 +2879,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (enemy)
             {
                 host.RegisterEnemyPhantom(phantomAvatar.Id, phantomPlayer.Id);
+                if (nemesisRank > 0)
+                    s_enemyPhantomRankLevel[phantomAvatar.Id] = (nemesisRank, effectiveLevel);
                 SchedulePhantomTick();
 
                 // Ultimate opener block — pre-seed the per-phantom ultimate
