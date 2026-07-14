@@ -1001,6 +1001,20 @@ namespace MHServerEmu.Games.Network
             if (entity.IsOwnedBy(player.Id) && (inventory == null || inventoryInterestPolicies.HasFlag(AOINetworkPolicyValues.AOIChannelOwner)))
                 newInterestPolicies |= AOINetworkPolicyValues.AOIChannelOwner;
 
+            // Phantom Heroes synthetic party — phantoms have no PlayerConnection
+            // so Player.GetRegion() returns null and the region-guarded block
+            // below never fires for them. Check phantoms separately using the
+            // Avatar's region (which IS in the world). Without this, the
+            // party HUD shows the phantom's nameplate but the HP bar never
+            // populates because the phantom Player entity was never brought
+            // into the caller's AOI cache.
+            if (Region != null && entity is Player phantomPlayer
+                && phantomPlayer.PhantomCreatorId == player.Id
+                && phantomPlayer.CurrentAvatar?.Region == Region)
+            {
+                newInterestPolicies |= AOINetworkPolicyValues.AOIChannelParty;
+            }
+
             // Consider other players in the region currently tracked by this AOI (skip players in other regions in the same game instance)
             if (Region != null && entity is Player otherPlayer && otherPlayer.GetRegion() == Region)
             {
@@ -1060,6 +1074,15 @@ namespace MHServerEmu.Games.Network
                     {
                         Party party = player.GetParty();
                         if (party != null && containerRootPlayer.GetParty() == party)
+                            interestPolicies |= AOINetworkPolicyValues.AOIChannelParty;
+
+                        // Phantom Heroes synthetic party — grant party visibility
+                        // to the inventories of the caller's own phantoms so the
+                        // AvatarInPlay slot (and any other party-visible inventory)
+                        // replicates. Without this the party HUD sees the phantom
+                        // Player entity but not which Avatar is its current one,
+                        // and the HP bar has no health source to bind to.
+                        if (containerRootPlayer.PhantomCreatorId == player.Id)
                             interestPolicies |= AOINetworkPolicyValues.AOIChannelParty;
 
                         // Players in the same match region are also considered to be in the same party for AOI visibility purposes.

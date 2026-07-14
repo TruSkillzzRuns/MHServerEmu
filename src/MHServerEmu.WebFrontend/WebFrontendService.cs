@@ -154,6 +154,31 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/phantoms/nemesis",         new MHServerEmu.WebFrontend.Handlers.WebApi.NemesisWebHandler());
             _webService.RegisterHandler("/webapi/phantoms/rotation",        new MHServerEmu.WebFrontend.Handlers.WebApi.RotationWebHandler());
 
+            // OmegaDev2 Enemy Phantoms + Wave Director (Combat pages).
+            _webService.RegisterHandler("/webapi/arena/enemyphantoms/spawn",  new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsSpawnWebHandler());
+            _webService.RegisterHandler("/webapi/arena/enemyphantoms/clear",  new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsClearWebHandler());
+            _webService.RegisterHandler("/webapi/arena/enemyphantoms/status", new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsStatusWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/start",  new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStartWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/stop",   new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStopWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/status", new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStatusWebHandler());
+
+            // OmegaDev2 enemy picker (Enemy Phantoms page roster).
+            _webService.RegisterHandler("/webapi/enemies/byregion", new MHServerEmu.WebFrontend.Handlers.WebApi.EnemiesByRegionWebHandler());
+            _webService.RegisterHandler("/webapi/enemies/catalog",  new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyCatalogWebHandler());
+
+            // OmegaDev2 Stash Manager (inventory read/delete).
+            _webService.RegisterHandler("/webapi/inventory",        new MHServerEmu.WebFrontend.Handlers.WebApi.InventoryListWebHandler());
+            _webService.RegisterHandler("/webapi/inventory/delete", new MHServerEmu.WebFrontend.Handlers.WebApi.InventoryDeleteWebHandler());
+
+            // OmegaDev2 DPS Meter.
+            _webService.RegisterHandler("/webapi/dps",       new MHServerEmu.WebFrontend.Handlers.WebApi.DpsWebHandler());
+            _webService.RegisterHandler("/webapi/dps/reset", new MHServerEmu.WebFrontend.Handlers.WebApi.DpsResetWebHandler());
+
+            // OmegaDev2 Account Manager helpers.
+            _webService.RegisterHandler("/webapi/playeradmin/warp",  new MHServerEmu.WebFrontend.Handlers.WebApi.PlayerAdminWarpWebHandler());
+            _webService.RegisterHandler("/webapi/regionremix/warp",  new MHServerEmu.WebFrontend.Handlers.WebApi.RegionRemixWarpWebHandler());
+            _webService.RegisterHandler("/webapi/mods/save",         new MHServerEmu.WebFrontend.Handlers.WebApi.ModSaveWebHandler());
+
             // OmegaDev2 Command Console + logs.
             _webService.RegisterHandler("/webapi/console/exec", new MHServerEmu.WebFrontend.Handlers.WebApi.ConsoleExecWebHandler());
             _webService.RegisterHandler("/webapi/logs/tail",    new MHServerEmu.WebFrontend.Handlers.WebApi.LogsTailWebHandler());
