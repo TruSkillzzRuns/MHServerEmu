@@ -48,6 +48,11 @@ namespace MHServerEmu.Games.Entities
         public IReadOnlyList<ulong> PhantomPlayerIds => _phantomPlayerIds;
         public int PhantomHeroCount => _phantomAvatarIds.Count;
 
+        // Effective party/raid cap (including the human's own slot) in the
+        // player's current region — see Avatar.GetPhantomPartyCap. int.MaxValue
+        // means uncapped (Town/PublicCombatZone/MatchPlay, or no avatar in world).
+        public int PhantomPartyCap => Avatar.GetPhantomPartyCap(CurrentAvatar?.Region);
+
         // ================================================================
         //  Cross-Area phantom relocation retry (see Player.OnCellLoaded in
         //  Player.cs and Avatar.BringPhantomsToPosition). A phantom moved

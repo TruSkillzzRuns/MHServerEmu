@@ -158,9 +158,13 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/arena/enemyphantoms/spawn",  new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsSpawnWebHandler());
             _webService.RegisterHandler("/webapi/arena/enemyphantoms/clear",  new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsClearWebHandler());
             _webService.RegisterHandler("/webapi/arena/enemyphantoms/status", new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsStatusWebHandler());
-            _webService.RegisterHandler("/webapi/arena/waves/start",  new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStartWebHandler());
-            _webService.RegisterHandler("/webapi/arena/waves/stop",   new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStopWebHandler());
-            _webService.RegisterHandler("/webapi/arena/waves/status", new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStatusWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/start",   new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStartWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/stop",    new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStopWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/status",  new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStatusWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/pause",   new MHServerEmu.WebFrontend.Handlers.WebApi.WavesPauseWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/skip",    new MHServerEmu.WebFrontend.Handlers.WebApi.WavesSkipWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/history", new MHServerEmu.WebFrontend.Handlers.WebApi.WavesHistoryWebHandler());
+            _webService.RegisterHandler("/webapi/arena/waves/plans",   new MHServerEmu.WebFrontend.Handlers.WebApi.WavePlansWebHandler());
 
             // OmegaDev2 enemy picker (Enemy Phantoms page roster).
             _webService.RegisterHandler("/webapi/enemies/byregion", new MHServerEmu.WebFrontend.Handlers.WebApi.EnemiesByRegionWebHandler());

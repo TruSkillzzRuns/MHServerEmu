@@ -4,10 +4,16 @@
 //   POST /webapi/arena/enemyphantoms/clear  { playerName }
 //   GET  /webapi/arena/enemyphantoms/status?player=
 //
-//   POST /webapi/arena/waves/start  { playerName, intermissionMs,
-//                                     waves:[{entries:[{agentRef | heroRef+enemyPhantom, count, level}]}] }
+//   POST /webapi/arena/waves/start  { playerName, intermissionMs, loop, countScalePerWave,
+//                                     levelBumpPerWave, rewardMode, rewardLootTableRef, arenaRegionRef,
+//                                     clearArena, waves:[{intermissionMsOverride,
+//                                     entries:[{agentRef | heroRef+enemyPhantom, count, level}]}] }
 //   POST /webapi/arena/waves/stop   { playerName, cleanup }
+//   POST /webapi/arena/waves/pause  { playerName, paused }
+//   POST /webapi/arena/waves/skip   { playerName }
 //   GET  /webapi/arena/waves/status?player=
+//   GET  /webapi/arena/waves/history?player=
+//   POST /webapi/arena/waves/plans  { playerName, op: save|start|delete|list, name, plan? }
 //
 // Everything runs on the target player's game thread via Player.RunPhantomWebOp.
 
@@ -158,6 +164,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             int intermissionMs = 5000;
             ulong arenaRegionRef = 0;
             bool clearArena = false;
+            bool loop = false;
+            float countScalePerWave = 0f;
+            int levelBumpPerWave = 0;
+            Player.WaveRewardMode rewardMode = Player.WaveRewardMode.None;
+            ulong rewardLootTableRef = 0;
             var waves = new List<Player.WaveDef>();
             try
             {
@@ -167,11 +178,19 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (root.TryGetProperty("intermissionMs", out var im)) intermissionMs = im.GetInt32();
                 if (root.TryGetProperty("arenaRegionRef", out var arr2)) arenaRegionRef = PhantomsWebUtil.ParseRef(arr2.GetString());
                 if (root.TryGetProperty("clearArena", out var ca)) clearArena = ca.GetBoolean();
+                if (root.TryGetProperty("loop", out var lp)) loop = lp.GetBoolean();
+                if (root.TryGetProperty("countScalePerWave", out var csw)) countScalePerWave = csw.GetSingle();
+                if (root.TryGetProperty("levelBumpPerWave", out var lbw)) levelBumpPerWave = lbw.GetInt32();
+                if (root.TryGetProperty("rewardMode", out var rm) && Enum.TryParse<Player.WaveRewardMode>(rm.GetString(), true, out var parsedMode))
+                    rewardMode = parsedMode;
+                if (root.TryGetProperty("rewardLootTableRef", out var rltr)) rewardLootTableRef = PhantomsWebUtil.ParseRef(rltr.GetString());
                 if (root.TryGetProperty("waves", out var wavesEl) && wavesEl.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var waveEl in wavesEl.EnumerateArray())
                     {
                         var wave = new Player.WaveDef();
+                        if (waveEl.TryGetProperty("intermissionMsOverride", out var imo) && imo.ValueKind != JsonValueKind.Null)
+                            wave.IntermissionMsOverride = imo.GetInt32();
                         if (waveEl.TryGetProperty("entries", out var entriesEl) && entriesEl.ValueKind == JsonValueKind.Array)
                         {
                             foreach (var el in entriesEl.EnumerateArray())
@@ -210,7 +229,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             }
 
             object result = await PhantomsWebUtil.RunOnGameThread(player,
-                p => new { Ok = true, Message = p.StartWaveRun(waves, intermissionMs, arenaRegionRef, clearArena) });
+                p => new { Ok = true, Message = p.StartWaveRun(waves, intermissionMs, arenaRegionRef, clearArena,
+                    loop, countScalePerWave, levelBumpPerWave, rewardMode, rewardLootTableRef) });
 
             Logger.Info($"[Arena:Waves] start for {player.GetName()}: {waves.Count} wave(s)");
             await context.SendJsonAsync(result);
@@ -260,6 +280,170 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
             object result = await PhantomsWebUtil.RunOnGameThread(player,
                 p => new { Ok = true, Status = p.GetWaveStatusForWeb() });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    public class WavesPauseWebHandler : WebHandler
+    {
+        protected override async Task Post(WebRequestContext context)
+        {
+            string body = await context.ReadUtf8StringAsync();
+
+            string playerName = null;
+            bool paused = true;
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
+                if (root.TryGetProperty("paused", out var pa)) paused = pa.GetBoolean();
+            }
+            catch { /* defaults */ }
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player,
+                p => new { Ok = true, Message = p.PauseWaveRun(paused) });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    public class WavesSkipWebHandler : WebHandler
+    {
+        protected override async Task Post(WebRequestContext context)
+        {
+            string body = await context.ReadUtf8StringAsync();
+            PhantomsWebUtil.ParseTarget(body, out string playerName, out string playerDbId);
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, playerDbId, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player,
+                p => new { Ok = true, Message = p.SkipWaveRun() });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    public class WavesHistoryWebHandler : WebHandler
+    {
+        protected override async Task Get(WebRequestContext context)
+        {
+            Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found", Entries = new List<object>() });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player,
+                p => new { Ok = true, Entries = p.GetWaveHistoryForWeb() });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    public class WavePlansWebHandler : WebHandler
+    {
+        private static readonly Logger Logger = LogManager.CreateLogger();
+
+        protected override async Task Post(WebRequestContext context)
+        {
+            string body = await context.ReadUtf8StringAsync();
+
+            string playerName = null, op = null, name = null;
+            Player.WavePlanRecord record = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
+                if (root.TryGetProperty("op", out var opEl)) op = opEl.GetString();
+                if (root.TryGetProperty("name", out var nm)) name = nm.GetString();
+
+                if (op == "save" && root.TryGetProperty("plan", out var planEl))
+                {
+                    record = new Player.WavePlanRecord();
+                    if (planEl.TryGetProperty("intermissionMs", out var im)) record.IntermissionMs = im.GetInt32();
+                    if (planEl.TryGetProperty("arenaRegionRef", out var arr2)) record.ArenaRegionRef = PhantomsWebUtil.ParseRef(arr2.GetString());
+                    if (planEl.TryGetProperty("clearArena", out var ca)) record.ClearArena = ca.GetBoolean();
+                    if (planEl.TryGetProperty("loop", out var lp)) record.Loop = lp.GetBoolean();
+                    if (planEl.TryGetProperty("countScalePerWave", out var csw)) record.CountScalePerWave = csw.GetSingle();
+                    if (planEl.TryGetProperty("levelBumpPerWave", out var lbw)) record.LevelBumpPerWave = lbw.GetInt32();
+                    if (planEl.TryGetProperty("rewardMode", out var rm) && Enum.TryParse<Player.WaveRewardMode>(rm.GetString(), true, out var parsedMode))
+                        record.RewardMode = parsedMode;
+                    if (planEl.TryGetProperty("rewardLootTableRef", out var rltr)) record.RewardLootTableRef = PhantomsWebUtil.ParseRef(rltr.GetString());
+                    if (planEl.TryGetProperty("waves", out var wavesEl) && wavesEl.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var waveEl in wavesEl.EnumerateArray())
+                        {
+                            var wave = new Player.WaveDef();
+                            if (waveEl.TryGetProperty("intermissionMsOverride", out var imo) && imo.ValueKind != JsonValueKind.Null)
+                                wave.IntermissionMsOverride = imo.GetInt32();
+                            if (waveEl.TryGetProperty("entries", out var entriesEl) && entriesEl.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var el in entriesEl.EnumerateArray())
+                                {
+                                    var entry = new Player.WaveEntryDef();
+                                    if (el.TryGetProperty("agentRef", out var ar)) entry.AgentRef = PhantomsWebUtil.ParseRef(ar.GetString());
+                                    if (el.TryGetProperty("heroRef", out var hr)) entry.HeroRef = PhantomsWebUtil.ParseRef(hr.GetString());
+                                    if (el.TryGetProperty("enemyPhantom", out var ep)) entry.IsEnemyPhantom = ep.GetBoolean();
+                                    if (el.TryGetProperty("count", out var cn)) entry.Count = cn.GetInt32();
+                                    if (el.TryGetProperty("level", out var lv)) entry.Level = lv.GetInt32();
+                                    if (entry.AgentRef != 0 || entry.IsEnemyPhantom)
+                                        wave.Entries.Add(entry);
+                                }
+                            }
+                            if (wave.Entries.Count > 0) record.Waves.Add(wave);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = $"bad request: {ex.Message}" });
+                return;
+            }
+
+            if (string.IsNullOrEmpty(op))
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "missing op" });
+                return;
+            }
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, null, out string findError);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = findError ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                switch (op)
+                {
+                    case "save":
+                        return new { Ok = true, Message = p.SaveWavePlan(name, record), Plans = (List<string>)null };
+                    case "start":
+                        return new { Ok = true, Message = p.StartWavePlan(name), Plans = (List<string>)null };
+                    case "delete":
+                        return new { Ok = true, Message = p.DeleteWavePlan(name), Plans = (List<string>)null };
+                    case "list":
+                        return new { Ok = true, Message = (string)null, Plans = p.ListWavePlans() };
+                    default:
+                        return new { Ok = false, Message = $"unknown op '{op}'", Plans = (List<string>)null };
+                }
+            });
+
+            Logger.Info($"[Arena:Waves:Plans] {op} for {player.GetName()}: {name}");
             await context.SendJsonAsync(result);
         }
     }

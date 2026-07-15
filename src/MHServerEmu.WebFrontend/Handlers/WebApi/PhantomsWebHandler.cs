@@ -181,12 +181,19 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 return;
             }
 
-            object result = await PhantomsWebUtil.RunOnGameThread(player, p => new
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
             {
-                Ok = true,
-                Player = p.GetName(),
-                Count = p.PhantomHeroCount,
-                Phantoms = p.GetPhantomInfosForWeb(),
+                int cap = p.PhantomPartyCap;
+                return new
+                {
+                    Ok = true,
+                    Player = p.GetName(),
+                    Count = p.PhantomHeroCount,
+                    // Null = uncapped (Town/PublicCombatZone/MatchPlay) rather
+                    // than serializing int.MaxValue as a literal "cap".
+                    Cap = cap == int.MaxValue ? (int?)null : cap,
+                    Phantoms = p.GetPhantomInfosForWeb(),
+                };
             });
             await context.SendJsonAsync(result);
         }

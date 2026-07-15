@@ -2291,12 +2291,31 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static List<PrototypeId> s_phantomResolved;
         private static List<PrototypeId> s_phantomTeamUpResolved;
 
+        /// <summary>
+        /// Deprecated/leftover test content lives in a "Testing" data folder
+        /// and/or carries a "zzz" filename prefix by convention (e.g.
+        /// "Entity/Characters/Avatars/Testing/zzzBrevikOLD.prototype" — a
+        /// broken stand-in that resolves as a valid AvatarPrototype but has
+        /// no real equipment setup, so phantoms rolled from it spawn with no
+        /// gear). Same convention already used to filter the Wave Director's
+        /// enemy catalog.
+        /// </summary>
+        private static bool IsDeprecatedTestContent(string prototypePath)
+        {
+            if (string.IsNullOrEmpty(prototypePath)) return false;
+            if (prototypePath.IndexOf("/Testing/", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            int slash = prototypePath.LastIndexOf('/');
+            string fileName = slash >= 0 ? prototypePath[(slash + 1)..] : prototypePath;
+            return fileName.StartsWith("zzz", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static void EnsureResolvedPool()
         {
             lock (s_phantomResolvedLock)
             {
                 if (s_phantomResolved != null) return;
                 var resolved = new List<PrototypeId>(64);
+                int excludedAvatars = 0;
                 // Same iteration the login pipeline (PlayerConnection), the
                 // equipment tables, and PowerCommands use to get "every real
                 // playable hero for this client." Guarantees the pool tracks
@@ -2306,21 +2325,24 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     if (avatarRef == PrototypeId.Invalid) continue;
                     if (avatarRef.As<AvatarPrototype>() == null) continue;
+                    if (IsDeprecatedTestContent(avatarRef.GetName())) { excludedAvatars++; continue; }
                     resolved.Add(avatarRef);
                 }
                 s_phantomResolved = resolved;
 
                 var teamUps = new List<PrototypeId>(24);
+                int excludedTeamUps = 0;
                 foreach (PrototypeId teamUpRef in DataDirectory.Instance
                     .IteratePrototypesInHierarchy<AgentTeamUpPrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
                 {
                     if (teamUpRef == PrototypeId.Invalid) continue;
                     if (teamUpRef.As<AgentTeamUpPrototype>() == null) continue;
+                    if (IsDeprecatedTestContent(teamUpRef.GetName())) { excludedTeamUps++; continue; }
                     teamUps.Add(teamUpRef);
                 }
                 s_phantomTeamUpResolved = teamUps;
 
-                PhantomLogger.Info($"[PhantomHero] pool built from client data: {resolved.Count} playable avatars, {teamUps.Count} team-ups");
+                PhantomLogger.Info($"[PhantomHero] pool built from client data: {resolved.Count} playable avatars ({excludedAvatars} deprecated/test excluded), {teamUps.Count} team-ups ({excludedTeamUps} excluded)");
             }
         }
 
@@ -2836,7 +2858,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         // what the game itself would ever allow a real party/raid to be in
         // this region. Town/PublicCombatZone/MatchPlay/etc aren't party-size
         // gated in the real game either, so they're left uncapped here too.
-        private static int GetPhantomPartyCap(Region region)
+        public static int GetPhantomPartyCap(Region region)
         {
             RegionPrototype proto = region?.Prototype;
             if (proto == null) return int.MaxValue;

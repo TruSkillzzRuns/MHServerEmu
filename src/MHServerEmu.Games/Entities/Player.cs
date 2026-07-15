@@ -554,6 +554,7 @@ namespace MHServerEmu.Games.Entities
         public override void OnDeallocate()
         {
             Game?.GameEventScheduler?.CancelAllEvents(_pendingEvents);
+            Game?.GameEventScheduler?.CancelAllEvents(_waveEvents);
 
             MissionManager.Deallocate();
             AchievementManager.Deallocate();

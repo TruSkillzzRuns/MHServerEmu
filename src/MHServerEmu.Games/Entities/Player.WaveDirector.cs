@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using MHServerEmu.Core.Logging;
+using MHServerEmu.Core.Memory;
 using MHServerEmu.Core.VectorMath;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.Events;
 using MHServerEmu.Games.Events.Templates;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
+using MHServerEmu.Games.Loot;
 
 namespace MHServerEmu.Games.Entities
 {
@@ -31,7 +33,11 @@ namespace MHServerEmu.Games.Entities
         public sealed class WaveDef
         {
             public List<WaveEntryDef> Entries = new();
+            // Null = use the run's global intermission (_waveIntermissionMs).
+            public int? IntermissionMsOverride;
         }
+
+        public enum WaveRewardMode { None, EveryWave, OnComplete }
 
         private enum WaveState { Idle, WarpingToArena, SettlingArena, Fighting, Intermission, Done }
 
@@ -48,6 +54,13 @@ namespace MHServerEmu.Games.Entities
         private bool _waveClearArena;
         private long _waveWarpDeadlineMs;
         private long _waveSettleUntilMs;
+        private bool _wavePaused;
+        private bool _waveLoop;
+        private float _waveCountScalePerWave;
+        private int _waveLevelBumpPerWave;
+        private WaveRewardMode _waveRewardMode = WaveRewardMode.None;
+        private PrototypeId _waveRewardLootTableRef = PrototypeId.Invalid;
+        private bool _waveHistoryLogged;
         private const long ArenaWarpTimeoutMs = 90_000; // region gen + client load screen
         // How long to let the region's own population finish spawning before
         // we sweep it. Danger Room / scenario rooms trickle their console
@@ -67,7 +80,9 @@ namespace MHServerEmu.Games.Entities
         /// optionally cleared of its native hostiles) before wave 1 spawns —
         /// turns any boss room into an empty private battleground.
         /// </summary>
-        public string StartWaveRun(List<WaveDef> waves, int intermissionMs, ulong arenaRegionRef = 0, bool clearArena = false)
+        public string StartWaveRun(List<WaveDef> waves, int intermissionMs, ulong arenaRegionRef = 0, bool clearArena = false,
+            bool loop = false, float countScalePerWave = 0f, int levelBumpPerWave = 0,
+            WaveRewardMode rewardMode = WaveRewardMode.None, ulong rewardLootTableRef = 0)
         {
             if (waves == null || waves.Count == 0) return "no waves defined";
             Avatar avatar = CurrentAvatar;
@@ -83,6 +98,13 @@ namespace MHServerEmu.Games.Entities
             _waveRunStartMs = WaveNowMs;
             _waveArenaRegionRef = (PrototypeId)arenaRegionRef;
             _waveClearArena = clearArena;
+            _wavePaused = false;
+            _waveLoop = loop;
+            _waveCountScalePerWave = Math.Max(0f, countScalePerWave);
+            _waveLevelBumpPerWave = levelBumpPerWave;
+            _waveRewardMode = rewardMode;
+            _waveRewardLootTableRef = (PrototypeId)rewardLootTableRef;
+            _waveHistoryLogged = false;
 
             if (_waveArenaRegionRef != PrototypeId.Invalid &&
                 avatar.Region?.PrototypeDataRef != _waveArenaRegionRef)
@@ -173,6 +195,13 @@ namespace MHServerEmu.Games.Entities
         {
             if (_waveState == WaveState.Idle && _waveDefs == null) return "no wave run active";
 
+            // Log an incomplete-run history entry before we wipe the state
+            // below — but only if a run was genuinely in flight (not already
+            // Done/logged, e.g. this call is just clearing leftover state).
+            bool wasActiveRun = _waveDefs != null && _waveState != WaveState.Idle && _waveState != WaveState.Done;
+            if (wasActiveRun && _waveHistoryLogged == false)
+                LogWaveRunHistory(completed: false);
+
             int removed = 0;
             if (cleanup)
             {
@@ -215,6 +244,15 @@ namespace MHServerEmu.Games.Entities
         {
             if (_waveDefs == null || _waveState == WaveState.Idle || _waveState == WaveState.Done)
                 return;
+
+            if (_wavePaused)
+            {
+                // Keep the tick armed every second so a subsequent Resume
+                // picks back up immediately, but skip everything that would
+                // otherwise let the run progress while paused.
+                ScheduleWaveTick();
+                return;
+            }
 
             var mgr = Game?.EntityManager;
             if (mgr == null) return;
@@ -279,14 +317,9 @@ namespace MHServerEmu.Games.Entities
                 case WaveState.Fighting:
                     if (_waveAliveIds.Count == 0)
                     {
-                        if (_waveIndex + 1 >= _waveDefs.Count)
-                        {
-                            _waveState = WaveState.Done;
-                            WaveLogger.Info($"[WaveDirector] {GetName()}: run complete — {_waveKills} kill(s) over {_waveDefs.Count} wave(s)");
+                        AdvanceAfterWaveCleared();
+                        if (_waveState == WaveState.Done)
                             return; // no reschedule — run is over
-                        }
-                        _waveState = WaveState.Intermission;
-                        _waveNextSpawnAtMs = WaveNowMs + _waveIntermissionMs;
                     }
                     break;
 
@@ -297,6 +330,109 @@ namespace MHServerEmu.Games.Entities
             }
 
             ScheduleWaveTick();
+        }
+
+        /// <summary>
+        /// Called once the current wave's alive list is empty (naturally, or
+        /// via SkipWaveRun). Decides Done-vs-Intermission (honoring Loop and
+        /// per-wave intermission overrides) and fires the reward hook.
+        /// </summary>
+        private void AdvanceAfterWaveCleared()
+        {
+            if (_waveRewardMode == WaveRewardMode.EveryWave)
+                SpawnWaveReward();
+
+            bool isLastWave = _waveIndex + 1 >= _waveDefs.Count;
+            if (isLastWave && _waveLoop)
+            {
+                _waveIndex = -1; // SpawnNextWave's own increment lands back on wave 0
+                isLastWave = false;
+            }
+
+            if (isLastWave)
+            {
+                _waveState = WaveState.Done;
+                if (_waveRewardMode == WaveRewardMode.OnComplete)
+                    SpawnWaveReward();
+                if (_waveHistoryLogged == false)
+                    LogWaveRunHistory(completed: true);
+                WaveLogger.Info($"[WaveDirector] {GetName()}: run complete — {_waveKills} kill(s) over {_waveDefs.Count} wave(s)");
+                return;
+            }
+
+            int nextIndex = _waveIndex + 1;
+            long intermissionMs = _waveDefs[nextIndex].IntermissionMsOverride ?? _waveIntermissionMs;
+            _waveState = WaveState.Intermission;
+            _waveNextSpawnAtMs = WaveNowMs + intermissionMs;
+        }
+
+        /// <summary>Pause or resume the tick's state-machine progress. Game thread only.</summary>
+        public string PauseWaveRun(bool paused)
+        {
+            if (_waveDefs == null || _waveState == WaveState.Idle || _waveState == WaveState.Done)
+                return "no wave run active";
+            if (_wavePaused == paused)
+                return paused ? "already paused" : "already running";
+            _wavePaused = paused;
+            return paused ? "wave run paused" : "wave run resumed";
+        }
+
+        /// <summary>
+        /// Force-clear the current wave (Fighting) or jump straight to the
+        /// next spawn (Intermission). Game thread only.
+        /// </summary>
+        public string SkipWaveRun()
+        {
+            if (_waveDefs == null || _waveState == WaveState.Idle || _waveState == WaveState.Done)
+                return "no wave run active";
+
+            switch (_waveState)
+            {
+                case WaveState.Fighting:
+                {
+                    var mgr = Game?.EntityManager;
+                    foreach (ulong id in _waveAliveIds)
+                    {
+                        try
+                        {
+                            WorldEntity we = mgr?.GetEntity<WorldEntity>(id);
+                            if (we == null || we.IsDestroyed) continue;
+                            if (we.IsInWorld) we.ExitWorld();
+                            we.Destroy();
+                        }
+                        catch { /* best effort */ }
+                    }
+                    _waveAliveIds.Clear();
+                    AdvanceAfterWaveCleared();
+                    return _waveState == WaveState.Done ? "wave run complete" : "wave skipped";
+                }
+
+                case WaveState.Intermission:
+                    _waveNextSpawnAtMs = WaveNowMs;
+                    return "intermission skipped";
+
+                default:
+                    return "can't skip during warp/settle";
+            }
+        }
+
+        /// <summary>Drop the configured reward loot table at the player's position, if any.</summary>
+        private void SpawnWaveReward()
+        {
+            if (_waveRewardLootTableRef == PrototypeId.Invalid) return;
+            Avatar avatar = CurrentAvatar;
+            if (avatar == null || avatar.IsInWorld == false) return;
+
+            try
+            {
+                using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+                inputSettings.Initialize(LootContext.Drop, this, avatar);
+                Game.LootManager.SpawnLootFromTable(_waveRewardLootTableRef, inputSettings, 1);
+            }
+            catch (Exception ex)
+            {
+                WaveLogger.Warn($"[WaveDirector] {GetName()}: reward drop failed: {ex.Message}");
+            }
         }
 
         private void SpawnNextWave()
@@ -320,14 +456,20 @@ namespace MHServerEmu.Games.Entities
 
             foreach (WaveEntryDef entry in wave.Entries)
             {
-                int count = Math.Clamp(entry.Count, 1, 30);
+                // Difficulty scaling: both default to 0, so a run that never
+                // opts in behaves identically to before this feature existed.
+                int count = Math.Clamp((int)MathF.Round(entry.Count * (1f + _waveCountScalePerWave * _waveIndex)), 1, 30);
+                int level = entry.Level;
+                if (entry.IsEnemyPhantom && level != 0 && _waveLevelBumpPerWave != 0)
+                    level = Math.Clamp(level + _waveLevelBumpPerWave * _waveIndex, 1, 60);
+
                 for (int i = 0; i < count; i++)
                 {
                     ulong spawnedId = 0;
 
                     if (entry.IsEnemyPhantom)
                     {
-                        spawnedId = avatar.SpawnEnemyPhantomHero((PrototypeId)entry.HeroRef, entry.Level, out string err);
+                        spawnedId = avatar.SpawnEnemyPhantomHero((PrototypeId)entry.HeroRef, level, out string err);
                         if (spawnedId == 0)
                             WaveLogger.Warn($"[WaveDirector] enemy phantom spawn failed: {err}");
                     }
@@ -374,6 +516,8 @@ namespace MHServerEmu.Games.Entities
             public int SpawnedTotal { get; set; }
             public long RunSeconds { get; set; }
             public long IntermissionRemainingMs { get; set; }
+            public bool Paused { get; set; }
+            public bool Loop { get; set; }
         }
 
         /// <summary>Game-thread status snapshot for the web endpoint.</summary>
@@ -391,6 +535,8 @@ namespace MHServerEmu.Games.Entities
                 SpawnedTotal = _waveSpawnedTotal,
                 RunSeconds = active ? (WaveNowMs - _waveRunStartMs) / 1000 : 0,
                 IntermissionRemainingMs = _waveState == WaveState.Intermission ? Math.Max(0, _waveNextSpawnAtMs - WaveNowMs) : 0,
+                Paused = _wavePaused,
+                Loop = _waveLoop,
             };
         }
 
