@@ -22,6 +22,18 @@ namespace MHServerEmu.Games.Entities
         // 1..5 rank cap. Each rank adds a name suffix + HP/damage buff.
         public const int NemesisMaxRank = 5;
 
+        // Per-escape HP bonus (see Avatar.Nemesis.cs) — +2% HealthMaxMult on
+        // top of the rank curve for every time this nemesis has escaped
+        // after killing the player, applied multiplicatively at spawn.
+        internal const float NemesisEscapeHealthBonusPerEscape = 0.02f;
+
+        // Soft cap on roster size. Nemeses never expire on their own, so a
+        // long-running account would otherwise accumulate an ever-growing
+        // list. When a brand-new nemesis is registered past this count, the
+        // oldest entry (preferring a Defeated one, since those are just
+        // history) is evicted automatically — see EvictOldestNemesisIfOverCap.
+        public const int NemesisMaxRosterSize = 15;
+
         // Weighted chance a Rogue Encounter draws from the nemesis roster
         // instead of picking a random hero. Rolled independently for EACH
         // spawn slot, so a 3-hostile encounter with an active nemesis on
@@ -60,14 +72,16 @@ namespace MHServerEmu.Games.Entities
         /// human's avatar is downed by an enemy phantom hero — the killer
         /// may be an Avatar phantom OR a team-up phantom (both are Agent).
         /// Adds the hero/team-up to the roster or bumps their rank if they
-        /// were already on it.
+        /// were already on it. Returns the (new or updated) entry so the
+        /// caller can act on the post-kill rank — e.g. trigger an "escape"
+        /// for rank 4/5 — or null if the kill was debounced/invalid.
         /// </summary>
-        public void RegisterNemesisKill(Agent killer)
+        public NemesisEntry RegisterNemesisKill(Agent killer)
         {
-            if (killer == null) return;
+            if (killer == null) return null;
 
             PrototypeId heroRef = killer.PrototypeDataRef;
-            if (heroRef == PrototypeId.Invalid) return;
+            if (heroRef == PrototypeId.Invalid) return null;
 
             string killerName = killer.GetOwnerOfType<Player>()?.GetName() ?? string.Empty;
             long nowMs = Game?.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond ?? 0;
@@ -77,13 +91,14 @@ namespace MHServerEmu.Games.Entities
             if (_lastKillMsByHeroRef.TryGetValue((ulong)heroRef, out long lastMs)
                 && nowMs - lastMs < NemesisKillDebounceMs)
             {
-                return;
+                return null;
             }
             _lastKillMsByHeroRef[(ulong)heroRef] = nowMs;
 
             NemesisEntry entry = _nemeses.FirstOrDefault(n => n.HeroRef == (ulong)heroRef);
             if (entry == null)
             {
+                EvictOldestNemesisIfOverCap();
                 entry = new NemesisEntry
                 {
                     HeroRef        = (ulong)heroRef,
@@ -109,6 +124,8 @@ namespace MHServerEmu.Games.Entities
                 else
                     NemesisLogger.Info($"[Nemesis] {GetName()}: '{heroRef.GetName()}' rank → {entry.Rank} (kills {entry.Kills})");
             }
+
+            return entry;
         }
 
         /// <summary>
@@ -139,6 +156,74 @@ namespace MHServerEmu.Games.Entities
             _nemeses.Remove(entry);
             NemesisLogger.Info($"[Nemesis] {GetName()}: banished '{((PrototypeId)heroRef).GetName()}' from the history");
             return true;
+        }
+
+        /// <summary>
+        /// Evicts the oldest nemesis entry if the roster is at/over
+        /// <see cref="NemesisMaxRosterSize"/>. Prefers evicting the oldest
+        /// Defeated entry (pure history, no active threat lost); only
+        /// touches an active entry if every entry is currently active.
+        /// Called automatically before a new nemesis is added.
+        /// </summary>
+        private void EvictOldestNemesisIfOverCap()
+        {
+            if (_nemeses.Count < NemesisMaxRosterSize) return;
+
+            NemesisEntry oldest = null;
+            foreach (var n in _nemeses)
+            {
+                if (n.Defeated == false) continue;
+                if (oldest == null || n.LastKillMs < oldest.LastKillMs) oldest = n;
+            }
+            if (oldest == null)
+            {
+                foreach (var n in _nemeses)
+                    if (oldest == null || n.LastKillMs < oldest.LastKillMs) oldest = n;
+            }
+            if (oldest == null) return;
+
+            _nemeses.Remove(oldest);
+            NemesisLogger.Info($"[Nemesis] {GetName()}: roster at cap ({NemesisMaxRosterSize}) — auto-banished oldest '{((PrototypeId)oldest.HeroRef).GetName()}'");
+        }
+
+        /// <summary>
+        /// Chat banner for a rank 4/5 nemesis escape — see
+        /// Avatar.Nemesis.cs. Reuses the same banner channel Rogue Encounter
+        /// uses for its ambush notifications.
+        /// </summary>
+        internal void AnnounceNemesisEscape(string nemesisName)
+        {
+            try { SendBannerLines($"💨 {nemesisName} has ESCAPED — they'll be back stronger."); }
+            catch (Exception ex) { NemesisLogger.Warn($"[Nemesis] escape banner failed: {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// Chat banner for the rank-0 reset after too many rank 4/5 escapes
+        /// — see Avatar.Nemesis.cs.
+        /// </summary>
+        internal void AnnounceNemesisRankReset(string nemesisName)
+        {
+            try { SendBannerLines($"⚠ {nemesisName} has evaded you too many times and lost their edge — rank reset."); }
+            catch (Exception ex) { NemesisLogger.Warn($"[Nemesis] rank-reset banner failed: {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// Manually banish the single oldest entry on the roster (by
+        /// LastKillMs), regardless of cap. Returns the banished hero's
+        /// PrototypeId, or PrototypeId.Invalid if the roster is empty.
+        /// </summary>
+        public PrototypeId BanishOldestNemesis()
+        {
+            if (_nemeses.Count == 0) return PrototypeId.Invalid;
+
+            NemesisEntry oldest = _nemeses[0];
+            foreach (var n in _nemeses)
+                if (n.LastKillMs < oldest.LastKillMs) oldest = n;
+
+            ulong heroRef = oldest.HeroRef;
+            _nemeses.Remove(oldest);
+            NemesisLogger.Info($"[Nemesis] {GetName()}: banished oldest '{((PrototypeId)heroRef).GetName()}'");
+            return (PrototypeId)heroRef;
         }
 
         /// <summary>

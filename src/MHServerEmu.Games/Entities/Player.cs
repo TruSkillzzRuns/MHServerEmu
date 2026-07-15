@@ -2714,6 +2714,16 @@ namespace MHServerEmu.Games.Entities
 
             if (_teleportData.IsValid && numLoaded == AOI.TrackedCellCount)
                 FinishTeleport();
+
+            // Retry any phantom relocation attempted before the destination
+            // cell(s) actually finished loading client-side — see
+            // RecordPhantomRelocationTarget/RetryPendingPhantomRelocation in
+            // Player.PhantomHero.cs. A phantom moved into an area whose cell
+            // isn't marked IsLoaded yet in this player's AOI silently fails
+            // the interest check and is never retried on its own once the
+            // cell does finish loading.
+            if (numLoaded == AOI.TrackedCellCount)
+                RetryPendingPhantomRelocation();
         }
 
         private bool FinishTeleport()

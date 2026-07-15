@@ -160,6 +160,7 @@ namespace MHServerEmu.Games.Entities
             public List<string> Heroes { get; set; }
             public List<int> Levels { get; set; }
             public List<WebPhantomSquadMember> Members { get; set; }
+            public bool IsDefault { get; set; }
         }
 
         public sealed class WebPhantomSquadMember
@@ -175,6 +176,7 @@ namespace MHServerEmu.Games.Entities
         public List<WebPhantomSquadInfo> GetPhantomSquadsForWeb()
         {
             var squads = LoadPhantomSquadFile();
+            string defaultSquad = GetDefaultSquadName();
             var list = new List<WebPhantomSquadInfo>(squads.Count);
             foreach (var kvp in squads)
             {
@@ -196,7 +198,7 @@ namespace MHServerEmu.Games.Entities
                         Invincible = m.Invincible,
                     });
                 }
-                list.Add(new WebPhantomSquadInfo { Name = kvp.Key, Heroes = heroes, Levels = levels, Members = members });
+                list.Add(new WebPhantomSquadInfo { Name = kvp.Key, Heroes = heroes, Levels = levels, Members = members, IsDefault = string.Equals(kvp.Key, defaultSquad, StringComparison.OrdinalIgnoreCase) });
             }
             list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             return list;

@@ -1,4 +1,3 @@
-using System.Reflection;
 using MHServerEmu.Commands.Attributes;
 using MHServerEmu.Core.Network;
 using MHServerEmu.DatabaseAccess.Models;
@@ -30,8 +29,7 @@ namespace MHServerEmu.Commands.Implementations
             // 0 = "match caller's CharacterLevel" (handled inside
             // SpawnPhantomHeroCore). The tick loop then keeps them in sync
             // if the human levels up — see OnPhantomTick's level-sync block.
-            int level = 0;
-            if (@params.Length >= 2 && int.TryParse(@params[1], out int l)) level = System.Math.Clamp(l, 1, 60);
+            int level = PhantomCommandUtil.ParseLevelClamp(@params, 1);
 
             // Non-numeric first arg = spawn a specific hero by name. The
             // name is matched at runtime against the playable-avatar pool
@@ -44,16 +42,7 @@ namespace MHServerEmu.Commands.Implementations
                 if (matches.Count == 0)
                     return $"No hero matching '{@params[0]}'.";
                 if (matches.Count > 1)
-                {
-                    var names = new System.Text.StringBuilder();
-                    for (int i = 0; i < matches.Count && i < 8; i++)
-                    {
-                        if (i > 0) names.Append(", ");
-                        names.Append(matches[i].ShortName);
-                    }
-                    if (matches.Count > 8) names.Append(", ...");
-                    return $"Multiple matches: {names}. Be more specific.";
-                }
+                    return PhantomCommandUtil.FormatMultipleMatches(matches);
 
                 ulong heroId = avatar.SpawnPhantomHeroFromIntent(matches[0].AvatarRef, level, null, level > 0, 0, out string heroError);
                 return heroId != 0
@@ -62,7 +51,7 @@ namespace MHServerEmu.Commands.Implementations
             }
 
             // Numeric path: spawn N random heroes.
-            count = @params.Length >= 1 ? System.Math.Clamp(count, 1, 50) : 5;
+            count = PhantomCommandUtil.ClampCount(count, 5, 50);
 
             int spawned = 0, failed = 0;
             var firstError = string.Empty;
@@ -78,7 +67,7 @@ namespace MHServerEmu.Commands.Implementations
         }
 
         [Command("squad")]
-        [CommandDescription("Manage saved phantom squads. Usage: squad save [name] | squad spawn [name] | squad list | squad delete [name]")]
+        [CommandDescription("Manage saved phantom squads. Usage: squad save [name] | squad spawn [name] | squad list | squad delete [name] | squad default [name|clear]")]
         [CommandInvokerType(CommandInvokerType.Client)]
         [CommandUserLevel(AccountUserLevel.Admin)]
         public string Squad(string[] @params, NetClient client)
@@ -112,8 +101,16 @@ namespace MHServerEmu.Commands.Implementations
                     if (name == null) return "Usage: phantom squad delete [name]";
                     return player.DeletePhantomSquad(name);
 
+                case "default":
+                    if (name == null)
+                    {
+                        string current = player.GetDefaultSquadName();
+                        return current != null ? $"Default squad: '{current}'." : "No default squad set.";
+                    }
+                    return player.SetDefaultSquad(name);
+
                 default:
-                    return $"Unknown squad operation '{op}'. Use save, spawn, list or delete.";
+                    return $"Unknown squad operation '{op}'. Use save, spawn, list, delete or default.";
             }
         }
 
@@ -148,7 +145,7 @@ namespace MHServerEmu.Commands.Implementations
         }
 
         [Command("gear")]
-        [CommandDescription("Re-roll phantom gear. Usage: gear (all phantoms) | gear [hero] (one phantom). Gear rolls at each phantom's current level.")]
+        [CommandDescription("Re-roll phantom gear. Usage: gear (all, random) | gear [hero] (one, random) | gear bis (all, best-in-slot) | gear [hero] bis (one, best-in-slot).")]
         [CommandInvokerType(CommandInvokerType.Client)]
         [CommandUserLevel(AccountUserLevel.Admin)]
         public string Gear(string[] @params, NetClient client)
@@ -157,7 +154,17 @@ namespace MHServerEmu.Commands.Implementations
             var player = pc.Player;
             if (player == null || player.CurrentAvatar == null) return "No avatar in world.";
 
-            return player.RerollPhantomGear(@params.Length >= 1 ? @params[0] : null);
+            // "bis" can appear as the only arg (all phantoms) or after a hero
+            // name (that one phantom) — strip it out to find the hero query.
+            bool toBiS = false;
+            string heroQuery = null;
+            foreach (string p in @params)
+            {
+                if (p.Equals("bis", System.StringComparison.OrdinalIgnoreCase)) toBiS = true;
+                else heroQuery = p;
+            }
+
+            return player.RerollPhantomGear(heroQuery, toBiS);
         }
 
         [Command("enemy")]
@@ -170,15 +177,14 @@ namespace MHServerEmu.Commands.Implementations
             var avatar = pc.Player?.CurrentAvatar;
             if (avatar == null) return "No avatar in world.";
 
-            int level = 0;
-            if (@params.Length >= 2 && int.TryParse(@params[1], out int l)) level = System.Math.Clamp(l, 1, 60);
+            int level = PhantomCommandUtil.ParseLevelClamp(@params, 1);
 
             int count = 0;
             if (@params.Length >= 1 && int.TryParse(@params[0], out count) == false)
             {
                 var matches = Avatar.FindPhantomHeroRefs(@params[0]);
                 if (matches.Count == 0) return $"No hero matching '{@params[0]}'.";
-                if (matches.Count > 1) return "Multiple matches — be more specific.";
+                if (matches.Count > 1) return PhantomCommandUtil.FormatMultipleMatches(matches);
 
                 ulong heroId = avatar.SpawnEnemyPhantomHero(matches[0].AvatarRef, level, out string heroError);
                 return heroId != 0
@@ -186,7 +192,7 @@ namespace MHServerEmu.Commands.Implementations
                     : $"Failed: {heroError}";
             }
 
-            count = @params.Length >= 1 ? System.Math.Clamp(count, 1, 20) : 1;
+            count = PhantomCommandUtil.ClampCount(count, 1, 20);
             int spawned = 0, failed = 0;
             string firstError = null;
             for (int i = 0; i < count; i++)
@@ -221,18 +227,9 @@ namespace MHServerEmu.Commands.Implementations
             }
             if (matches.Count == 0) return $"No team-up matching '{query}'.";
             if (matches.Count > 1)
-            {
-                var names = new System.Text.StringBuilder();
-                for (int i = 0; i < matches.Count && i < 8; i++)
-                {
-                    if (i > 0) names.Append(", ");
-                    names.Append(matches[i].ShortName);
-                }
-                return $"Multiple matches: {names}. Be more specific.";
-            }
+                return PhantomCommandUtil.FormatMultipleMatches(matches);
 
-            int level = 0;
-            if (@params.Length >= 2 && int.TryParse(@params[1], out int l)) level = System.Math.Clamp(l, 1, 60);
+            int level = PhantomCommandUtil.ParseLevelClamp(@params, 1);
             bool enemy = @params.Length >= 3 && @params[2].Equals("enemy", System.StringComparison.OrdinalIgnoreCase);
 
             ulong id = avatar.SpawnTeamUpPhantomHero(matches[0].Ref, level, out string err, enemy: enemy);
@@ -284,16 +281,10 @@ namespace MHServerEmu.Commands.Implementations
             var matches = Avatar.FindPhantomHeroRefs(@params[0]);
             if (matches.Count == 0) return $"No hero matching '{@params[0]}'.";
             if (matches.Count > 1)
-            {
-                var names = new System.Text.StringBuilder();
-                for (int i = 0; i < matches.Count && i < 8; i++) { if (i > 0) names.Append(", "); names.Append(matches[i].ShortName); }
-                if (matches.Count > 8) names.Append(", ...");
-                return $"Multiple matches: {names}. Be more specific.";
-            }
+                return PhantomCommandUtil.FormatMultipleMatches(matches);
 
-            int rank = 5, level = 60;
-            if (@params.Length >= 2 && int.TryParse(@params[1], out int r)) rank = System.Math.Clamp(r, 1, 5);
-            if (@params.Length >= 3 && int.TryParse(@params[2], out int l)) level = System.Math.Clamp(l, 1, 60);
+            int rank = PhantomCommandUtil.ParseRankClamp(@params, 1, 5);
+            int level = @params.Length >= 3 && int.TryParse(@params[2], out int l) ? System.Math.Clamp(l, PhantomCommandUtil.MinLevel, PhantomCommandUtil.MaxLevel) : 60;
 
             string display = $"★{rank} TEST {matches[0].ShortName}";
             ulong id = avatar.SpawnNemesisPhantomHero(matches[0].AvatarRef, level, display, rank, out string error);
@@ -324,10 +315,7 @@ namespace MHServerEmu.Commands.Implementations
             var avatar = pc.Player?.CurrentAvatar;
             if (avatar == null) return "No avatar in world.";
 
-            var method = typeof(Avatar).GetMethod("DespawnAllPhantomHeroes", BindingFlags.Public | BindingFlags.Instance);
-            if (method == null) return "DespawnAllPhantomHeroes not present.";
-
-            var removed = method.Invoke(avatar, System.Array.Empty<object>());
+            int removed = avatar.DespawnAllPhantomHeroes();
             return $"Phantoms despawned: {removed}.";
         }
     }

@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using Gazillion;
 using MHServerEmu.Core.Logging;
+using MHServerEmu.Core.VectorMath;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.GameData;
+using MHServerEmu.Games.Regions;
 
 namespace MHServerEmu.Games.Entities
 {
@@ -45,6 +47,34 @@ namespace MHServerEmu.Games.Entities
         public IReadOnlyList<ulong> PhantomAvatarIds => _phantomAvatarIds;
         public IReadOnlyList<ulong> PhantomPlayerIds => _phantomPlayerIds;
         public int PhantomHeroCount => _phantomAvatarIds.Count;
+
+        // ================================================================
+        //  Cross-Area phantom relocation retry (see Player.OnCellLoaded in
+        //  Player.cs and Avatar.BringPhantomsToPosition). A phantom moved
+        //  via ChangeRegionPosition into an Area/Cell the client hasn't
+        //  finished loading yet silently fails its AOI proximity check and
+        //  is never retried on its own — record the last attempted target
+        //  here so OnCellLoaded can retry once the destination cell is
+        //  actually confirmed loaded.
+        // ================================================================
+        private Vector3? _lastPhantomRelocationPos;
+        private Region _lastPhantomRelocationRegion;
+
+        internal void RecordPhantomRelocationTarget(Vector3 pos, Region region)
+        {
+            _lastPhantomRelocationPos = pos;
+            _lastPhantomRelocationRegion = region;
+        }
+
+        internal void RetryPendingPhantomRelocation()
+        {
+            if (_lastPhantomRelocationPos == null) return;
+            Vector3 pos = _lastPhantomRelocationPos.Value;
+            Region region = _lastPhantomRelocationRegion;
+            _lastPhantomRelocationPos = null;
+            _lastPhantomRelocationRegion = null;
+            CurrentAvatar?.BringPhantomsToPosition(pos, region);
+        }
 
         /// <summary>
         /// Set on phantom-hero synthetic Players at spawn time; points at the
@@ -846,6 +876,39 @@ namespace MHServerEmu.Games.Entities
             return results;
         }
 
+        /// <summary>
+        /// Same lookup as <see cref="FindActivePhantoms"/> but typed to
+        /// <see cref="Agent"/> so it also matches team-up phantoms — used by
+        /// gear commands (team-ups have equipment slots) rather than costume
+        /// commands (team-ups have no costume system).
+        /// </summary>
+        private List<Agent> FindActivePhantomAgents(string query)
+        {
+            var results = new List<Agent>();
+            var mgr = Game?.EntityManager;
+            if (mgr == null || string.IsNullOrWhiteSpace(query)) return results;
+
+            foreach (ulong avatarId in _phantomAvatarIds)
+            {
+                Agent phantom = mgr.GetEntity<Agent>(avatarId);
+                if (phantom == null || phantom.IsInWorld == false) continue;
+
+                string heroName = phantom.PrototypeDataRef.GetName();
+                int slash = heroName.LastIndexOf('/');
+                if (slash >= 0) heroName = heroName[(slash + 1)..];
+                if (heroName.EndsWith(".prototype", StringComparison.OrdinalIgnoreCase))
+                    heroName = heroName[..^".prototype".Length];
+
+                string username = phantom.GetOwnerOfType<Player>()?.GetName() ?? string.Empty;
+
+                if (heroName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    username.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    results.Add(phantom);
+            }
+
+            return results;
+        }
+
         /// <summary>Give every active phantom a random costume.</summary>
         public string RandomizePhantomCostumes()
         {
@@ -916,53 +979,78 @@ namespace MHServerEmu.Games.Entities
         /// Re-roll gear on all active phantoms, or on the one matching
         /// <paramref name="phantomQuery"/>. Strips current equipment
         /// (except the costume slot) and rolls a fresh level-appropriate
-        /// set per slot.
+        /// set per slot — or, if <paramref name="toBiS"/> is true, equips
+        /// each phantom's community best-in-slot loadout directly instead
+        /// of a random roll (falls back to random for any slot the BiS data
+        /// doesn't cover).
         /// </summary>
-        public string RerollPhantomGear(string phantomQuery = null)
+        public string RerollPhantomGear(string phantomQuery = null, bool toBiS = false)
         {
             var mgr = Game?.EntityManager;
             if (mgr == null) return "No game.";
 
-            List<Avatar> targets;
+            // Agent, not Avatar — team-up phantoms are Agent and carry their
+            // own 4-slot EquipmentInventories, so the lookup has to be able
+            // to resolve both kinds (costume commands stay Avatar-only via
+            // FindActivePhantoms since team-ups have no costume system).
+            List<Agent> targets;
             if (string.IsNullOrWhiteSpace(phantomQuery))
             {
-                targets = new List<Avatar>();
+                targets = new List<Agent>();
                 foreach (ulong avatarId in _phantomAvatarIds)
                 {
-                    Avatar phantom = mgr.GetEntity<Avatar>(avatarId);
+                    Agent phantom = mgr.GetEntity<Agent>(avatarId);
                     if (phantom != null && phantom.IsInWorld) targets.Add(phantom);
                 }
                 if (targets.Count == 0) return "No phantoms active.";
             }
             else
             {
-                targets = FindActivePhantoms(phantomQuery);
+                targets = FindActivePhantomAgents(phantomQuery);
                 if (targets.Count == 0) return $"No active phantom matching '{phantomQuery}'.";
                 if (targets.Count > 1) return $"Multiple phantoms match '{phantomQuery}' — use their username to disambiguate.";
             }
 
             int rerolled = 0;
-            foreach (Avatar phantom in targets)
+            int noBiSData = 0;
+            foreach (Agent phantom in targets)
             {
                 Player phantomOwner = phantom.GetOwnerOfType<Player>();
-                var avatarProto = phantom.AvatarPrototype;
-                if (phantomOwner == null || avatarProto?.EquipmentInventories == null) continue;
+                PrototypeId phantomRef = phantom.PrototypeDataRef;
+                var equipmentInventories = phantom is Avatar phantomAvatar
+                    ? phantomAvatar.AvatarPrototype?.EquipmentInventories
+                    : phantomRef.As<GameData.Prototypes.AgentTeamUpPrototype>()?.EquipmentInventories;
+                if (phantomOwner == null || equipmentInventories == null) continue;
+
+                IReadOnlyDictionary<Loot.EquipmentInvUISlot, PrototypeId> bisLoadout = null;
+                if (toBiS)
+                {
+                    if (PhantomBiSData.TryGetLoadout(phantomRef, Game, out var loadout) && loadout.Count > 0)
+                        bisLoadout = loadout;
+                    else
+                        noBiSData++; // falls through to a normal random roll below — team-ups have no BiS data at all today
+                }
 
                 // Strip current gear (costume slot untouched — that belongs
-                // to the costume system).
-                foreach (var assignment in avatarProto.EquipmentInventories)
+                // to the costume system, and team-ups have no costume slot
+                // in the first place).
+                foreach (var assignment in equipmentInventories)
                 {
                     var invProto = assignment.Inventory.As<GameData.Prototypes.InventoryPrototype>();
                     if (invProto == null || invProto.ConvenienceLabel == Inventories.InventoryConvenienceLabel.Costume) continue;
                     phantom.GetInventoryByRef(assignment.Inventory)?.DestroyContained();
                 }
 
-                List<ulong> applied = Avatar.ApplyPhantomGear(phantomOwner, phantom, phantom.CharacterLevel, null);
+                List<ulong> applied = Avatar.ApplyPhantomGear(phantomOwner, phantom, phantom.CharacterLevel, null, bisLoadout);
                 UpdatePhantomGear(phantom.Id, applied);
                 rerolled++;
             }
 
-            return $"Re-rolled gear on {rerolled} phantom(s).";
+            if (toBiS == false)
+                return $"Re-rolled gear on {rerolled} phantom(s).";
+            return noBiSData == 0
+                ? $"Equipped BiS gear on {rerolled} phantom(s)."
+                : $"Equipped BiS gear on {rerolled} phantom(s) ({noBiSData} had no BiS data — rolled random instead).";
         }
 
         /// <summary>List available costumes for the phantom matching the query.</summary>
@@ -993,7 +1081,104 @@ namespace MHServerEmu.Games.Entities
                 return $"No squad named '{squadName}'.";
             if (SavePhantomSquadFile(squads) == false)
                 return "Failed to write squad file — check server log.";
+            // The deleted squad can't stay the default — clear it silently if it was.
+            if (string.Equals(GetDefaultSquadName(), squadName, StringComparison.OrdinalIgnoreCase))
+                ClearDefaultSquadFile();
             return $"Squad '{squadName}' deleted.";
+        }
+
+        // ================================================================
+        //  Default squad — auto-spawns once per login session. Stored as a
+        //  tiny sibling text file next to the squads JSON so the existing
+        //  squad-file format never has to change shape.
+        // ================================================================
+
+        // Session-scoped, not persisted: guards TryAutoSpawnDefaultSquad so
+        // it only ever fires once per login, not on every region hop /
+        // hero swap that re-enters Avatar.OnEnteredWorld.
+        private bool _defaultSquadAutoSpawnAttempted;
+
+        private string GetDefaultSquadFilePath()
+            => System.IO.Path.Combine(MHServerEmu.Core.Helpers.FileHelper.DataDirectory, "PhantomSquads", $"0x{DatabaseUniqueId:X}.default");
+
+        private void ClearDefaultSquadFile()
+        {
+            try
+            {
+                string path = GetDefaultSquadFilePath();
+                if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            }
+            catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Squad] clear default failed for {this}: {ex.Message}"); }
+        }
+
+        /// <summary>Name of this account's default (auto-spawn-on-login) squad, or null if none set.</summary>
+        public string GetDefaultSquadName()
+        {
+            try
+            {
+                string path = GetDefaultSquadFilePath();
+                if (System.IO.File.Exists(path) == false) return null;
+                string name = System.IO.File.ReadAllText(path).Trim();
+                return name.Length > 0 ? name : null;
+            }
+            catch (System.Exception ex)
+            {
+                PhantomHostLogger.Warn($"[Phantom:Squad] read default failed for {this}: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Marks <paramref name="squadName"/> as the account's default squad
+        /// (auto-spawned once on the next login), or clears the default if
+        /// <paramref name="squadName"/> is null/"clear"/"none".
+        /// </summary>
+        public string SetDefaultSquad(string squadName)
+        {
+            if (string.IsNullOrWhiteSpace(squadName)
+                || squadName.Equals("clear", StringComparison.OrdinalIgnoreCase)
+                || squadName.Equals("none", StringComparison.OrdinalIgnoreCase))
+            {
+                ClearDefaultSquadFile();
+                return "Default squad cleared.";
+            }
+
+            var squads = LoadPhantomSquadFile();
+            if (squads.ContainsKey(squadName) == false)
+                return $"No squad named '{squadName}'. Save it first with: phantom squad save {squadName}";
+
+            try
+            {
+                string path = GetDefaultSquadFilePath();
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+                System.IO.File.WriteAllText(path, squadName);
+            }
+            catch (System.Exception ex)
+            {
+                PhantomHostLogger.Warn($"[Phantom:Squad] set default failed for {this}: {ex.Message}");
+                return "Failed to write default-squad file — check server log.";
+            }
+            return $"'{squadName}' will auto-spawn on login.";
+        }
+
+        /// <summary>
+        /// Fires once per login session on the first Avatar.OnEnteredWorld —
+        /// if the account has a default squad set and no phantoms are
+        /// already active (e.g. from a mid-session migration restore), spawn
+        /// it automatically so the squad is there without a manual command.
+        /// </summary>
+        internal void TryAutoSpawnDefaultSquad(Avatar caller)
+        {
+            if (_defaultSquadAutoSpawnAttempted) return;
+            _defaultSquadAutoSpawnAttempted = true;
+
+            if (PhantomHeroCount > 0) return; // already populated (migration restore, etc.)
+
+            string defaultSquad = GetDefaultSquadName();
+            if (defaultSquad == null) return;
+
+            string result = SpawnPhantomSquad(defaultSquad, caller);
+            PhantomHostLogger.Info($"[Phantom:Squad] auto-spawn default '{defaultSquad}' for {this}: {result}");
         }
 
         /// <summary>

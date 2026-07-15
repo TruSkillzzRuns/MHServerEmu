@@ -91,12 +91,12 @@ namespace MHServerEmu.Games.Entities.Avatars
         // faster and NEVER breaks pursuit. Combined with the "no candidates ->
         // chase caller" fallback in UpdatePhantomHunt, rogues never idle.
         private const float EnemyPhantomFollowMaxDistSq = 900f * 900f;
-        // Friendly team-up respawn cooldown after death (90s). Team-ups die
+        // Friendly team-up respawn cooldown after death (45s). Team-ups die
         // permanently rather than entering the downed/revive flow avatar
         // phantoms use, so instead the tick loop re-spawns them from the
-        // stored descriptor 90s later. Long enough that the current fight
+        // stored descriptor 45s later. Long enough that the current fight
         // has resolved; short enough that the squad doesn't feel gutted.
-        private const long TeamUpRespawnDelayMs = 90_000;
+        private const long TeamUpRespawnDelayMs = 45_000;
         // Idle-formation ring radius around the caller. When friendly
         // phantoms have no hostile in range, they PathTo an evenly-spaced
         // slot at this distance so they walk with you through hubs / between
@@ -294,7 +294,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // then attack once in range. Locomotor.FollowEntity refreshes each
                 // tick (250ms repath delay) so the phantom will keep advancing.
                 // Cast is safe: we skipped team-ups above via IsTeamUpAgent.
-                try { UpdatePhantomHunt((Avatar)phantom, rng); } catch { /* keep ticking */ }
+                try { UpdatePhantomHunt((Avatar)phantom, rng); }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Hunt] {phantom.Id:X} threw: {ex.Message}"); }
             }
 
             if (stale != null)
@@ -329,7 +330,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                             // revenge loop if this foe is on the host's
                             // nemesis roster. Guarded by the "not already
                             // tracked" check so we only retire once.
-                            try { host.RetireNemesis((ulong)foe.PrototypeDataRef); } catch { }
+                            try { host.RetireNemesis((ulong)foe.PrototypeDataRef); }
+                            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] RetireNemesis failed on {foe.Id:X}: {ex.Message}"); }
                             // Drop the phantom's equipped gear as ground loot
                             // for the killer. Uses the phantom's exact rolled
                             // ItemSpec so what drops matches what was rolled at
@@ -340,7 +342,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                         }
                         else if (nowMs - deadSince >= EnemyPhantomCorpseMs)
                         {
-                            try { if (foe.IsInWorld) foe.ExitWorld(); foe.Destroy(); } catch { /* keep ticking */ }
+                            try { if (foe.IsInWorld) foe.ExitWorld(); foe.Destroy(); }
+                            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Corpse] cleanup failed on {foe.Id:X}: {ex.Message}"); }
                             (enemyGone ??= new List<ulong>()).Add(id);
                             s_enemyDeadSinceMs.Remove(id);
                         }
@@ -357,7 +360,8 @@ namespace MHServerEmu.Games.Entities.Avatars
 
                     // Hunt in enemy mode: no reviving, and the caller is a
                     // valid (primary!) target. Cast safe — team-ups skipped above.
-                    try { UpdatePhantomHunt((Avatar)foe, rng, enemyMode: true); } catch { /* keep ticking */ }
+                    try { UpdatePhantomHunt((Avatar)foe, rng, enemyMode: true); }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Hunt] enemy {foe.Id:X} threw: {ex.Message}"); }
                 }
 
                 if (enemyGone != null)
@@ -383,7 +387,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                     try
                     {
                         var refId = (PrototypeId)entry.Descriptor.AvatarRef;
-                        ulong id = SpawnTeamUpPhantomHero(refId, entry.Descriptor.Level, out string err, enemy: false, nemesisRank: 0, usernameOverride: entry.Descriptor.Username);
+                        ulong id = SpawnTeamUpPhantomHero(refId, entry.Descriptor.Level, out string err, enemy: false, nemesisRank: 0, usernameOverride: entry.Descriptor.Username, gearOverride: entry.Descriptor.GearRefs);
                         if (id == 0)
                             PhantomLogger.Warn($"[PhantomHero:TeamUp:Respawn] respawn failed for {refId.GetName()}: {err} — re-queueing 30s");
                         // On failure, re-queue in 30s so a transient issue
@@ -483,7 +487,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                     phantom.ChangeRegionPosition(leashPos, null);
                     s_phantomStuckTrack[phantom.Id] = (leashPos, 0);
                 }
-                catch { /* keep ticking */ }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Leash] teleport failed on {phantom.Id:X}: {ex.Message}"); }
             }
         }
 
@@ -584,7 +588,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                 else
                 {
                     // In cast range — fire the built-in resurrect-other power.
-                    try { phantom.ResurrectOtherAvatar(downed); } catch { /* keep ticking */ }
+                    try { phantom.ResurrectOtherAvatar(downed); }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Revive] {phantom.Id:X} -> {downed.Id:X} failed: {ex.Message}"); }
                 }
                 return; // don't hunt while triaging a downed teammate
             }
@@ -1006,6 +1011,49 @@ namespace MHServerEmu.Games.Entities.Avatars
             return callerPos;
         }
 
+        /// <summary>
+        /// Immediately relocates every tracked friendly phantom/team-up to a
+        /// valid spot near <paramref name="newPos"/>. Called by
+        /// Teleporter.TeleportToLocalTarget for same-region mission-portal
+        /// area transitions — those reposition only the caller via
+        /// ChangeRegionPosition and never go through
+        /// BeginRegionTransfer/SnapshotPhantomsForTransfer (that's the
+        /// cross-region path only). The normal 500ms leash tick would likely
+        /// catch a stray phantom eventually since the caller-distance check
+        /// re-reads the caller's live position every tick, but that's a
+        /// same-region-instance assumption riding on ordinary leash timing —
+        /// this makes the catch-up immediate and certain instead of waiting
+        /// on the next tick.
+        /// </summary>
+        internal void BringPhantomsToPosition(Vector3 newPos, Region regionOverride = null)
+        {
+            Player host = PhantomHost;
+            if (host == null) return;
+            // this.Region can be transiently null right after a fresh
+            // cross-region arrival, even though the caller (Teleporter)
+            // already has a valid Region in hand from resolving the
+            // teleport destination — use that instead of re-deriving a
+            // possibly-stale one when the caller has it.
+            Region region = regionOverride ?? Region;
+            if (region == null) return;
+            var rng = Game?.Random;
+            if (rng == null) return;
+
+            var ids = host.PhantomAvatarIds;
+            for (int i = 0; i < ids.Count; i++)
+            {
+                Agent phantom = Game.EntityManager.GetEntity<Agent>(ids[i]);
+                if (phantom == null || phantom.IsDestroyed || phantom.IsInWorld == false) continue;
+                try
+                {
+                    Vector3 pos = ChoosePhantomLeashPos(region, newPos, rng, phantom.Bounds.Radius);
+                    phantom.Locomotor?.Stop();
+                    phantom.ChangeRegionPosition(pos, null);
+                }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] BringPhantomsToPosition failed for {phantom.Id:X}: {ex.Message}"); }
+            }
+        }
+
         private static readonly HashSet<ulong> s_phantomLocoLogged = new();
 
         /// <summary>
@@ -1103,13 +1151,34 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
             }
 
-            if (downed == null) return false;
+            if (downed == null)
+            {
+                // Nothing to revive right now — make sure the native brain
+                // is following the caller again (see below), not still
+                // pointed at a target from a previous revive attempt.
+                RestoreTeamUpAssistedEntity(teamUp);
+                return false;
+            }
 
             // Guard against re-casting on someone already being resurrected.
             if (teamUp.Properties[PropertyEnum.PendingResurrectEntityId] == downed.Id) return true;
 
             if (downedDistSq > PhantomReviveCastRangeSq)
             {
+                // The team-up's native AIController re-issues its own
+                // MoveToType.AssistedEntity follow (toward the caller) every
+                // ~100ms — faster than our 500ms tick — so a plain
+                // Locomotor.FollowEntity call here toward the downed target
+                // kept losing that race and the team-up never actually
+                // reached cast range. Instead of fighting the native brain,
+                // redirect what IT thinks its assisted entity is to the
+                // downed target, so its own faster follow logic drives it
+                // there cooperatively. Restored back to the caller once the
+                // revive resolves (or no longer applies).
+                var controller = teamUp.AIController;
+                if (controller?.Blackboard?.PropertyCollection != null)
+                    controller.Blackboard.PropertyCollection[PropertyEnum.AIAssistedEntityID] = downed.Id;
+
                 var loco = teamUp.Locomotor;
                 if (loco != null)
                 {
@@ -1127,7 +1196,22 @@ namespace MHServerEmu.Games.Entities.Avatars
                     teamUp.Properties[PropertyEnum.PendingResurrectEntityId] = downed.Id;
             }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] ActivatePower(ResurrectOther) failed: {ex.Message}"); }
+            finally { RestoreTeamUpAssistedEntity(teamUp); }
             return true;
+        }
+
+        /// <summary>
+        /// Points the team-up's native AIController back at the caller as
+        /// its assisted entity — the normal "stick near your owner" state —
+        /// after a revive attempt (successful, failed, or no longer needed)
+        /// temporarily redirected it at a downed target instead.
+        /// </summary>
+        private void RestoreTeamUpAssistedEntity(Agent teamUp)
+        {
+            var controller = teamUp.AIController;
+            if (controller?.Blackboard?.PropertyCollection == null) return;
+            if (controller.Blackboard.PropertyCollection[PropertyEnum.AIAssistedEntityID] != Id)
+                controller.Blackboard.PropertyCollection[PropertyEnum.AIAssistedEntityID] = Id;
         }
 
         /// <summary>
@@ -1181,23 +1265,84 @@ namespace MHServerEmu.Games.Entities.Avatars
                 return;
             }
 
-            // Everyone else: drop worn gear. For rank-5 level-60 the worn set
-            // IS the BiS loadout, so this is the BiS jackpot; for ranks 0-4 it
-            // is the random level-band gear they were rolled with.
-            int dropped = 0;
+            // Costume slot: gated behind a rank-based chance instead of an
+            // unconditional drop, independent of whatever the gear roll
+            // below does — costumes are collectible/cosmetic so they
+            // shouldn't fall off of every single rogue kill.
+            int costumeDropped = RollPhantomCostumeDrop(phantom, avatarProto, rank, rng, summary);
+
+            // Rank 5 at level 60: this is the only case where the worn gear
+            // IS the full BiS loadout (see ApplyPhantomGear's bisLoadout
+            // param at spawn). No rank should have a guaranteed 100% BiS
+            // drop, so this is no longer an unconditional dump of every
+            // slot — instead:
+            //   5%  -> SUPER loot-splosion: every worn piece drops, guaranteed.
+            //   25% -> up to 3 random worn BiS pieces drop.
+            //   70% (roll misses both) -> no BiS at all; a random
+            //         level-appropriate gear splosion drops instead so the
+            //         kill still feels worthwhile.
+            if (rank >= Player.NemesisMaxRank && level >= 60)
+            {
+                var wornItems = new List<Items.Item>();
+                foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
+                {
+                    InventoryPrototype invProto = assignment.Inventory.As<InventoryPrototype>();
+                    if (invProto != null && invProto.ConvenienceLabel == InventoryConvenienceLabel.Costume) continue;
+                    Inventory inv = phantom.GetInventoryByRef(assignment.Inventory);
+                    if (inv == null) continue;
+                    foreach (var entry in inv)
+                    {
+                        Items.Item item = game.EntityManager.GetEntity<Items.Item>(entry.Id);
+                        if (item?.ItemSpec != null) wornItems.Add(item);
+                    }
+                }
+
+                int dropped = 0;
+                float roll = rng.NextFloat();
+                if (roll < 0.05f)
+                {
+                    dropped = AddWornItemsInto(summary, wornItems, wornItems.Count, rng);
+                    if (dropped > 0)
+                        PhantomLogger.Info($"[PhantomHero:Loot] rank-5 SUPER loot-splosion: all {dropped} worn BiS piece(s) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
+                }
+                else if (roll < 0.30f)
+                {
+                    dropped = AddWornItemsInto(summary, wornItems, Math.Min(3, wornItems.Count), rng);
+                    if (dropped > 0)
+                        PhantomLogger.Info($"[PhantomHero:Loot] rank-5 partial BiS drop: {dropped} worn piece(s) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
+                }
+                else
+                {
+                    dropped = RollSplosionInto(summary, avatarProto, killer, lootMgr, rng, level, LootSplosionCount);
+                    if (dropped > 0)
+                        PhantomLogger.Info($"[PhantomHero:Loot] rank-5 BiS roll missed — random lvl-{level} splosion: {dropped} item(s) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
+                }
+
+                if (dropped + costumeDropped > 0)
+                    lootMgr.SpawnLootFromSummary(summary, inputSettings);
+                return;
+            }
+
+            // Everyone else (ranks 0-4): drop worn gear (random level-band
+            // gear they were rolled with, not BiS) plus the rank 3/4 bonus.
+            int wornDropped = 0;
             foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
             {
+                InventoryPrototype invProto = assignment.Inventory.As<InventoryPrototype>();
+                if (invProto != null && invProto.ConvenienceLabel == InventoryConvenienceLabel.Costume) continue; // handled above
                 Inventory inv = phantom.GetInventoryByRef(assignment.Inventory);
                 if (inv == null) continue;
+
                 foreach (var entry in inv)
                 {
                     Items.Item item = game.EntityManager.GetEntity<Items.Item>(entry.Id);
                     if (item?.ItemSpec == null) continue;
                     // Equipped items bind on equip; clear the binding affix so
                     // the ground drop is pickupable (see OnPickupInteraction).
-                    try { item.ItemSpec.SetBindingState(false); } catch { }
+                    try { item.ItemSpec.SetBindingState(false); }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] unbind failed on {item.Id:X}: {ex.Message}"); }
                     summary.Add(new Loot.LootResult(item.ItemSpec));
-                    dropped++;
+                    wornDropped++;
                 }
             }
 
@@ -1211,11 +1356,75 @@ namespace MHServerEmu.Games.Entities.Avatars
                 bonus = AddDownTierBiSInto(summary, bisLoadout, killer, lootMgr, rng, level, want);
             }
 
-            if (dropped + bonus > 0)
+            if (wornDropped + bonus + costumeDropped > 0)
             {
                 lootMgr.SpawnLootFromSummary(summary, inputSettings);
-                PhantomLogger.Info($"[PhantomHero:Loot] dropped {dropped} worn + {bonus} down-tier BiS item(s) (rank {rank}) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
+                PhantomLogger.Info($"[PhantomHero:Loot] dropped {wornDropped} worn + {bonus} down-tier BiS item(s) (rank {rank}) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
             }
+        }
+
+        /// <summary>
+        /// Rolls the rank-based costume drop chance (6% ranks 0-3, 15% rank
+        /// 4, 20% rank 5) and adds the phantom's equipped costume item to
+        /// the summary if it hits. Returns 1 if a costume was added, 0
+        /// otherwise. Independent of whatever the main gear roll does.
+        /// </summary>
+        private static int RollPhantomCostumeDrop(Agent phantom, AvatarPrototype avatarProto, int rank,
+            MHServerEmu.Core.System.Random.GRandom rng, Loot.LootResultSummary summary)
+        {
+            float costumeDropChance = rank >= Player.NemesisMaxRank ? 0.20f : rank == 4 ? 0.15f : 0.06f;
+            if (rng.NextFloat() >= costumeDropChance) return 0;
+
+            foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
+            {
+                InventoryPrototype invProto = assignment.Inventory.As<InventoryPrototype>();
+                if (invProto == null || invProto.ConvenienceLabel != InventoryConvenienceLabel.Costume) continue;
+
+                Inventory inv = phantom.GetInventoryByRef(assignment.Inventory);
+                if (inv == null) return 0;
+                foreach (var entry in inv)
+                {
+                    Items.Item item = phantom.Game.EntityManager.GetEntity<Items.Item>(entry.Id);
+                    if (item?.ItemSpec == null) continue;
+                    try { item.ItemSpec.SetBindingState(false); }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] costume unbind failed on {item.Id:X}: {ex.Message}"); }
+                    summary.Add(new Loot.LootResult(item.ItemSpec));
+                    return 1;
+                }
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Adds <paramref name="count"/> randomly-selected items from
+        /// <paramref name="wornItems"/> into the summary (Fisher-Yates
+        /// partial shuffle so the same item can't be picked twice), clearing
+        /// each one's binding affix so the ground drop is pickupable.
+        /// </summary>
+        private static int AddWornItemsInto(Loot.LootResultSummary summary, List<Items.Item> wornItems, int count,
+            MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            if (count <= 0 || wornItems.Count == 0) return 0;
+            count = Math.Min(count, wornItems.Count);
+
+            // Fisher-Yates partial shuffle in place — fine here since
+            // wornItems is a throwaway list built fresh for this drop.
+            for (int i = wornItems.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(0, i + 1);
+                (wornItems[i], wornItems[j]) = (wornItems[j], wornItems[i]);
+            }
+
+            int added = 0;
+            for (int i = 0; i < count; i++)
+            {
+                Items.Item item = wornItems[i];
+                try { item.ItemSpec.SetBindingState(false); }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] worn-item unbind failed on {item.Id:X}: {ex.Message}"); }
+                summary.Add(new Loot.LootResult(item.ItemSpec));
+                added++;
+            }
+            return added;
         }
 
         /// <summary>
@@ -1263,7 +1472,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
                 if (spec != null)
                 {
-                    try { spec.SetBindingState(false); } catch { }
+                    try { spec.SetBindingState(false); }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] splosion unbind failed: {ex.Message}"); }
                     summary.Add(new Loot.LootResult(spec));
                     added++;
                 }
@@ -1302,7 +1512,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                 ItemSpec spec = lootMgr.CreateItemSpec(itemRef, LootContext.Drop, killer, level, downTierRarity)
                              ?? lootMgr.CreateItemSpec(itemRef, LootContext.Drop, killer, level);
                 if (spec == null) continue;
-                try { spec.SetBindingState(false); } catch { }
+                try { spec.SetBindingState(false); }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] down-tier unbind failed: {ex.Message}"); }
                 summary.Add(new Loot.LootResult(spec));
                 added++;
             }
@@ -1330,22 +1541,41 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 
         /// <summary>
-        /// Cheap check: is there any hostile Agent within friendly-engagement
-        /// range of the caller? Used to gate team-up idle formation so we
-        /// don't fight the team-up's native AI when it's actively pursuing
-        /// or attacking a target.
+        /// Cheap check: does THIS team-up have a valid hostile to engage?
+        /// Used to gate team-up idle formation so we don't fight the
+        /// team-up's native AI when it's actively pursuing or attacking a
+        /// target.
+        ///
+        /// Mirrors UpdatePhantomHunt's own friendly-mode candidate filter
+        /// exactly, since team-ups are otherwise "the same" as avatar
+        /// phantoms (party-member fake players): a wide PhantomSearchRange
+        /// sweep centered on the phantom itself, narrowed to only hostiles
+        /// within PhantomFriendlyEngageMaxCallerDist of the CALLER. Previously
+        /// this was centered on the caller's position for the whole check,
+        /// which meant one hostile anywhere within engage range of the HUMAN
+        /// disabled idle formation for the ENTIRE squad at once — every idle
+        /// team-up fell back to the same native-AI follow point and stacked
+        /// on top of each other while just walking around.
         /// </summary>
         private bool HasHostileNearCaller(Agent phantom, Vector3 callerPos)
         {
             Region region = phantom.Region ?? Region;
             if (region == null) return false;
-            var sphere = new Sphere(callerPos, PhantomFriendlyEngageMaxCallerDist);
+            Vector3 phantomPos = phantom.RegionLocation.Position;
+            var sphere = new Sphere(phantomPos, PhantomSearchRange);
             foreach (var we in region.IterateEntitiesInVolume(sphere, new(EntityRegionSPContextFlags.PrimaryPartition)))
             {
                 if (we == null || we.IsInWorld == false || we.IsDead) continue;
                 if (we is not Agent) continue;
                 if (phantom.IsHostileTo(we) == false) continue;
                 if (we.IsDormant || we.IsUntargetable || we.IsUnaffectable) continue;
+
+                // Same caller-distance filter avatar phantoms use — only a
+                // hostile close to the CALLER counts as something worth
+                // breaking formation for.
+                float callerDistSq = Vector3.DistanceSquared2D(we.RegionLocation.Position, callerPos);
+                if (callerDistSq > PhantomFriendlyEngageMaxCallerDistSq) continue;
+
                 return true;
             }
             return false;
@@ -1563,15 +1793,23 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// valid item is rolled per unlocked equip slot. Rarity follows the
         /// level band table above. Returns the applied item proto refs for
         /// descriptor storage.
+        ///
+        /// Works for both avatar phantoms and team-up phantoms — the two
+        /// prototype classes each declare their own (identically-shaped but
+        /// unrelated) EquipmentInventories property, so it's read via the
+        /// concrete type rather than a common base.
         /// </summary>
-        internal static List<ulong> ApplyPhantomGear(Player phantomPlayer, Avatar phantomAvatar, int level, List<ulong> gearOverride,
+        internal static List<ulong> ApplyPhantomGear(Player phantomPlayer, Agent phantomAgent, int level, List<ulong> gearOverride,
             IReadOnlyDictionary<EquipmentInvUISlot, PrototypeId> bisLoadout = null)
         {
             var applied = new List<ulong>();
-            AvatarPrototype avatarProto = phantomAvatar.AvatarPrototype;
-            if (avatarProto?.EquipmentInventories == null) return applied;
+            PrototypeId phantomRef = phantomAgent.PrototypeDataRef;
+            AvatarEquipInventoryAssignmentPrototype[] equipmentInventories = phantomAgent is Avatar phantomAvatar
+                ? phantomAvatar.AvatarPrototype?.EquipmentInventories
+                : phantomRef.As<GameData.Prototypes.AgentTeamUpPrototype>()?.EquipmentInventories;
+            if (equipmentInventories == null) return applied;
 
-            Game game = phantomAvatar.Game;
+            Game game = phantomAgent.Game;
             var lootManager = game.LootManager;
             var rng = game.Random;
 
@@ -1584,7 +1822,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             EnsureRarityTiers();
             s_rarityByTier.TryGetValue(5, out PrototypeId bannedUltimateRef);
 
-            foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
+            foreach (AvatarEquipInventoryAssignmentPrototype assignment in equipmentInventories)
             {
                 if (assignment.UnlocksAtCharacterLevel > level) continue;
 
@@ -1614,7 +1852,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                                  uiSlot == EquipmentInvUISlot.Legendary  || uiSlot == EquipmentInvUISlot.UruForged;
                 if (isCoreGear == false && isSpecial == false) continue;
 
-                Inventory equipInventory = phantomAvatar.GetInventoryByRef(assignment.Inventory);
+                Inventory equipInventory = phantomAgent.GetInventoryByRef(assignment.Inventory);
                 if (equipInventory == null) continue;
 
                 // Stored ref on restore (consumed even if it fails, to keep
@@ -1632,7 +1870,24 @@ namespace MHServerEmu.Games.Entities.Avatars
                     overrideItemRef = bisRef;
 
                 var picker = new MHServerEmu.Core.Collections.Picker<Prototype>(rng);
-                LootUtilities.BuildInventoryLootPicker(picker, avatarProto.DataRef, assignment.UISlot);
+                // LootUtilities.BuildInventoryLootPicker hard-casts its ref to
+                // AvatarPrototype specifically, so it silently fails (empty
+                // picker) for a team-up ref even though the underlying
+                // GameDataTables.LootPickingTable lookup it wraps accepts any
+                // AgentPrototype. We're already scoped to this exact
+                // assignment/slot here, so for a team-up just replicate the
+                // same picker build using its AgentTeamUpPrototype directly.
+                if (phantomAgent is Avatar)
+                {
+                    LootUtilities.BuildInventoryLootPicker(picker, phantomRef, assignment.UISlot);
+                }
+                else if (invProto != null)
+                {
+                    picker.Clear();
+                    AgentPrototype teamUpAgentProto = phantomRef.As<AgentPrototype>();
+                    foreach (PrototypeId typeRef in invProto.EntityTypeFilter)
+                        MHServerEmu.Games.GameData.Tables.GameDataTables.Instance.LootPickingTable.GetConcreteLootPicker(picker, typeRef, teamUpAgentProto);
+                }
 
                 try
                 {
@@ -1705,7 +1960,7 @@ namespace MHServerEmu.Games.Entities.Avatars
 
                     if (acceptedSpec == null)
                     {
-                        PhantomLogger.Warn($"[PhantomHero:Gear] slot pool for {assignment.UISlot} on {avatarProto.DataRef.GetName()} has NO item usable at the level-{level} band rarities — slot left empty");
+                        PhantomLogger.Warn($"[PhantomHero:Gear] slot pool for {assignment.UISlot} on {phantomRef.GetName()} has NO item usable at the level-{level} band rarities — slot left empty");
                         continue;
                     }
 
@@ -1728,7 +1983,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
                 catch (Exception ex)
                 {
-                    PhantomLogger.Warn($"[PhantomHero:Gear] equip roll for slot {assignment.UISlot} on {phantomAvatar.Id:X} failed: {ex.Message}");
+                    PhantomLogger.Warn($"[PhantomHero:Gear] equip roll for slot {assignment.UISlot} on {phantomAgent.Id:X} failed: {ex.Message}");
                 }
             }
 
@@ -2253,7 +2508,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // returns null for a team-up ref and the phantom is silently lost
             // on region change.
             if (avatarRefOverride != PrototypeId.Invalid && avatarRefOverride.As<AgentTeamUpPrototype>() != null)
-                return SpawnTeamUpPhantomHero(avatarRefOverride, level, out error, enemy: false, nemesisRank: 0, usernameOverride: username);
+                return SpawnTeamUpPhantomHero(avatarRefOverride, level, out error, enemy: false, nemesisRank: 0, usernameOverride: username, gearOverride: gearRefs);
 
             return SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, gearRefs, out error, enemy: false, invincible: invincible);
         }
@@ -2285,7 +2540,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// use the caller's alliance and follow the caller; enemy team-ups
         /// use the hostile alliance override.
         /// </summary>
-        public ulong SpawnTeamUpPhantomHero(PrototypeId teamUpRef, int level, out string error, bool enemy = false, int nemesisRank = 0, string usernameOverride = null)
+        public ulong SpawnTeamUpPhantomHero(PrototypeId teamUpRef, int level, out string error, bool enemy = false, int nemesisRank = 0, string usernameOverride = null, List<ulong> gearOverride = null, int nemesisEscapeCount = 0)
         {
             error = null;
             if (IsInWorld == false) { error = "avatar not in world"; return 0; }
@@ -2371,7 +2626,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Enter game so AOI broadcasts (mirrors SpawnPhantomHeroCore step 5).
             try { phantomPlayer.EnterGame(); }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] phantomPlayer.EnterGame() partial: {ex.Message}"); }
-            try { phantomPlayer.OnLoadingScreenFinished(); } catch { }
+            try { phantomPlayer.OnLoadingScreenFinished(); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] OnLoadingScreenFinished failed: {ex.Message}"); }
 
             // Step 3: SetAsPersistent(this, true) does the world entry —
             // it computes a position near this avatar and calls EnterWorld
@@ -2407,7 +2663,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             catch (Exception ex)
             {
                 error = $"team-up world entry failed: {ex.Message}";
-                try { if (teamUp.IsInWorld) teamUp.ExitWorld(); teamUp.Destroy(); } catch { }
+                try { if (teamUp.IsInWorld) teamUp.ExitWorld(); teamUp.Destroy(); }
+                catch (Exception cleanupEx) { PhantomLogger.Warn($"[PhantomHero:TeamUp] cleanup after failed entry threw: {cleanupEx.Message}"); }
                 DestroyPhantomPlayer(phantomPlayer);
                 return 0;
             }
@@ -2415,7 +2672,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (teamUp.IsInWorld == false)
             {
                 error = "team-up SetAsPersistent did not enter world";
-                try { teamUp.Destroy(); } catch { }
+                try { teamUp.Destroy(); }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] Destroy() after failed world entry threw: {ex.Message}"); }
                 DestroyPhantomPlayer(phantomPlayer);
                 return 0;
             }
@@ -2427,7 +2685,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             {
                 float enemyHpBase = EnemyPhantomHealthMult;
                 float hpMult = nemesisRank > 0
-                    ? Player.NemesisHealthMultForRank(nemesisRank)
+                    ? Player.NemesisHealthMultForRank(nemesisRank) * (1f + Player.NemesisEscapeHealthBonusPerEscape * nemesisEscapeCount)
                     : enemyHpBase;
                 teamUp.Properties[PropertyEnum.HealthMaxMult] = hpMult;
                 try
@@ -2442,7 +2700,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                             teamUp.Properties[PropertyEnum.Rank] = rankProto.DataRef;
                     }
                 }
-                catch { }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] rank assignment failed: {ex.Message}"); }
             }
             else
             {
@@ -2456,6 +2714,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                 float currentDmgMult = teamUp.Properties[PropertyEnum.DamageMult];
                 teamUp.Properties[PropertyEnum.DamageMult] = (currentDmgMult <= 0f ? 1f : currentDmgMult) * (1f + dmgBoost);
             }
+
+            // Team-ups carry 4 equipment slots in their prototype data (same
+            // AvatarEquipInventoryAssignmentPrototype shape avatars use) but
+            // previously never got anything rolled into them. Equip here the
+            // same way avatar phantoms do — random roll, or the exact stored
+            // refs on squad/migration restore.
+            List<ulong> appliedGearRefs = null;
+            try { appliedGearRefs = ApplyPhantomGear(phantomPlayer, teamUp, effectiveLevel, gearOverride); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] ApplyPhantomGear failed: {ex.Message}"); }
 
             // IsPhantomHero was set earlier (before the AvatarInPlay move
             // so the containment-filter override could see it). Just make
@@ -2482,7 +2749,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                     Username = username,
                     LockLevel = false,
                     CostumeRef = 0,
-                    GearRefs = null,
+                    GearRefs = appliedGearRefs,
                     Invincible = false,
                 };
                 host.RegisterPhantom(teamUp.Id, phantomPlayer.Id, descriptor);
@@ -2499,7 +2766,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// suffix applied to the avatar's nameplate. Used by Rogue Encounter
         /// when the roll picks a nemesis instead of a random hero.
         /// </summary>
-        public ulong SpawnNemesisPhantomHero(PrototypeId avatarRef, int level, string killerName, int rank, out string error)
+        public ulong SpawnNemesisPhantomHero(PrototypeId avatarRef, int level, string killerName, int rank, out string error, int escapeCount = 0)
         {
             // Team-up nemeses go through the team-up spawn path so the
             // AgentTeamUpPrototype dispatch, native AI, and inventory
@@ -2507,9 +2774,9 @@ namespace MHServerEmu.Games.Entities.Avatars
             // name from the roster entry so the returning team-up carries
             // the same recognizable name it did when it killed the player.
             if (avatarRef != PrototypeId.Invalid && avatarRef.As<AgentTeamUpPrototype>() != null)
-                return SpawnTeamUpPhantomHero(avatarRef, level, out error, enemy: true, nemesisRank: rank, usernameOverride: killerName);
+                return SpawnTeamUpPhantomHero(avatarRef, level, out error, enemy: true, nemesisRank: rank, usernameOverride: killerName, nemesisEscapeCount: escapeCount);
 
-            return SpawnPhantomHeroCore(avatarRef, level, killerName, lockLevel: true, 0, null, out error, enemy: true, nemesisRank: rank);
+            return SpawnPhantomHeroCore(avatarRef, level, killerName, lockLevel: true, 0, null, out error, enemy: true, nemesisRank: rank, nemesisEscapeCount: escapeCount);
         }
 
         // Cached mutually-hostile alliance for enemy phantoms, resolved from
@@ -2546,7 +2813,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             return s_enemyAllianceRef;
         }
 
-        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error, bool enemy = false, bool invincible = false, int nemesisRank = 0)
+        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error, bool enemy = false, bool invincible = false, int nemesisRank = 0, int nemesisEscapeCount = 0)
         {
             if (enemy && ResolveHostileAllianceRef() == PrototypeId.Invalid)
             {
@@ -2790,7 +3057,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // per-rank table in Player.NemesisHealthMultForRank. Fresh
                 // rogues use the enemy base (3.0×); rank N replaces it.
                 phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = nemesisRank > 0
-                    ? Player.NemesisHealthMultForRank(nemesisRank)
+                    ? Player.NemesisHealthMultForRank(nemesisRank) * (1f + Player.NemesisEscapeHealthBonusPerEscape * nemesisEscapeCount)
                     : EnemyPhantomHealthMult;
                 phantomAvatar.ResetResources(false);
 
@@ -2872,7 +3139,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (host == null)
             {
                 error = "no Player host to register phantom against";
-                try { if (phantomAvatar.IsInWorld) phantomAvatar.ExitWorld(); phantomAvatar.Destroy(); } catch { }
+                try { if (phantomAvatar.IsInWorld) phantomAvatar.ExitWorld(); phantomAvatar.Destroy(); }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] cleanup after missing host threw: {ex.Message}"); }
                 DestroyPhantomPlayer(phantomPlayer);
                 return 0;
             }
@@ -2975,10 +3243,38 @@ namespace MHServerEmu.Games.Entities.Avatars
             {
                 s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id);
                 s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id);
-                s_enemyDeadSinceMs.Remove(id);
+                s_enemyDeadSinceMs.Remove(id); s_enemyPhantomRankLevel.Remove(id);
                 PruneBlacklistFor(id); PrunePowerBlacklistFor(id);
             }
             return removed;
+        }
+
+        /// <summary>
+        /// Rank 4/5 nemesis "escape" — called right after a nemesis kill
+        /// registers at rank 4+ (see Avatar.Nemesis.cs). Destroys the
+        /// phantom immediately instead of leaving it standing there for an
+        /// easy revenge kill once the victim revives; the 2% HP bump for
+        /// their next spawn is applied by the caller via EscapeCount.
+        /// </summary>
+        internal static void EscapeEnemyPhantom(Agent phantom, Player host)
+        {
+            if (phantom == null || host == null) return;
+            ulong id = phantom.Id;
+
+            try
+            {
+                if (phantom.IsInWorld) phantom.ExitWorld();
+                phantom.Destroy();
+            }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Nemesis] escape destroy failed on {id:X}: {ex.Message}"); }
+
+            host.UnregisterEnemyPhantom(id);
+            s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id);
+            s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id);
+            s_enemyDeadSinceMs.Remove(id); s_enemyPhantomRankLevel.Remove(id);
+            PruneBlacklistFor(id); PrunePowerBlacklistFor(id);
+
+            PhantomLogger.Info($"[PhantomHero:Nemesis] {phantom} escaped after killing {host.GetName()}");
         }
 
         /// <summary>Destroys every phantom hero this caller has spawned.</summary>
@@ -3005,7 +3301,14 @@ namespace MHServerEmu.Games.Entities.Avatars
         internal void ReattachPhantomTick()
         {
             Player host = PhantomHost;
-            if (host == null || host.PhantomHeroCount == 0) return;
+            // Must also check EnemyPhantomCount — if every friendly phantom
+            // just died (e.g. a whole team-up squad wiped in the same fight
+            // that killed the caller), PhantomHeroCount hits 0 and this used
+            // to bail out before ever reaching SchedulePhantomTick() at the
+            // bottom, permanently freezing any surviving enemy/rogue
+            // phantoms AND stalling the team-up respawn queue drain (both
+            // driven by the same tick loop).
+            if (host == null || (host.PhantomHeroCount == 0 && host.EnemyPhantomCount == 0 && host.TeamUpRespawnQueueCount == 0)) return;
             Region myRegion = Region;
             if (myRegion == null) return;
 
@@ -3017,7 +3320,13 @@ namespace MHServerEmu.Games.Entities.Avatars
             for (int i = 0; i < host.PhantomAvatarIds.Count; i++)
             {
                 ulong id = host.PhantomAvatarIds[i];
-                Avatar phantom = mgr.GetEntity<Avatar>(id);
+                // Agent, not Avatar — team-up phantoms are Agent, and
+                // GetEntity<Avatar> silently returns null for them, which
+                // made every reattach (any world re-entry: region hops,
+                // local mission-portal moves, hero swaps) treat the ENTIRE
+                // team-up squad as stale and unregister them, regardless of
+                // whether they were actually fine.
+                Agent phantom = mgr.GetEntity<Agent>(id);
                 if (phantom == null || phantom.IsDestroyed) { stale.Add(id); continue; }
                 // Different region OR not in world = can't be driven from
                 // here; destroy so the count is honest and !phantom clear
@@ -3036,7 +3345,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                     ulong playerId = idx >= 0 && idx < host.PhantomPlayerIds.Count ? host.PhantomPlayerIds[idx] : 0;
                     try
                     {
-                        Avatar av = mgr.GetEntity<Avatar>(id);
+                        Agent av = mgr.GetEntity<Agent>(id);
                         if (av != null)
                         {
                             if (av.IsInWorld) av.ExitWorld();
@@ -3060,6 +3369,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                     s_phantomNextDiagMs.Remove(id);
                     s_phantomNextUltimateMs.Remove(id);
                     s_phantomActivePowerTrack.Remove(id);
+                    s_phantomDownedSinceMs.Remove(id);
                     PruneBlacklistFor(id);
                     PrunePowerBlacklistFor(id);
                 }
@@ -3073,7 +3383,8 @@ namespace MHServerEmu.Games.Entities.Avatars
         private void DestroyPhantomPlayer(Player p)
         {
             if (p == null) return;
-            try { p.Destroy(); } catch { /* best effort cleanup on partial init */ }
+            try { p.Destroy(); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] DestroyPhantomPlayer({p.Id:X}) threw: {ex.Message}"); }
         }
     }
 }

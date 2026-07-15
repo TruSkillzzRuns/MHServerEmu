@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.Net;
 using MHServerEmu.Core.Logging;
 
@@ -44,6 +45,29 @@ namespace MHServerEmu.Core.Network.Web
 
             _listener = new();
             _listener.Prefixes.Add(url);
+
+            // HttpListener (backed by Windows' http.sys) matches incoming
+            // requests against registered prefixes using an EXACT Host
+            // header comparison — a prefix bound to the literal "localhost"
+            // only accepts requests whose Host header is "localhost:port".
+            // Any client whose HTTP stack resolves the hostname to a numeric
+            // loopback address first and sends THAT as the Host header
+            // (127.0.0.1 or ::1) gets rejected with 400 Bad Request, even
+            // though it's the same machine on the same port. The 2013-era
+            // Unreal Engine 3 client does exactly this, which surfaced as
+            // "Site Config Not Available" even with the server up and
+            // otherwise reachable via curl/tools that preserve "localhost"
+            // verbatim. Register the loopback address forms too so every
+            // client construction style is accepted. Scoped to only fire
+            // when the configured host is "localhost" — a server explicitly
+            // bound to a real LAN/public address is left untouched.
+            if (Uri.TryCreate(url, UriKind.Absolute, out Uri parsedUrl) &&
+                parsedUrl.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            {
+                TryAddLoopbackAliasPrefix($"http://127.0.0.1:{parsedUrl.Port}{parsedUrl.AbsolutePath}");
+                TryAddLoopbackAliasPrefix($"http://[::1]:{parsedUrl.Port}{parsedUrl.AbsolutePath}");
+            }
+
             _listener.Start();
 
             _cts = new();
@@ -51,6 +75,25 @@ namespace MHServerEmu.Core.Network.Web
 
             IsRunning = true;
             return true;
+        }
+
+        /// <summary>
+        /// Adds an extra prefix to the listener (a loopback address alias for
+        /// the configured "localhost" prefix) without failing Start() if the
+        /// OS rejects it for any reason — the primary "localhost" prefix
+        /// already succeeded, so a failed alias just means that particular
+        /// address form won't be accepted; not fatal.
+        /// </summary>
+        private void TryAddLoopbackAliasPrefix(string prefix)
+        {
+            try
+            {
+                _listener.Prefixes.Add(prefix);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Start(): failed to register loopback alias prefix {prefix}: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -131,6 +174,7 @@ namespace MHServerEmu.Core.Network.Web
                 try
                 {
                     HttpListenerContext httpContext = await _listener.GetContextAsync().WaitAsync(_cts.Token);
+
                     WebRequestContext requestContext = new(httpContext);
 
                     // This may be either a registered handler or a fallback handler.

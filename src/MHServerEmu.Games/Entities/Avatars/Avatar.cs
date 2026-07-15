@@ -7003,6 +7003,13 @@ namespace MHServerEmu.Games.Entities.Avatars
             // region so the phantoms come along for the ride.
             try { player?.RestorePhantomsFromMigration(this); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] RestorePhantomsFromMigration threw: {ex.Message}"); }
 
+            // Default squad: fires once per login session (no-op on every
+            // subsequent region hop / hero swap — see the guard flag in
+            // Player.TryAutoSpawnDefaultSquad). Runs after the migration
+            // restore above so it never double-spawns on top of phantoms
+            // that just came along from a region transfer.
+            try { player?.TryAutoSpawnDefaultSquad(this); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] TryAutoSpawnDefaultSquad threw: {ex.Message}"); }
+
             // Unlock chapters and waypoints that should be unlocked by default
             player.UnlockChapters();
             player.UnlockWaypoints();

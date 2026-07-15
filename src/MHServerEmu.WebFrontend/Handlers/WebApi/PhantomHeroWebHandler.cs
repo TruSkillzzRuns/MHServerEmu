@@ -36,8 +36,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (doc.RootElement.TryGetProperty("level", out var l)) level = l.GetInt32();
             }
             catch { /* accept empty / malformed body — use defaults */ }
-            count = System.Math.Clamp(count, 1, 50);
-            level = System.Math.Clamp(level, 1, 60);
+            count = MHServerEmu.Games.Entities.Avatars.PhantomCommandUtil.ClampCount(count, 5, 50);
+            level = System.Math.Clamp(level, MHServerEmu.Games.Entities.Avatars.PhantomCommandUtil.MinLevel, MHServerEmu.Games.Entities.Avatars.PhantomCommandUtil.MaxLevel);
 
             var (avatar, err) = PhantomHeroRuntime.FindAnyPlayerAvatar();
             if (avatar == null)

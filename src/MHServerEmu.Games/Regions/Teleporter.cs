@@ -292,6 +292,7 @@ namespace MHServerEmu.Games.Regions
 
         public bool TeleportToTransition(ulong entityId)
         {
+
             Transition transition = Player.Game.EntityManager.GetEntity<Transition>(entityId);
             if (transition == null) return Logger.WarnReturn(false, "TeleportToTransitionEntity(): transition == null");
 
@@ -303,7 +304,23 @@ namespace MHServerEmu.Games.Regions
             targetPos += transitionProto.CalcSpawnOffset(targetRot);
 
             ChangePositionResult result = Player.CurrentAvatar.ChangeRegionPosition(targetPos, targetRot, ChangePositionFlags.Teleport);
-            return result == ChangePositionResult.PositionChanged || result == ChangePositionResult.Teleport;
+            bool success = result == ChangePositionResult.PositionChanged || result == ChangePositionResult.Teleport;
+
+            // Same-region reposition (Tower up/down and similar sequential
+            // same-region transitions) — never goes through
+            // BeginRegionTransfer, so bring phantoms/team-ups along
+            // explicitly the same way TeleportToLocalTarget does.
+            if (success)
+            {
+                try
+                {
+                    Player.CurrentAvatar.BringPhantomsToPosition(targetPos, transition.Region);
+                    Player.RecordPhantomRelocationTarget(targetPos, transition.Region);
+                }
+                catch (Exception ex) { Logger.Warn($"TeleportToTransition(): BringPhantomsToPosition threw: {ex.Message}"); }
+            }
+
+            return success;
         }
 
         public bool TeleportToPlayer(ulong playerDbId)
@@ -319,7 +336,15 @@ namespace MHServerEmu.Games.Regions
                 {
                     ChangePositionResult result = Player.CurrentAvatar.ChangeRegionPosition(position, null, ChangePositionFlags.Teleport);
                     if (result == ChangePositionResult.PositionChanged || result == ChangePositionResult.Teleport)
+                    {
+                        try
+                        {
+                            Player.CurrentAvatar.BringPhantomsToPosition(position, otherAvatar.Region);
+                            Player.RecordPhantomRelocationTarget(position, otherAvatar.Region);
+                        }
+                        catch (Exception ex) { Logger.Warn($"TeleportToPlayer(): BringPhantomsToPosition threw: {ex.Message}"); }
                         return true;
+                    }
                 }
             }
 
@@ -358,7 +383,24 @@ namespace MHServerEmu.Games.Regions
             Player.SendMessage(NetMessageOneTimeSnapCamera.DefaultInstance);    // Disables camera interpolation for movement
 
             ChangePositionResult result = Player.CurrentAvatar.ChangeRegionPosition(position, orientation, ChangePositionFlags.Teleport);
-            return result == ChangePositionResult.PositionChanged || result == ChangePositionResult.Teleport;
+            bool success = result == ChangePositionResult.PositionChanged || result == ChangePositionResult.Teleport;
+
+            // Same-region mission-portal transitions like this one never go
+            // through BeginRegionTransfer, so friendly phantoms/team-ups
+            // never get snapshotted/restored the way they do on a real
+            // region change — bring them along explicitly instead of
+            // leaving them behind in the old area.
+            if (success)
+            {
+                try
+                {
+                    Player.CurrentAvatar.BringPhantomsToPosition(position, region);
+                    Player.RecordPhantomRelocationTarget(position, region);
+                }
+                catch (Exception ex) { Logger.Warn($"TeleportToLocalTarget(): BringPhantomsToPosition threw: {ex.Message}"); }
+            }
+
+            return success;
         }
 
         private bool BeginTeleportToQueueTarget(PrototypeId regionProtoRef)

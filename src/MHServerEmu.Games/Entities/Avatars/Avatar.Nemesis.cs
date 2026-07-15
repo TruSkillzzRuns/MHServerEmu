@@ -22,7 +22,33 @@ namespace MHServerEmu.Games.Entities.Avatars
             Agent killerAgent = ResolveNemesisKillerAgent(killer, directKiller);
             if (killerAgent == null) return;
 
-            victimPlayer.RegisterNemesisKill(killerAgent);
+            var entry = victimPlayer.RegisterNemesisKill(killerAgent);
+
+            // Rank 4/5 escape: instead of the nemesis just standing there
+            // for an easy revenge kill once the player revives, they vanish
+            // immediately and get 2% tankier for next time. Makes the
+            // eventual kill against a nemesis you've lost to repeatedly
+            // actually feel earned, since rank 4/5 already carry the best
+            // loot tiers.
+            if (entry != null && entry.Rank >= 4)
+            {
+                entry.EscapeCount++;
+                victimPlayer.AnnounceNemesisEscape(entry.LastKillerName);
+                Avatar.EscapeEnemyPhantom(killerAgent, victimPlayer);
+
+                // More than 3 escapes at rank 4/5 (i.e. the 4th+ time this
+                // nemesis has beaten the player while already at their
+                // toughest/best-loot tier) — reset them back to rank 0.
+                // They stop being a real threat/reward until they climb the
+                // ranks again from scratch; this is the "miss out on the
+                // good gear" consequence of never actually beating them.
+                if (entry.EscapeCount > 3)
+                {
+                    entry.Rank = 0;
+                    entry.EscapeCount = 0;
+                    victimPlayer.AnnounceNemesisRankReset(entry.LastKillerName);
+                }
+            }
         }
 
         /// <summary>

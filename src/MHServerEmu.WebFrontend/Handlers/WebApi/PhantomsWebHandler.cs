@@ -10,9 +10,9 @@
 //   POST /webapi/phantoms/clear               — { playerName }
 //   POST /webapi/phantoms/costume             — { playerName, randomizeAll:true } or
 //                                               { playerName, phantomQuery, costume }
-//   POST /webapi/phantoms/gear                — { playerName, phantomQuery? } re-roll
+//   POST /webapi/phantoms/gear                — { playerName, phantomQuery?, toBiS? } re-roll
 //   GET  /webapi/phantoms/squads?player=      — saved squads (structured)
-//   POST /webapi/phantoms/squads              — { playerName, op:"save|spawn|delete", name }
+//   POST /webapi/phantoms/squads              — { playerName, op:"save|spawn|delete|default", name }
 //
 // All operations marshal onto the target player's game thread via
 // Player.RunPhantomWebOp. Hero / costume identity is resolved from the loaded
@@ -269,7 +269,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 }
                 else
                 {
-                    int n = Math.Clamp(count > 0 ? count : 5, 1, 50);
+                    int n = MHServerEmu.Games.Entities.Avatars.PhantomCommandUtil.ClampCount(count, 5, 50);
                     int lvl = Math.Clamp(level, 0, 60);
                     for (int i = 0; i < n; i++)
                     {
@@ -359,6 +359,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null, phantomQuery = null;
+            bool toBiS = false;
             try
             {
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
@@ -366,6 +367,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
                 if (root.TryGetProperty("playerDbId", out var pd)) playerDbId = pd.GetString();
                 if (root.TryGetProperty("phantomQuery", out var pq)) phantomQuery = pq.GetString();
+                if (root.TryGetProperty("toBiS", out var tb)) toBiS = tb.GetBoolean();
             }
             catch (Exception ex)
             {
@@ -381,7 +383,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             }
 
             object result = await PhantomsWebUtil.RunOnGameThread(player,
-                p => new { Ok = true, Message = p.RerollPhantomGear(string.IsNullOrWhiteSpace(phantomQuery) ? null : phantomQuery) });
+                p => new { Ok = true, Message = p.RerollPhantomGear(string.IsNullOrWhiteSpace(phantomQuery) ? null : phantomQuery, toBiS) });
             await context.SendJsonAsync(result);
         }
     }
@@ -436,7 +438,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(op) || string.IsNullOrWhiteSpace(name))
+            // "default" is allowed with an empty name — that's how the app
+            // clears the default squad rather than setting one.
+            bool nameRequired = string.Equals(op, "default", StringComparison.OrdinalIgnoreCase) == false;
+            if (string.IsNullOrWhiteSpace(op) || (nameRequired && string.IsNullOrWhiteSpace(name)))
             {
                 await context.SendJsonAsync(new { Ok = false, Error = "op and name are required" });
                 return;
@@ -457,7 +462,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     "savelist" => p.SavePhantomSquadFromList(name, members),
                     "spawn" or "load" => p.SpawnPhantomSquad(name, p.CurrentAvatar),
                     "delete" => p.DeletePhantomSquad(name),
-                    _ => $"unknown op '{op}' — use save, savelist, spawn or delete",
+                    "default" => p.SetDefaultSquad(name),
+                    _ => $"unknown op '{op}' — use save, savelist, spawn, delete or default",
                 };
                 return new { Ok = true, Message = message };
             });
@@ -723,6 +729,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         //
         // POST /webapi/phantoms/nemesis
         //   body: { playerName, action: "banish", heroRef: 0x... }
+        //   body: { playerName, action: "banish-oldest" }
         //   body: { playerName, action: "clear" }
         protected override async Task Get(WebRequestContext context)
         {
@@ -746,6 +753,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         n.Rank,
                         n.Kills,
                         n.RevengeKills,
+                        n.EscapeCount,
                         n.Defeated,
                         LastKillerName = n.LastKillerName ?? string.Empty,
                         Suffix = MHServerEmu.Games.Entities.Player.NemesisSuffixes[System.Math.Clamp(n.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)],
@@ -806,7 +814,13 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     bool ok = p.BanishNemesis(heroRef);
                     return (object)new { Ok = ok, Message = ok ? "nemesis banished" : "no matching nemesis" };
                 }
-                return (object)new { Ok = false, Error = "unknown action (banish|clear)" };
+                if (string.Equals(action, "banish-oldest", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    PrototypeId banished = p.BanishOldestNemesis();
+                    bool ok = banished != PrototypeId.Invalid;
+                    return (object)new { Ok = ok, Message = ok ? $"banished oldest: {banished.GetName()}" : "roster is empty" };
+                }
+                return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear)" };
             });
             await context.SendJsonAsync(result);
         }

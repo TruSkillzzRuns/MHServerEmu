@@ -168,7 +168,7 @@ namespace MHServerEmu.Games.Entities
                     string displayName = string.IsNullOrEmpty(suffix)
                         ? $"{stars} {killerBase}"
                         : $"{stars} {killerBase} {suffix}";
-                    id = avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out err);
+                    id = avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out err, nemesis.EscapeCount);
                     if (id != 0)
                     {
                         nemesisSpawnedCount++;

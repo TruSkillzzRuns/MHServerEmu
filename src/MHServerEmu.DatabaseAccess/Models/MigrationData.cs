@@ -131,6 +131,15 @@ namespace MHServerEmu.DatabaseAccess.Models
 
         /// <summary>UTC millis of the most recent kill (by them, of you).</summary>
         public long LastKillMs;
+
+        /// <summary>
+        /// Number of times this nemesis has escaped after killing the player
+        /// (rank 4/5 only — see Avatar.Nemesis.cs). Each escape adds +2%
+        /// HealthMaxMult on top of the rank curve for their next spawn, so a
+        /// nemesis you keep losing to gets progressively tankier instead of
+        /// just standing there for an easy revenge kill.
+        /// </summary>
+        public int EscapeCount;
     }
 
     /// <summary>
