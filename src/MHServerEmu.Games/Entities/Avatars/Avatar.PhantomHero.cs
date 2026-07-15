@@ -2565,6 +2565,16 @@ namespace MHServerEmu.Games.Entities.Avatars
             Player host = PhantomHost;
             if (host == null) { error = "no Player host to register phantom against"; return 0; }
 
+            if (enemy == false)
+            {
+                int cap = GetPhantomPartyCap(region);
+                if (1 + host.PhantomHeroCount >= cap)
+                {
+                    error = $"squad full ({host.PhantomHeroCount + 1}/{cap}) — this region's party/raid cap won't allow another phantom";
+                    return 0;
+                }
+            }
+
             // Step 1: phantom Player as owner (same pattern as avatar spawn).
             ulong phantomDbId = System.Threading.Interlocked.Increment(ref s_phantomDbIdSeed);
             string username = string.IsNullOrEmpty(usernameOverride) ? NewPhantomUsername(Game.Random) : usernameOverride;
@@ -2819,6 +2829,33 @@ namespace MHServerEmu.Games.Entities.Avatars
             return s_enemyAllianceRef;
         }
 
+        // Mirrors RegionPrototype.GetQueueGroupLimit()'s Behavior switch (that
+        // method is private, and TeamLimits there is PvP matchplay sizing,
+        // not relevant to a friendly squad) — friendly phantoms/team-ups are
+        // "party" members in spirit, so a squad shouldn't be able to exceed
+        // what the game itself would ever allow a real party/raid to be in
+        // this region. Town/PublicCombatZone/MatchPlay/etc aren't party-size
+        // gated in the real game either, so they're left uncapped here too.
+        private static int GetPhantomPartyCap(Region region)
+        {
+            RegionPrototype proto = region?.Prototype;
+            if (proto == null) return int.MaxValue;
+
+            var globals = GameDatabase.GlobalsPrototype;
+            if (globals == null) return int.MaxValue;
+
+            switch (proto.Behavior)
+            {
+                case RegionBehavior.PrivateRaid:
+                    return Math.Min(globals.PlayerRaidMaxSize, proto.PlayerLimit);
+                case RegionBehavior.PrivateStory:
+                case RegionBehavior.PrivateNonStory:
+                    return Math.Min(globals.PlayerPartyMaxSize, proto.PlayerLimit);
+                default:
+                    return int.MaxValue;
+            }
+        }
+
         private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error, bool enemy = false, bool invincible = false, int nemesisRank = 0, int nemesisEscapeCount = 0)
         {
             if (enemy && ResolveHostileAllianceRef() == PrototypeId.Invalid)
@@ -2831,6 +2868,20 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             Region region = Region;
             if (region == null) { error = "no region"; return 0; }
+
+            if (enemy == false)
+            {
+                Player capHost = PhantomHost;
+                if (capHost != null)
+                {
+                    int cap = GetPhantomPartyCap(region);
+                    if (1 + capHost.PhantomHeroCount >= cap)
+                    {
+                        error = $"squad full ({capHost.PhantomHeroCount + 1}/{cap}) — this region's party/raid cap won't allow another phantom";
+                        return 0;
+                    }
+                }
+            }
 
             PrototypeId avatarRef = avatarRefOverride != PrototypeId.Invalid ? avatarRefOverride : NextPhantomHeroRef();
             if (avatarRef == PrototypeId.Invalid) { error = "hero ref resolve failed"; return 0; }

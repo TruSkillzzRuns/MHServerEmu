@@ -2,6 +2,8 @@ using MHServerEmu.Commands.Attributes;
 using MHServerEmu.Core.Network;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Games.Entities.Avatars;
+using MHServerEmu.Games.GameData;
+using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Network;
 
 namespace MHServerEmu.Commands.Implementations
@@ -317,6 +319,29 @@ namespace MHServerEmu.Commands.Implementations
 
             int removed = avatar.DespawnAllPhantomHeroes();
             return $"Phantoms despawned: {removed}.";
+        }
+
+        [Command("caps")]
+        [CommandDescription("Show the game's actual party/raid size caps (from loaded client data) and the effective cap in your current region.")]
+        [CommandInvokerType(CommandInvokerType.Client)]
+        [CommandUserLevel(AccountUserLevel.Admin)]
+        public string Caps(string[] @params, NetClient client)
+        {
+            var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom caps.");
+            var avatar = pc.Player?.CurrentAvatar;
+            if (avatar == null) return "No avatar in world.";
+
+            var globals = GameDatabase.GlobalsPrototype;
+            if (globals == null) return "GlobalsPrototype not loaded.";
+
+            var region = avatar.Region;
+            var proto = region?.Prototype;
+
+            string regionInfo = proto == null
+                ? "no region"
+                : $"{proto.DataRef.GetName()} behavior={proto.Behavior} playerLimit={proto.PlayerLimit}";
+
+            return $"PlayerPartyMaxSize={globals.PlayerPartyMaxSize} PlayerRaidMaxSize={globals.PlayerRaidMaxSize} | current region: {regionInfo}";
         }
     }
 }
