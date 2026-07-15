@@ -1971,10 +1971,16 @@ namespace MHServerEmu.Games.Entities.Avatars
                         itemSettings.ItemSpec = acceptedSpec;
                         item = game.EntityManager.CreateEntity(itemSettings) as Item;
                     }
-                    if (item == null) continue;
-
-                    if (item.ChangeInventoryLocation(equipInventory) != InventoryResult.Success)
+                    if (item == null)
                     {
+                        PhantomLogger.Warn($"[PhantomHero:Gear] CreateEntity returned null for {acceptedItemRef.GetName()} (slot {assignment.UISlot}) on {phantomRef.GetName()} — slot left empty");
+                        continue;
+                    }
+
+                    InventoryResult moveResult = item.ChangeInventoryLocation(equipInventory);
+                    if (moveResult != InventoryResult.Success)
+                    {
+                        PhantomLogger.Warn($"[PhantomHero:Gear] ChangeInventoryLocation failed ({moveResult}) for {acceptedItemRef.GetName()} (slot {assignment.UISlot}) on {phantomRef.GetName()} — slot left empty");
                         item.Destroy();
                         continue;
                     }
