@@ -17,6 +17,14 @@ namespace MHServerEmu.Games.Powers
     {
         private const long WindowLongMs = 60_000;
         private const long WindowShortMs = 10_000;
+        // A single power activation resolves as MULTIPLE separate RecordDamage
+        // calls (once per target hit by an AOE, once per beam-sweep tick, once
+        // per bounce) — there's no activation/cast id to correlate them by, so
+        // this groups calls that land within a short window of each other into
+        // one "burst" for peak-hit purposes. Without this, PeakHit would only
+        // ever show the single largest per-target/per-tick share, not what a
+        // player perceives as "that cast hit for X."
+        private const long PeakBurstWindowMs = 150;
 
         private sealed class Entry
         {
@@ -24,6 +32,9 @@ namespace MHServerEmu.Games.Powers
             public bool IsPhantom;
             public ulong OwnerPlayerId;     // human player entity id (phantom damage resolves to its creator)
             public long Total;
+            public long PeakHit;
+            public long CurrentBurstSum;
+            public long CurrentBurstMs;
             public long FirstMs;
             public long LastMs;
             public readonly Queue<(long Ms, long Amount)> Recent = new();
@@ -61,6 +72,14 @@ namespace MHServerEmu.Games.Powers
                 }
 
                 entry.Total += amount;
+
+                if (now - entry.CurrentBurstMs <= PeakBurstWindowMs)
+                    entry.CurrentBurstSum += amount;
+                else
+                    entry.CurrentBurstSum = amount;
+                entry.CurrentBurstMs = now;
+                if (entry.CurrentBurstSum > entry.PeakHit) entry.PeakHit = entry.CurrentBurstSum;
+
                 entry.LastMs = now;
                 entry.Recent.Enqueue((now, amount));
                 TrimRecent(entry, now);
@@ -81,6 +100,7 @@ namespace MHServerEmu.Games.Powers
             public string Name { get; set; }
             public bool IsPhantom { get; set; }
             public long Total { get; set; }
+            public long PeakHit { get; set; }
             public double Dps10 { get; set; }
             public double Dps60 { get; set; }
             public double DpsOverall { get; set; }
@@ -120,6 +140,7 @@ namespace MHServerEmu.Games.Powers
                         Name = entry.Name,
                         IsPhantom = entry.IsPhantom,
                         Total = entry.Total,
+                        PeakHit = entry.PeakHit,
                         Dps10 = sum10 / (WindowShortMs / 1000.0),
                         Dps60 = sum60 / (WindowLongMs / 1000.0),
                         DpsOverall = entry.Total / activeSeconds,

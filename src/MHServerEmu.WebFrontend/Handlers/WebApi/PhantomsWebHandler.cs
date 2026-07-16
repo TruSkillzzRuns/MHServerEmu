@@ -218,6 +218,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             string playerName = null, playerDbId = null;
             int count = 0, level = 0;
             bool lockLevel = false;
+            bool bypassCap = false;
             var heroes = new List<SpawnHeroEntry>();
             try
             {
@@ -228,6 +229,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (root.TryGetProperty("count", out var cn)) count = cn.GetInt32();
                 if (root.TryGetProperty("level", out var lv)) level = lv.GetInt32();
                 if (root.TryGetProperty("lockLevel", out var ll)) lockLevel = ll.GetBoolean();
+                if (root.TryGetProperty("bypassCap", out var bc)) bypassCap = bc.GetBoolean();
                 if (root.TryGetProperty("heroes", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var el in arr.EnumerateArray())
@@ -269,7 +271,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     {
                         int lvl = Math.Clamp(h.Level, 0, 60);
                         ulong id = avatar.SpawnPhantomHeroFromIntent((PrototypeId)h.AvatarRef, lvl, null,
-                            h.LockLevel && lvl > 0, h.CostumeRef, out string err);
+                            h.LockLevel && lvl > 0, h.CostumeRef, out string err, bypassCap: bypassCap);
                         if (id != 0) spawned++;
                         else { failed++; firstError ??= err; }
                     }
@@ -283,8 +285,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         // Match the chat command's semantics: an explicit level
                         // is a locked level unless lockLevel is explicitly false.
                         ulong id = lvl > 0 && lockLevel == false
-                            ? avatar.SpawnPhantomHeroFromIntent(PrototypeId.Invalid, lvl, null, false, 0, out string err)
-                            : avatar.SpawnPhantomHero(lvl, null, out err);
+                            ? avatar.SpawnPhantomHeroFromIntent(PrototypeId.Invalid, lvl, null, false, 0, out string err, bypassCap: bypassCap)
+                            : avatar.SpawnPhantomHero(lvl, null, out err, bypassCap: bypassCap);
                         if (id != 0) spawned++;
                         else { failed++; firstError ??= err; }
                     }
@@ -416,6 +418,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null, op = null, name = null;
+            bool bypassCap = false;
             var members = new List<Player.WebSquadSaveMember>();
             try
             {
@@ -425,6 +428,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (root.TryGetProperty("playerDbId", out var pd)) playerDbId = pd.GetString();
                 if (root.TryGetProperty("op", out var opEl)) op = opEl.GetString();
                 if (root.TryGetProperty("name", out var nm)) name = nm.GetString();
+                if (root.TryGetProperty("bypassCap", out var bc)) bypassCap = bc.GetBoolean();
                 if (root.TryGetProperty("members", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var el in arr.EnumerateArray())
@@ -467,7 +471,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 {
                     "save" => p.SavePhantomSquad(name),
                     "savelist" => p.SavePhantomSquadFromList(name, members),
-                    "spawn" or "load" => p.SpawnPhantomSquad(name, p.CurrentAvatar),
+                    "spawn" or "load" => p.SpawnPhantomSquad(name, p.CurrentAvatar, bypassCap),
                     "delete" => p.DeletePhantomSquad(name),
                     "default" => p.SetDefaultSquad(name),
                     _ => $"unknown op '{op}' — use save, savelist, spawn, delete or default",

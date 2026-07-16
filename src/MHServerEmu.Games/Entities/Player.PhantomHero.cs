@@ -407,6 +407,7 @@ namespace MHServerEmu.Games.Entities
                     CostumeRef = d.CostumeRef,
                     GearRefs = d.GearRefs != null ? new List<ulong>(d.GearRefs) : null,
                     Invincible = d.Invincible,
+                    BypassCap = d.BypassCap,
                 });
             }
             int n = PurgePhantoms();
@@ -440,8 +441,12 @@ namespace MHServerEmu.Games.Entities
                 {
                     // Force the caller to spawn each intent with its saved
                     // (avatarRef, level, username) rather than the default
-                    // "random from deck / caller's level" path.
-                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, intent.CostumeRef, out string error, intent.GearRefs, intent.Invincible);
+                    // "random from deck / caller's level" path. BypassCap
+                    // rides along too — otherwise a squad spawned over the
+                    // party/raid cap gets silently truncated back down the
+                    // moment it's re-spawned fresh in a new region instance
+                    // (e.g. entering a terminal).
+                    ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, intent.CostumeRef, out string error, intent.GearRefs, intent.Invincible, intent.BypassCap);
                     if (id != 0) spawned++;
                     else PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} failed: {error}");
                 }
@@ -800,7 +805,7 @@ namespace MHServerEmu.Games.Entities
         }
 
         /// <summary>Replace the current phantoms with a saved squad.</summary>
-        public string SpawnPhantomSquad(string squadName, Avatar caller)
+        public string SpawnPhantomSquad(string squadName, Avatar caller, bool bypassCap = false)
         {
             if (caller == null || caller.IsInWorld == false)
                 return "No avatar in world.";
@@ -818,7 +823,7 @@ namespace MHServerEmu.Games.Entities
                 // LockLevel squads respawn at their stored level; auto-level
                 // squads respawn at the caller's current level (level 0 =
                 // "match caller" inside SpawnPhantomHeroCore).
-                ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)m.AvatarRef, m.LockLevel ? m.Level : 0, m.Username, m.LockLevel, m.CostumeRef, out string error, m.GearRefs, m.Invincible);
+                ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)m.AvatarRef, m.LockLevel ? m.Level : 0, m.Username, m.LockLevel, m.CostumeRef, out string error, m.GearRefs, m.Invincible, bypassCap);
                 if (id != 0) spawned++;
                 else firstError ??= error;
             }

@@ -186,5 +186,15 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// himself as valid revive sources.
         /// </summary>
         public bool Invincible;
+
+        /// <summary>
+        /// True when this phantom was spawned with the party/raid size cap
+        /// bypassed (Phantom Heroes / Squad Builder "Bypass party/raid size
+        /// limit" checkbox). Carried across region transfers so a squad that
+        /// exceeds the normal cap doesn't get silently truncated back down
+        /// to 5/10 when RestorePhantomsFromMigration re-spawns it fresh in
+        /// the new region instance.
+        /// </summary>
+        public bool BypassCap;
     }
 }

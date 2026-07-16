@@ -178,6 +178,12 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/dps",       new MHServerEmu.WebFrontend.Handlers.WebApi.DpsWebHandler());
             _webService.RegisterHandler("/webapi/dps/reset", new MHServerEmu.WebFrontend.Handlers.WebApi.DpsResetWebHandler());
 
+            // OmegaDev2 Leaderboard.
+            _webService.RegisterHandler("/webapi/leaderboard",            new MHServerEmu.WebFrontend.Handlers.WebApi.LeaderboardWebHandler());
+            _webService.RegisterHandler("/webapi/leaderboard/commit-dps", new MHServerEmu.WebFrontend.Handlers.WebApi.LeaderboardCommitDpsWebHandler());
+            _webService.RegisterHandler("/webapi/leaderboard/delete",     new MHServerEmu.WebFrontend.Handlers.WebApi.LeaderboardDeleteWebHandler());
+            _webService.RegisterHandler("/webapi/leaderboard/clear",      new MHServerEmu.WebFrontend.Handlers.WebApi.LeaderboardClearWebHandler());
+
             // OmegaDev2 Account Manager helpers.
             _webService.RegisterHandler("/webapi/playeradmin/warp",  new MHServerEmu.WebFrontend.Handlers.WebApi.PlayerAdminWarpWebHandler());
             _webService.RegisterHandler("/webapi/regionremix/warp",  new MHServerEmu.WebFrontend.Handlers.WebApi.RegionRemixWarpWebHandler());

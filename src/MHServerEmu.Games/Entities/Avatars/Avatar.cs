@@ -470,26 +470,52 @@ namespace MHServerEmu.Games.Entities.Avatars
             return success;
         }
 
-        public void ResurrectOtherAvatar(Avatar targetAvatar)
+        // Widened from Avatar to Agent so it can also revive a downed
+        // team-up phantom (Agent, not Avatar) — every member this body
+        // touches (IsDead, RegionLocation, Id) is defined on the common
+        // Agent/WorldEntity base, so this needed no other changes.
+        //
+        // bypassCooldown: phantom AI passes true. A real player's own
+        // revive-other click (PlayerConnection.cs) still respects the
+        // normal cooldown — this only lifts it for our own AI-driven
+        // triage calls, which is what let one phantom revive a teammate
+        // once and then sit on cooldown unable to help with the rest of a
+        // wiped squad.
+        // Returns the real PowerUseResult (or null for the early-exit guard
+        // clauses below, which aren't power-activation attempts at all) so
+        // callers can log WHY a revive attempt didn't land instead of it
+        // silently no-oping. That blind spot is exactly what made the "all
+        // downed, revived one, nobody chain-revives the rest" reports
+        // impossible to diagnose from server logs — every attempt either
+        // succeeded silently or failed silently, with no record either way.
+        public PowerUseResult? ResurrectOtherAvatar(Agent targetAvatar, bool bypassCooldown = false)
         {
             if (targetAvatar == null || targetAvatar.IsDead == false)
-                return;
+                return null;
 
             if (IsInWorld == false)
-                return;
+                return null;
 
             if (targetAvatar.Id == Properties[PropertyEnum.PendingResurrectEntityId])
-                return;
+                return null;
 
             PrototypeId resurrectOtherEntityPower = AvatarPrototype.ResurrectOtherEntityPower;
-            if (!Verify.IsTrue(resurrectOtherEntityPower != PrototypeId.Invalid)) return;
+            if (!Verify.IsTrue(resurrectOtherEntityPower != PrototypeId.Invalid)) return null;
+
+            if (bypassCooldown)
+            {
+                Properties.RemoveProperty(new(PropertyEnum.PowerCooldownStartTime, resurrectOtherEntityPower));
+                Properties.RemoveProperty(new(PropertyEnum.PowerCooldownDuration, resurrectOtherEntityPower));
+            }
 
             PowerActivationSettings settings = new(targetAvatar.Id, targetAvatar.RegionLocation.Position, RegionLocation.Position);
             settings.Flags |= PowerActivationSettingsFlags.NotifyOwner;
 
-            if (ActivatePower(resurrectOtherEntityPower, ref settings) == PowerUseResult.Success)
+            PowerUseResult result = ActivatePower(resurrectOtherEntityPower, ref settings);
+            if (result == PowerUseResult.Success)
                 Properties[PropertyEnum.PendingResurrectEntityId] = targetAvatar.Id;
-;        }
+            return result;
+        }
 
         public bool DoDeathRelease(DeathReleaseRequestType requestType)
         {
@@ -1004,6 +1030,25 @@ namespace MHServerEmu.Games.Entities.Avatars
         protected override PowerUseResult ActivatePower(Power power, ref PowerActivationSettings settings)
         {
             PrototypeId powerRef = power.PrototypeDataRef;
+
+            // Gamepad target-lock compensation: a gamepad's soft-lock can only
+            // land on NPCs, never other player avatars (client-side anti-grief
+            // restriction), so it's common to end up with no locked target at
+            // all near other players. Without this, a target-centered power
+            // either gets rejected outright (immediate path) or shoved to max
+            // range by FixupPendingActivateSettings's WhenOutOfRange fallback
+            // (queued path) — substituting a real nearby hostile here, before
+            // either of those runs, fixes both at once.
+            if (settings.TargetEntityId == InvalidId && IsUsingGamepadInput)
+            {
+                TargetingStylePrototype targetingStyle = power.Prototype?.GetTargetingStyle();
+                if (targetingStyle != null && targetingStyle.NeedsTarget && targetingStyle.AOESelfCentered == false)
+                {
+                    ulong substituteId = FindNearestHostileForGamepadTarget(settings.TargetPosition);
+                    if (substituteId != InvalidId)
+                        settings.TargetEntityId = substituteId;
+                }
+            }
 
             // Handle edge cases related to continuous powers and conflicting inputs.
             // In many ways this mirrors the behavior of CAvatar::TryActivatePower().
@@ -6945,6 +6990,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
 
             player.UpdateScoringEventContext();
+            player.OnAvatarEnteredRegion(region, this);
 
             var teamUpAgent = CurrentTeamUpAgent;
             if (teamUpAgent != null)

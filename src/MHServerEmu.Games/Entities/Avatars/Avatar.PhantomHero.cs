@@ -116,6 +116,13 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static readonly Dictionary<ulong, (Vector3 lastPos, int stuckTicks)> s_phantomStuckTrack = new();
         private const float PhantomAttackRange = 1200f;
         private const float PhantomAttackRangeSq = PhantomAttackRange * PhantomAttackRange;
+        // True melee reach — used to gate melee powers regardless of what
+        // Power.GetRange() reports for them (some melee prototypes report a
+        // very small or zero numeric range, which the general per-power
+        // range filter in TryPhantomAttack would otherwise treat as
+        // "unlimited" and fire from all the way out at PhantomAttackRange).
+        private const float PhantomMeleeRange = 400f;
+        private const float PhantomMeleeRangeSq = PhantomMeleeRange * PhantomMeleeRange;
         // Wider search — phantom will walk to any hostile in this radius.
         private const float PhantomSearchRange = 3500f;
         private const float PhantomSearchRangeSq = PhantomSearchRange * PhantomSearchRange;
@@ -257,6 +264,28 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     try
                     {
+                        // Force-clear any power that was still active the
+                        // moment this phantom went down. OnKilled/
+                        // OnRemoveFromWorld never end active powers for
+                        // Avatar-type entities (WorldEntity.OnRemoveFromWorld
+                        // returns immediately for "this is Avatar" — that's
+                        // what keeps phantoms revivable in place instead of
+                        // being destroyed), so a phantom that died mid-cast
+                        // keeps ActivePowerRef set through the entire downed
+                        // period. The stuck-power watchdog below can't catch
+                        // it either, since PhantomSharedMaintenance is never
+                        // called while IsDead (see the continue above). Left
+                        // alone, IsExecutingPower stays true after revival and
+                        // UpdatePhantomHunt's very first check silently
+                        // no-ops every tick — the phantom just stands there
+                        // forever instead of resuming hunt/revive logic.
+                        if (phantom.ActivePowerRef != PrototypeId.Invalid)
+                        {
+                            Power stuckPower = phantom.PowerCollection?.GetPower(phantom.ActivePowerRef);
+                            stuckPower?.EndPower(EndPowerFlags.ExplicitCancel | EndPowerFlags.Force);
+                        }
+                        s_phantomActivePowerTrack.Remove(phantom.Id);
+
                         Vector3 herePos = phantom.RegionLocation.Position;
                         phantom.Locomotor?.Stop();
                         phantom.ChangeRegionPosition(herePos, null);
@@ -502,8 +531,30 @@ namespace MHServerEmu.Games.Entities.Avatars
         // phantoms notice downed players from across a room.
         private const float PhantomReviveSearchRange = 4000f;
         private const float PhantomReviveSearchRangeSq = PhantomReviveSearchRange * PhantomReviveSearchRange;
-        private const float PhantomReviveCastRange = 500f;
-        private const float PhantomReviveCastRangeSq = PhantomReviveCastRange * PhantomReviveCastRange;
+
+        // Real usable range (squared) for a phantom's resurrect-other power.
+        // Confirmed via live server logs (2026-07-15): a hardcoded 500u
+        // "cast range" guess let phantoms stop and attempt the cast well
+        // outside the power's actual range, so ActivatePower rejected almost
+        // every attempt with OutOfPosition (203 rejections logged in one
+        // session, only 3 successful revives). Ask the power itself instead
+        // of guessing — same fix already applied to combat-power range
+        // gating. Falls back to true melee reach if the power reports no
+        // positive range at all (same convention as the combat-power gate).
+        private static float GetReviveCastRangeSq(Agent phantom, PrototypeId resurrectPowerRef)
+        {
+            if (resurrectPowerRef != PrototypeId.Invalid)
+            {
+                Power resurrectPower = phantom.GetPower(resurrectPowerRef);
+                float r = resurrectPower?.GetRange() ?? 0f;
+                if (r > 0f)
+                {
+                    float withMargin = r + 50f;
+                    return withMargin * withMargin;
+                }
+            }
+            return PhantomMeleeRangeSq;
+        }
 
         private void UpdatePhantomHunt(Avatar phantom, MHServerEmu.Core.System.Random.GRandom rng, bool enemyMode = false)
         {
@@ -533,12 +584,14 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (enemyMode)
                 goto Hunt;
 
-            // Priority 1: revive any downed real Avatar within revive range. Real
-            // avatars are still IsInWorld while downed (dead-but-revivable); we
-            // filter to Avatar entities that are IsDead AND have a live
-            // PlayerConnection (skips other phantoms). Nearest wins.
-            Avatar downed = null;
-            float downedDistSq = PhantomReviveSearchRangeSq;
+            // Priority 1: revive any downed real player OR friendly phantom
+            // (avatar-type or team-up) within revive range. Real avatars and
+            // phantoms are both still IsInWorld while downed (dead-but-
+            // revivable); filtered below to Agent entities that are IsDead
+            // and either belong to a real player or the same phantom squad.
+            // Nearest wins.
+            Agent downed = null;
+            float downedDistSq = float.MaxValue;
             var reviveSphere = new Sphere(phantomPos, PhantomReviveSearchRange);
             var reviveCtx = new MHServerEmu.Games.Entities.EntityRegionSPContext(MHServerEmu.Games.Entities.EntityRegionSPContextFlags.PrimaryPartition);
 
@@ -550,45 +603,103 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (this.IsDead && this.IsInWorld && this.Region == region)
             {
                 downed = this;
-                downedDistSq = Vector3.DistanceSquared2D(this.RegionLocation.Position, phantomPos);
+                downedDistSq = Vector3.DistanceSquared(this.RegionLocation.Position, phantomPos);
             }
-            else foreach (WorldEntity we in region.IterateEntitiesInVolume(reviveSphere, reviveCtx))
+            else
             {
-                if (we is not Avatar candidate) continue;
-                if (candidate.Id == phantom.Id) continue;
-                if (candidate.IsDead == false) continue;
+                // Direct roster scan — this phantom's own squad, checked by
+                // ID with NO distance ceiling, same as the caller check
+                // above. Confirmed live (2026-07-15 session): a squad spread
+                // out fighting separate targets can end up more than the
+                // 4000u sweep radius apart, and a downed teammate outside
+                // that radius was completely invisible to every other
+                // phantom — "none of them would revive the last one" — until
+                // the player manually leashed everyone back close enough.
+                // The human caller never had this problem because it's
+                // always looked up directly instead of via a bounded sweep;
+                // squadmates now get the same treatment.
+                Player rosterHost = this.PhantomHost;
+                if (rosterHost != null)
+                {
+                    var rosterIds = rosterHost.PhantomAvatarIds;
+                    for (int ri = 0; ri < rosterIds.Count; ri++)
+                    {
+                        ulong avId = rosterIds[ri];
+                        if (avId == phantom.Id) continue;
+                        Agent candidate = Game.EntityManager.GetEntity<Agent>(avId);
+                        if (candidate == null || candidate.IsDead == false || candidate.IsInWorld == false || candidate.Region != region) continue;
 
-                // Valid revive targets are (a) real players (PlayerConnection
-                // != null) OR (b) FRIENDLY phantoms — other members of the
-                // same squad as this phantom. Enemy phantoms (PhantomCreatorId
-                // == 0 on their owner Player) never get raised: killing them
-                // is the whole point.
-                Player candOwner = candidate.GetOwnerOfType<Player>();
-                if (candOwner == null) continue;
-                bool isRealPlayer = candOwner.PlayerConnection != null;
-                bool isFriendlyPhantom = candOwner.PhantomCreatorId != 0
-                    && candOwner.PhantomCreatorId == this.PhantomHost?.Id;
-                if (isRealPlayer == false && isFriendlyPhantom == false) continue;
+                        float d = Vector3.DistanceSquared(candidate.RegionLocation.Position, phantomPos);
+                        if (d < downedDistSq) { downedDistSq = d; downed = candidate; }
+                    }
+                }
 
-                float d = Vector3.DistanceSquared2D(candidate.RegionLocation.Position, phantomPos);
-                if (d < downedDistSq) { downedDistSq = d; downed = candidate; }
+                // Spatial sweep for OTHER real players (not this phantom's own
+                // roster, e.g. a party member) — kept bounded to
+                // PhantomReviveSearchRange since these are strangers to the
+                // squad, not something we track directly by ID.
+                foreach (WorldEntity we in region.IterateEntitiesInVolume(reviveSphere, reviveCtx))
+                {
+                    if (we is not Agent candidate) continue;
+                    if (candidate.Id == phantom.Id) continue;
+                    if (candidate.IsDead == false) continue;
+
+                    Player candOwner = candidate.GetOwnerOfType<Player>();
+                    if (candOwner == null || candOwner.PlayerConnection == null) continue;
+
+                    float d = Vector3.DistanceSquared(candidate.RegionLocation.Position, phantomPos);
+                    if (d > PhantomReviveSearchRangeSq) continue;
+                    if (d < downedDistSq) { downedDistSq = d; downed = candidate; }
+                }
             }
             if (downed != null)
             {
+                PrototypeId reviveCastPowerRef = phantom.AvatarPrototype?.ResurrectOtherEntityPower ?? PrototypeId.Invalid;
                 // Walk to them if we're not in cast range yet.
-                if (downedDistSq > PhantomReviveCastRangeSq)
+                if (downedDistSq > GetReviveCastRangeSq(phantom, reviveCastPowerRef))
                 {
                     var reviveLoco = phantom.Locomotor;
                     if (reviveLoco != null)
                     {
                         var reviveOpts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(250) };
-                        reviveLoco.FollowEntity(downed.Id, 50f, 50f, ref reviveOpts, false);
+                        bool reviveOk = reviveLoco.FollowEntity(downed.Id, 50f, 50f, ref reviveOpts, false);
+
+                        // The roster scan above has no distance ceiling, so a
+                        // downed teammate can now be found on the far side of
+                        // a gap the navmesh can't actually path across. Same
+                        // rescue the Hunt branch already uses: force-leash
+                        // next to the target instead of standing there
+                        // failing to path forever.
+                        if (reviveOk == false
+                            && (reviveLoco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.Failed
+                             || reviveLoco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.FailedNaviMesh
+                             || reviveLoco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.FailedNoPathFound))
+                        {
+                            Vector3 targetPos = downed.RegionLocation.Position;
+                            Vector3 rescuePos = ChoosePhantomLeashPos(region, targetPos, rng, phantom.Bounds.Radius);
+                            try
+                            {
+                                reviveLoco.Stop();
+                                phantom.ChangeRegionPosition(rescuePos, null);
+                                s_phantomStuckTrack[phantom.Id] = (rescuePos, 0);
+                                PhantomLogger.Info($"[PhantomHero:Revive] {phantom} path to downed {downed} failed, force-leashed to {rescuePos.ToStringNames()}");
+                            }
+                            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Revive] rescue leash threw: {ex.Message}"); }
+                        }
                     }
                 }
                 else
                 {
                     // In cast range — fire the built-in resurrect-other power.
-                    try { phantom.ResurrectOtherAvatar(downed); }
+                    // bypassCooldown: true so this phantom can keep chain-
+                    // reviving the rest of a wiped squad instead of sitting
+                    // on cooldown after its first successful revive.
+                    try
+                    {
+                        var reviveResult = phantom.ResurrectOtherAvatar(downed, bypassCooldown: true);
+                        if (reviveResult != null && reviveResult != PowerUseResult.Success)
+                            PhantomLogger.Info($"[PhantomHero:Revive] {phantom} -> {downed} rejected: {reviveResult}");
+                    }
                     catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Revive] {phantom.Id:X} -> {downed.Id:X} failed: {ex.Message}"); }
                 }
                 return; // don't hunt while triaging a downed teammate
@@ -665,7 +776,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                     float callerDistSq = Vector3.DistanceSquared2D(we.RegionLocation.Position, callerPos);
                     if (callerDistSq > PhantomFriendlyEngageMaxCallerDistSq) continue;
                 }
-                float d = Vector3.DistanceSquared2D(we.RegionLocation.Position, phantomPos);
+                // True 3D distance, not 2D — this value feeds both the
+                // outer PhantomAttackRange gate and every per-power range
+                // check in TryPhantomAttack. On maps with real verticality
+                // (gantries/platforms, e.g. Taskmaster Institute) a target
+                // directly above/below reads as "close" under a 2D-only
+                // distance even when it's actually far away in 3D space,
+                // which is what let ranged (and melee) powers fire at
+                // targets that were visibly nowhere near in-range.
+                float d = Vector3.DistanceSquared(we.RegionLocation.Position, phantomPos);
                 // Skip anything the engine won't accept as a valid target yet.
                 // Dramatic-entrance bosses (Doom, Loki, terminal bosses...) spawn
                 // with IsDormant=true until their intro cutscene wakes them
@@ -825,9 +944,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             // FollowEntity is mid-path produces the "skating" look: the
             // cast animation cancels walking mid-stride but position keeps
             // advancing, so the character glides without a walk cycle.
-            const float PhantomMeleeSq = 400f * 400f;
             bool arrived = loco == null || loco.IsMoving == false;
-            bool inMelee = nearestDistSq <= PhantomMeleeSq;
+            bool inMelee = nearestDistSq <= PhantomMeleeRangeSq;
             if ((arrived || inMelee) && nearestDistSq <= PhantomAttackRangeSq)
             {
                 // Per-phantom attack cooldown — prevents the 2 Hz tick from
@@ -1123,30 +1241,49 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (teamUp.GetPower(resurrectPowerRef) == null) return false;
 
             Vector3 teamUpPos = teamUp.RegionLocation.Position;
-            Avatar downed = null;
-            float downedDistSq = PhantomReviveSearchRangeSq;
+            Agent downed = null;
+            float downedDistSq = float.MaxValue;
 
             // Direct-check the caller first (matches avatar phantom revive path).
             if (this.IsDead && this.IsInWorld && this.Region == region)
             {
                 downed = this;
-                downedDistSq = Vector3.DistanceSquared2D(this.RegionLocation.Position, teamUpPos);
+                downedDistSq = Vector3.DistanceSquared(this.RegionLocation.Position, teamUpPos);
             }
             else
             {
+                // Direct roster scan — unlimited range, same fix as the
+                // avatar-phantom revive path (see UpdatePhantomHunt): a
+                // downed squadmate outside the 4000u sweep, or separated
+                // mainly by elevation under the old 2D distance calc, was
+                // otherwise invisible to every team-up too.
+                Player rosterHost = this.PhantomHost;
+                if (rosterHost != null)
+                {
+                    var rosterIds = rosterHost.PhantomAvatarIds;
+                    for (int ri = 0; ri < rosterIds.Count; ri++)
+                    {
+                        ulong avId = rosterIds[ri];
+                        if (avId == teamUp.Id) continue;
+                        Agent candidate = Game.EntityManager.GetEntity<Agent>(avId);
+                        if (candidate == null || candidate.IsDead == false || candidate.IsInWorld == false || candidate.Region != region) continue;
+
+                        float d = Vector3.DistanceSquared(candidate.RegionLocation.Position, teamUpPos);
+                        if (d < downedDistSq) { downedDistSq = d; downed = candidate; }
+                    }
+                }
+
                 var sphere = new Sphere(teamUpPos, PhantomReviveSearchRange);
                 var ctx = new EntityRegionSPContext(EntityRegionSPContextFlags.PrimaryPartition);
                 foreach (WorldEntity we in region.IterateEntitiesInVolume(sphere, ctx))
                 {
-                    if (we is not Avatar candidate) continue;
+                    if (we is not Agent candidate) continue;
+                    if (candidate.Id == teamUp.Id) continue;
                     if (candidate.IsDead == false) continue;
                     Player candOwner = candidate.GetOwnerOfType<Player>();
-                    if (candOwner == null) continue;
-                    bool isRealPlayer = candOwner.PlayerConnection != null;
-                    bool isFriendlyPhantom = candOwner.PhantomCreatorId != 0
-                        && candOwner.PhantomCreatorId == this.PhantomHost?.Id;
-                    if (isRealPlayer == false && isFriendlyPhantom == false) continue;
-                    float d = Vector3.DistanceSquared2D(candidate.RegionLocation.Position, teamUpPos);
+                    if (candOwner == null || candOwner.PlayerConnection == null) continue;
+                    float d = Vector3.DistanceSquared(candidate.RegionLocation.Position, teamUpPos);
+                    if (d > PhantomReviveSearchRangeSq) continue;
                     if (d < downedDistSq) { downedDistSq = d; downed = candidate; }
                 }
             }
@@ -1163,7 +1300,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Guard against re-casting on someone already being resurrected.
             if (teamUp.Properties[PropertyEnum.PendingResurrectEntityId] == downed.Id) return true;
 
-            if (downedDistSq > PhantomReviveCastRangeSq)
+            if (downedDistSq > GetReviveCastRangeSq(teamUp, resurrectPowerRef))
             {
                 // The team-up's native AIController re-issues its own
                 // MoveToType.AssistedEntity follow (toward the caller) every
@@ -1190,10 +1327,20 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             try
             {
+                // Chain-revive fix: without clearing cooldown here, the
+                // first successful revive puts the resurrect power on
+                // cooldown for this team-up and it can't help with the
+                // rest of a wiped squad until it expires.
+                teamUp.Properties.RemoveProperty(new(PropertyEnum.PowerCooldownStartTime, resurrectPowerRef));
+                teamUp.Properties.RemoveProperty(new(PropertyEnum.PowerCooldownDuration, resurrectPowerRef));
+
                 var settings = new PowerActivationSettings(downed.Id, downed.RegionLocation.Position, teamUpPos);
                 settings.Flags |= PowerActivationSettingsFlags.NotifyOwner;
-                if (teamUp.ActivatePower(resurrectPowerRef, ref settings) == PowerUseResult.Success)
+                var reviveResult = teamUp.ActivatePower(resurrectPowerRef, ref settings);
+                if (reviveResult == PowerUseResult.Success)
                     teamUp.Properties[PropertyEnum.PendingResurrectEntityId] = downed.Id;
+                else
+                    PhantomLogger.Info($"[PhantomHero:TeamUp:Revive] {teamUp} -> {downed} rejected: {reviveResult}");
             }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] ActivatePower(ResurrectOther) failed: {ex.Message}"); }
             finally { RestoreTeamUpAssistedEntity(teamUp); }
@@ -2133,8 +2280,27 @@ namespace MHServerEmu.Games.Entities.Avatars
                     if (pp.IsToggled) continue;
                     if (pp.IsTravelPower) continue;
 
+                    // GetRange() reporting <= 0 does NOT mean "unlimited" —
+                    // it means this power has no genuine ranged-targeting
+                    // distance in its data (melee reach, self-centered
+                    // effects, etc). Treating that as "no limit" is what let
+                    // ANY such power — not just melee ones — fire from all
+                    // the way out at PhantomAttackRange (1200u), which is the
+                    // "attacking way before they get close" bug players saw,
+                    // both for melee attacks and for ranged powers whose
+                    // GetRange() happens to come back 0 too. Only a power
+                    // with a genuine positive declared range gets to use that
+                    // range as its own gate; everything else is held to true
+                    // melee reach.
                     float pRange = power.GetRange();
-                    if (pRange > 0f && pRange + 50f < targetDist) continue;
+                    if (Power.IsMelee(pp) || pRange <= 0f)
+                    {
+                        if (targetDistSq > PhantomMeleeRangeSq) continue;
+                    }
+                    else
+                    {
+                        if (pRange + 50f < targetDist) continue;
+                    }
 
                     if (power.IsOnCooldown()) continue;
 
@@ -2259,7 +2425,17 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // Power-specific failures won't clear by retrying with a
                 // different target — park the power so the picker falls
                 // back to ones that actually work (see s_phantomPowerBlacklist).
-                if (result == PowerUseResult.RestrictiveCondition || result == PowerUseResult.WeaponMissing)
+                // NotAllowedByTransformMode confirmed live in server logs
+                // (2026-07-15): Rogue's GlovesOff kept failing this way
+                // against every target, every tick, forever — it requires a
+                // transform state the phantom AI never enters, so retrying
+                // never helps. Without blacklisting it, a high-cooldown-
+                // weighted power like this keeps winning the weighted pick
+                // and the phantom looks like it "randomly stops attacking"
+                // even though it's retrying every tick and always failing.
+                if (result == PowerUseResult.RestrictiveCondition
+                    || result == PowerUseResult.WeaponMissing
+                    || result == PowerUseResult.NotAllowedByTransformMode)
                     s_phantomPowerBlacklist[(phantom.Id, chosenPower)] = nowMs + PhantomPowerBlacklistMs;
 
                 // Log every failed activation so we can see WHY a cutscene boss
@@ -2514,13 +2690,13 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// this avatar. Returns the Avatar entity id, or 0 with a reason in
         /// <paramref name="error"/>.
         /// </summary>
-        public ulong SpawnPhantomHero(int levelOverride, string username, out string error)
+        public ulong SpawnPhantomHero(int levelOverride, string username, out string error, bool bypassCap = false)
             // A non-zero levelOverride from the chat command means the user
             // explicitly asked for a specific level (e.g. `!phantom spawn 4 45`).
             // Lock that level in — the tick loop will not auto-level these
             // phantoms as the caller gains XP. Costume 0 = roll random,
             // gear null = roll random per slot.
-            => SpawnPhantomHeroCore(PrototypeId.Invalid, levelOverride, username, levelOverride > 0, 0, null, out error);
+            => SpawnPhantomHeroCore(PrototypeId.Invalid, levelOverride, username, levelOverride > 0, 0, null, out error, bypassCap: bypassCap);
 
         /// <summary>
         /// Respawns a phantom from a MigrationData intent — same avatarRef +
@@ -2528,7 +2704,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// Used by Player.RestorePhantomsFromMigration after cross-region
         /// travel and by saved-squad spawns.
         /// </summary>
-        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, ulong costumeRef, out string error, List<ulong> gearRefs = null, bool invincible = false)
+        public ulong SpawnPhantomHeroFromIntent(PrototypeId avatarRefOverride, int level, string username, bool lockLevel, ulong costumeRef, out string error, List<ulong> gearRefs = null, bool invincible = false, bool bypassCap = false)
         {
             // Team-up intents (stored with an AgentTeamUpPrototype ref in
             // AvatarRef) must go through the team-up spawn path, not the
@@ -2536,9 +2712,9 @@ namespace MHServerEmu.Games.Entities.Avatars
             // returns null for a team-up ref and the phantom is silently lost
             // on region change.
             if (avatarRefOverride != PrototypeId.Invalid && avatarRefOverride.As<AgentTeamUpPrototype>() != null)
-                return SpawnTeamUpPhantomHero(avatarRefOverride, level, out error, enemy: false, nemesisRank: 0, usernameOverride: username, gearOverride: gearRefs);
+                return SpawnTeamUpPhantomHero(avatarRefOverride, level, out error, enemy: false, nemesisRank: 0, usernameOverride: username, gearOverride: gearRefs, bypassCap: bypassCap);
 
-            return SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, gearRefs, out error, enemy: false, invincible: invincible);
+            return SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, gearRefs, out error, enemy: false, invincible: invincible, bypassCap: bypassCap);
         }
 
         /// <summary>
@@ -2568,7 +2744,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// use the caller's alliance and follow the caller; enemy team-ups
         /// use the hostile alliance override.
         /// </summary>
-        public ulong SpawnTeamUpPhantomHero(PrototypeId teamUpRef, int level, out string error, bool enemy = false, int nemesisRank = 0, string usernameOverride = null, List<ulong> gearOverride = null, int nemesisEscapeCount = 0)
+        public ulong SpawnTeamUpPhantomHero(PrototypeId teamUpRef, int level, out string error, bool enemy = false, int nemesisRank = 0, string usernameOverride = null, List<ulong> gearOverride = null, int nemesisEscapeCount = 0, bool bypassCap = false)
         {
             error = null;
             if (IsInWorld == false) { error = "avatar not in world"; return 0; }
@@ -2587,7 +2763,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             Player host = PhantomHost;
             if (host == null) { error = "no Player host to register phantom against"; return 0; }
 
-            if (enemy == false)
+            if (enemy == false && bypassCap == false)
             {
                 int cap = GetPhantomPartyCap(region);
                 if (1 + host.PhantomHeroCount >= cap)
@@ -2789,6 +2965,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                     CostumeRef = 0,
                     GearRefs = appliedGearRefs,
                     Invincible = false,
+                    BypassCap = bypassCap,
                 };
                 host.RegisterPhantom(teamUp.Id, phantomPlayer.Id, descriptor);
             }
@@ -2878,7 +3055,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
         }
 
-        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error, bool enemy = false, bool invincible = false, int nemesisRank = 0, int nemesisEscapeCount = 0)
+        private ulong SpawnPhantomHeroCore(PrototypeId avatarRefOverride, int levelOverride, string username, bool lockLevel, ulong costumeRef, List<ulong> gearRefs, out string error, bool enemy = false, bool invincible = false, int nemesisRank = 0, int nemesisEscapeCount = 0, bool bypassCap = false)
         {
             if (enemy && ResolveHostileAllianceRef() == PrototypeId.Invalid)
             {
@@ -2891,7 +3068,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             Region region = Region;
             if (region == null) { error = "no region"; return 0; }
 
-            if (enemy == false)
+            if (enemy == false && bypassCap == false)
             {
                 Player capHost = PhantomHost;
                 if (capHost != null)
@@ -3252,6 +3429,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 CostumeRef = (ulong)appliedCostumeRef,
                 GearRefs = appliedGearRefs,
                 Invincible = invincible,
+                BypassCap = bypassCap,
             };
             host.RegisterPhantom(phantomAvatar.Id, phantomPlayer.Id, descriptor);
             SchedulePhantomTick();
