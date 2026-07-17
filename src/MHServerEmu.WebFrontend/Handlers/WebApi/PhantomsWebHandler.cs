@@ -831,7 +831,40 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     bool ok = banished != PrototypeId.Invalid;
                     return (object)new { Ok = ok, Message = ok ? $"banished oldest: {banished.GetName()}" : "roster is empty" };
                 }
-                return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear)" };
+                if (string.Equals(action, "spawn", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    // Deliberate revenge fight: spawn this exact tracked nemesis
+                    // right now, using its OWN stored rank/escape-count — same
+                    // spawn call and display-name convention Rogue Encounter's
+                    // random ambush already uses, just caller-triggered instead
+                    // of random.
+                    if (string.IsNullOrWhiteSpace(heroRefStr))
+                        return (object)new { Ok = false, Error = "heroRef required for spawn" };
+                    ulong heroRef = 0;
+                    string s = heroRefStr.Trim();
+                    if (s.StartsWith("0x", System.StringComparison.OrdinalIgnoreCase)) s = s[2..];
+                    if (!ulong.TryParse(s, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out heroRef)
+                        && !ulong.TryParse(s, out heroRef))
+                        return (object)new { Ok = false, Error = "heroRef not a ulong / hex" };
+
+                    MHServerEmu.DatabaseAccess.Models.NemesisEntry nemesis = null;
+                    foreach (var n in p.Nemeses) { if (n.HeroRef == heroRef) { nemesis = n; break; } }
+                    if (nemesis == null)
+                        return (object)new { Ok = false, Error = "no matching nemesis" };
+
+                    var avatar = p.CurrentAvatar;
+                    if (avatar == null || avatar.IsInWorld == false)
+                        return (object)new { Ok = false, Error = "player has no avatar in world" };
+
+                    string killerBase = string.IsNullOrEmpty(nemesis.LastKillerName) ? "Phantom" : nemesis.LastKillerName;
+                    string suffix = MHServerEmu.Games.Entities.Player.NemesisSuffixes[System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)];
+                    string stars = new string('★', System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank));
+                    string displayName = string.IsNullOrEmpty(suffix) ? $"{stars} {killerBase}" : $"{stars} {killerBase} {suffix}";
+
+                    ulong id = avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out string spawnErr, nemesis.EscapeCount);
+                    return (object)new { Ok = id != 0, Message = id != 0 ? $"{displayName} is coming for you" : spawnErr };
+                }
+                return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear|spawn)" };
             });
             await context.SendJsonAsync(result);
         }

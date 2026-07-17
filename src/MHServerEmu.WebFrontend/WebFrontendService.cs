@@ -194,6 +194,29 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/logs/tail",    new MHServerEmu.WebFrontend.Handlers.WebApi.LogsTailWebHandler());
             _webService.RegisterHandler("/webapi/debug/logs",   new MHServerEmu.WebFrontend.Handlers.WebApi.DebugLogsWebHandler());
 
+            // OmegaDev2 God Mode.
+            _webService.RegisterHandler("/webapi/playeradmin/godmode", new MHServerEmu.WebFrontend.Handlers.WebApi.GodModeWebHandler());
+
+            // OmegaDev2 Region Builder catalog + synth.
+            _webService.RegisterHandler("/webapi/cells/list",     new MHServerEmu.WebFrontend.Handlers.WebApi.CellsListWebHandler());
+            _webService.RegisterHandler("/webapi/cells/families", new MHServerEmu.WebFrontend.Handlers.WebApi.CellFamiliesWebHandler());
+            _webService.RegisterHandler("/webapi/cells/exits",    new MHServerEmu.WebFrontend.Handlers.WebApi.CellExitsWebHandler());
+            _webService.RegisterHandler("/webapi/cells/mates",    new MHServerEmu.WebFrontend.Handlers.WebApi.CellMatesWebHandler());
+            _webService.RegisterHandler("/webapi/celldiag",       new MHServerEmu.WebFrontend.Handlers.WebApi.CellDiagWebHandler());
+            _webService.RegisterHandler("/webapi/cellmesh",       new MHServerEmu.WebFrontend.Handlers.WebApi.CellMeshWebHandler());
+            _webService.RegisterHandler("/webapi/enemies/byregion", new MHServerEmu.WebFrontend.Handlers.WebApi.EnemiesByRegionWebHandler());
+            _webService.RegisterHandler("/webapi/enemies/catalog",  new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyCatalogWebHandler());
+            _webService.RegisterHandler("/webapi/spawners/bosses",  new MHServerEmu.WebFrontend.Handlers.WebApi.BossSpawnersWebHandler());
+            _webService.RegisterHandler("/webapi/prototypes/search", new MHServerEmu.WebFrontend.Handlers.WebApi.PrototypeSearchWebHandler());
+            _webService.RegisterHandler("/webapi/regionbuilder/list", new MHServerEmu.WebFrontend.Handlers.WebApi.RegionBuildsListWebHandler());
+            _webService.RegisterHandler("/webapi/regionbuilder/warp", new MHServerEmu.WebFrontend.Handlers.WebApi.RegionBuilderWarpWebHandler());
+            _webService.RegisterHandler("/webapi/regionbuilder/spawnhubportals", new MHServerEmu.WebFrontend.Handlers.WebApi.SpawnHubPortalsWebHandler());
+            _webService.RegisterHandler("/webapi/regions/templates", new MHServerEmu.WebFrontend.Handlers.WebApi.RegionTemplatesWebHandler());
+            _webService.RegisterHandler("/webapi/regions/template/synthesize", new MHServerEmu.WebFrontend.Handlers.WebApi.RegionTemplateSynthesizeWebHandler());
+            _webService.RegisterHandler("/webapi/terminals/index", new MHServerEmu.WebFrontend.Handlers.WebApi.TerminalsIndexWebHandler());
+            _webService.RegisterHandler("/webapi/terminals/synthesize", new MHServerEmu.WebFrontend.Handlers.WebApi.TerminalsSynthesizeStubWebHandler());
+            _webService.RegisterHandler("/webapi/terminals/snapshot",   new MHServerEmu.WebFrontend.Handlers.WebApi.TerminalsSnapshotStubWebHandler());
+
             // OmegaDev2 icon/portrait pipeline. Reads textures from the
             // USER'S OWN client install ([ClientAssets] in Config.ini —
             // empty by default = endpoints return 404 and the tool shows

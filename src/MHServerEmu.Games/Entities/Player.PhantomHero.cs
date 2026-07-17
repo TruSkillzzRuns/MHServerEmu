@@ -326,6 +326,42 @@ namespace MHServerEmu.Games.Entities
             return true;
         }
 
+        /// <summary>Destroys exactly one of this player's enemy phantoms, by avatar id.</summary>
+        public bool DespawnOneEnemyPhantom(ulong avatarId)
+        {
+            int idx = _enemyPhantomAvatarIds.IndexOf(avatarId);
+            if (idx < 0) return false;
+
+            var mgr = Game?.EntityManager;
+            ulong phantomPlayerId = _enemyPhantomPlayerIds[idx];
+            _enemyPhantomAvatarIds.RemoveAt(idx);
+            _enemyPhantomPlayerIds.RemoveAt(idx);
+
+            try
+            {
+                Avatar av = mgr?.GetEntity<Avatar>(avatarId);
+                if (av != null)
+                {
+                    if (av.IsInWorld) av.ExitWorld();
+                    av.Destroy();
+                }
+            }
+            catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Enemy] despawn one avatar 0x{avatarId:X} failed: {ex.Message}"); }
+
+            try
+            {
+                Player p = mgr?.GetEntity<Player>(phantomPlayerId);
+                if (p != null)
+                {
+                    if (p.IsInGame) p.ExitGame();
+                    p.Destroy();
+                }
+            }
+            catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Enemy] despawn one player 0x{phantomPlayerId:X} failed: {ex.Message}"); }
+
+            return true;
+        }
+
         /// <summary>Destroys every enemy phantom this player has spawned.</summary>
         public int PurgeEnemyPhantoms()
         {

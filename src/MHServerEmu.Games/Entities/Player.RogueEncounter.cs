@@ -199,7 +199,7 @@ namespace MHServerEmu.Games.Entities
                     PrototypeId roll = rng.NextDouble() < RogueEncounterTeamUpChance
                         ? PickRandomTeamUpRef(rng)
                         : PrototypeId.Invalid;
-                    id = avatar.SpawnEnemyPhantomHero(roll, 0, out err);
+                    id = avatar.SpawnEnemyPhantomHero(roll, 0, out err, ambush: true);
                 }
                 if (id != 0) spawned++;
                 else firstError ??= err;

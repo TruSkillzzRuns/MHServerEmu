@@ -43,6 +43,12 @@ namespace MHServerEmu.Games.Entities
             // TerminalRun only: true = boss actually killed, false = left/died before finishing.
             // Always true for DpsParse (there's no "aborted" concept there).
             public bool Completed { get; set; } = true;
+            // Computed fresh on every GetLeaderboardForWeb call, not a stored
+            // fact — whether this is currently the best entry in its group
+            // (DpsParse: per HeroName; TerminalRun: per HeroName+Region+Tier,
+            // completed runs only). Recomputing on read means a new personal
+            // best is reflected immediately without any backfill/migration.
+            public bool IsPersonalBest { get; set; }
         }
 
         private string GetLeaderboardFilePath()
@@ -339,7 +345,39 @@ namespace MHServerEmu.Games.Entities
                 }
                 return b.Value.CompareTo(a.Value);
             });
+
+            MarkPersonalBests(entries);
             return entries;
+        }
+
+        /// <summary>
+        /// Flags each entry's IsPersonalBest against everything ELSE currently
+        /// on the board (not just the filtered/returned subset) — grouped by
+        /// HeroName for DpsParse, and by HeroName+Region+Tier (completed runs
+        /// only) for TerminalRun, since an aborted run should never be able
+        /// to "win" a personal best.
+        /// </summary>
+        private void MarkPersonalBests(List<LeaderboardEntry> entries)
+        {
+            // Always compare against the FULL board, not whatever subset the
+            // caller filtered down to — best-status must not change just
+            // because a kind/hero filter was applied to what's displayed.
+            var allEntries = LoadLeaderboardFile();
+
+            var bestDps = allEntries.Where(e => e.Kind == LeaderboardKind.DpsParse)
+                .GroupBy(e => e.HeroName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Max(e => e.Value), StringComparer.OrdinalIgnoreCase);
+
+            var bestTerminal = allEntries.Where(e => e.Kind == LeaderboardKind.TerminalRun && e.Completed)
+                .GroupBy(e => (e.HeroName, e.RegionName, e.DifficultyTier))
+                .ToDictionary(g => g.Key, g => g.Min(e => e.Value));
+
+            foreach (var e in entries)
+            {
+                e.IsPersonalBest = e.Kind == LeaderboardKind.DpsParse
+                    ? bestDps.TryGetValue(e.HeroName, out double bestDpsValue) && e.Value >= bestDpsValue
+                    : e.Completed && bestTerminal.TryGetValue((e.HeroName, e.RegionName, e.DifficultyTier), out double bestMs) && e.Value <= bestMs;
+            }
         }
     }
 }

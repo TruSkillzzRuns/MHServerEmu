@@ -34,6 +34,18 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             public ulong AvatarRef;   // 0 = random hero
             public int Level;         // 0 = match player
             public int Count = 1;
+            public int Rank;          // 0 = plain hostile; 1-5 = spawn as a nemesis-rank hostile
+        }
+
+        private static string LeafHeroName(PrototypeId avatarRef)
+        {
+            string path = GameDatabase.GetPrototypeName(avatarRef);
+            if (string.IsNullOrEmpty(path)) return "Hostile";
+            string leaf = path.Contains('/') ? path[(path.LastIndexOf('/') + 1)..] : path;
+            const string suffix = ".prototype";
+            if (leaf.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                leaf = leaf[..^suffix.Length];
+            return leaf;
         }
 
         protected override async Task Post(WebRequestContext context)
@@ -55,6 +67,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         if (el.TryGetProperty("avatarRef", out var ar)) e.AvatarRef = PhantomsWebUtil.ParseRef(ar.GetString());
                         if (el.TryGetProperty("level", out var lv)) e.Level = lv.GetInt32();
                         if (el.TryGetProperty("count", out var cn)) e.Count = cn.GetInt32();
+                        if (el.TryGetProperty("rank", out var rk)) e.Rank = rk.GetInt32();
                         entries.Add(e);
                     }
                 }
@@ -89,8 +102,23 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
                 foreach (var e in entries)
                 {
-                    int count = Math.Clamp(e.Count, 1, 20);
                     int level = Math.Clamp(e.Level, 0, 60);
+                    int rank = Math.Clamp(e.Rank, 0, 5);
+
+                    // A ranked spawn is always exactly one nemesis-style hostile —
+                    // Count only applies to the plain (rank 0) random/named path,
+                    // same convention Phantom Heroes' own quick-spawn already uses
+                    // ("specific hero = one spawn per click").
+                    if (rank > 0)
+                    {
+                        string display = $"★{rank} {LeafHeroName((PrototypeId)e.AvatarRef)}";
+                        ulong id = avatar.SpawnNemesisPhantomHero((PrototypeId)e.AvatarRef, level, display, rank, out string err);
+                        if (id != 0) spawned++;
+                        else { failed++; firstError ??= err; }
+                        continue;
+                    }
+
+                    int count = Math.Clamp(e.Count, 1, 20);
                     for (int i = 0; i < count; i++)
                     {
                         ulong id = avatar.SpawnEnemyPhantomHero((PrototypeId)e.AvatarRef, level, out string err);
@@ -114,6 +142,17 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             string body = await context.ReadUtf8StringAsync();
             PhantomsWebUtil.ParseTarget(body, out string playerName, out string playerDbId);
 
+            // Optional targetId: despawn just that one hostile instead of
+            // clearing the whole roster. Absent/0 = existing clear-all behavior.
+            ulong targetId = 0;
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                if (doc.RootElement.TryGetProperty("targetId", out var t) && t.ValueKind == JsonValueKind.String)
+                    ulong.TryParse(t.GetString(), out targetId);
+            }
+            catch { /* malformed targetId just falls back to clear-all */ }
+
             Player player = PhantomsWebUtil.FindTargetPlayer(playerName, playerDbId, out string error);
             if (player == null)
             {
@@ -124,6 +163,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
             {
                 var avatar = p.CurrentAvatar;
+                if (targetId != 0)
+                {
+                    bool ok = avatar != null ? avatar.DespawnOneEnemyPhantom(targetId) : p.DespawnOneEnemyPhantom(targetId);
+                    return new { Ok = ok, Removed = ok ? 1 : 0 };
+                }
                 int removed = avatar != null ? avatar.DespawnAllEnemyPhantoms() : p.PurgeEnemyPhantoms();
                 return new { Ok = true, Removed = removed };
             });

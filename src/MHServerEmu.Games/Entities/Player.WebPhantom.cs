@@ -122,6 +122,9 @@ namespace MHServerEmu.Games.Entities
 
         public sealed class WebEnemyPhantomInfo
         {
+            // Avatar entity id — lets the app target this exact hostile for
+            // a single despawn instead of only "clear everything."
+            public ulong AvatarId { get; set; }
             public string HeroName { get; set; }
             public int Level { get; set; }
             public int HealthPct { get; set; }
@@ -144,6 +147,7 @@ namespace MHServerEmu.Games.Entities
 
                 list.Add(new WebEnemyPhantomInfo
                 {
+                    AvatarId = avatarId,
                     HeroName = WebLeafOf(GameDatabase.GetPrototypeName(av.PrototypeDataRef)),
                     Level = av.CharacterLevel,
                     HealthPct = healthMax > 0 ? (int)(health * 100 / healthMax) : 0,
