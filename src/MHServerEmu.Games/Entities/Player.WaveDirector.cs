@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MHServerEmu.Core.Logging;
+using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Core.Memory;
 using MHServerEmu.Core.VectorMath;
 using MHServerEmu.Games.Entities.Avatars;
@@ -28,6 +29,10 @@ namespace MHServerEmu.Games.Entities
             public bool IsEnemyPhantom;
             public int Count = 1;
             public int Level;        // phantoms only; 0 = match player
+            // Phantoms only; 0 = plain hostile (SpawnEnemyPhantomHero), 1-5 =
+            // spawn as a ranked nemesis (SpawnNemesisPhantomHero) — same rank
+            // ladder as the Enemy Phantoms tool's Unleash panel.
+            public int Rank;
         }
 
         public sealed class WaveDef
@@ -75,6 +80,110 @@ namespace MHServerEmu.Games.Entities
         private long WaveNowMs => Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
 
         /// <summary>
+        /// Snapshot a pending wave-run start onto MigrationData so it
+        /// survives a cross-region arena warp, the same way phantom heroes
+        /// ride via PhantomIntents (see Player.PhantomHero.cs's
+        /// SnapshotPhantomsForTransfer). Confirmed live: a cross-region
+        /// transfer destroys the ENTIRE Game instance this WaveDirector
+        /// state lives on — the polling loop watching for arrival never
+        /// gets the chance to fire again on the new Player object, so
+        /// "Start Run" would successfully warp the player but never clear
+        /// the arena or spawn wave 1. Only snapshots while still in
+        /// WarpingToArena — that's the only state a cross-region transfer
+        /// is actually expected mid-run (the very first step, before
+        /// anything has spawned); a manual warp away mid-fight just lets
+        /// the run drop, same as before this fix. Called from
+        /// PlayerConnection.BeginRegionTransfer, right next to the phantom
+        /// snapshot call.
+        /// </summary>
+        internal void SnapshotWaveRunForTransfer()
+        {
+            if (_waveState != WaveState.WarpingToArena || _waveDefs == null) return;
+
+            var mig = PlayerConnection?.MigrationData;
+            if (mig == null) return;
+
+            var intent = new WaveRunIntent
+            {
+                IntermissionMs = (int)_waveIntermissionMs,
+                ArenaRegionRef = (ulong)_waveArenaRegionRef,
+                ClearArena = _waveClearArena,
+                Loop = _waveLoop,
+                CountScalePerWave = _waveCountScalePerWave,
+                LevelBumpPerWave = _waveLevelBumpPerWave,
+                RewardMode = (int)_waveRewardMode,
+                RewardLootTableRef = (ulong)_waveRewardLootTableRef,
+            };
+            foreach (WaveDef wave in _waveDefs)
+            {
+                var waveIntent = new WaveDefIntent { IntermissionMsOverride = wave.IntermissionMsOverride };
+                foreach (WaveEntryDef entry in wave.Entries)
+                {
+                    waveIntent.Entries.Add(new WaveEntryIntent
+                    {
+                        AgentRef = entry.AgentRef,
+                        HeroRef = entry.HeroRef,
+                        IsEnemyPhantom = entry.IsEnemyPhantom,
+                        Count = entry.Count,
+                        Level = entry.Level,
+                        Rank = entry.Rank,
+                    });
+                }
+                intent.Waves.Add(waveIntent);
+            }
+            mig.PendingWaveRun = intent;
+
+            // This Game instance is going away — clear local state so
+            // nothing tries to keep ticking against a Player that's about
+            // to be destroyed.
+            StopWaveRun(cleanup: false);
+            WaveLogger.Info($"[WaveDirector] {GetName()}: snapshotted pending run ({intent.Waves.Count} wave(s)) for cross-region transfer");
+        }
+
+        /// <summary>
+        /// Read MigrationData.PendingWaveRun (populated by the previous
+        /// Game's SnapshotWaveRunForTransfer) and resume the run on this new
+        /// Player/Avatar. Called from Avatar.OnEnteredWorld, right next to
+        /// RestorePhantomsFromMigration — by the time OnEnteredWorld fires,
+        /// the avatar is already standing in the arena region, so
+        /// StartWaveRun's "already in the arena" branch takes over
+        /// immediately (clears if requested, then spawns wave 1) instead of
+        /// re-entering WarpingToArena.
+        /// </summary>
+        internal void RestoreWaveRunFromMigration(Avatar caller)
+        {
+            var mig = PlayerConnection?.MigrationData;
+            WaveRunIntent intent = mig?.PendingWaveRun;
+            if (intent == null || caller == null) return;
+            mig.PendingWaveRun = null;
+
+            var waves = new List<WaveDef>();
+            foreach (WaveDefIntent waveIntent in intent.Waves)
+            {
+                var wave = new WaveDef { IntermissionMsOverride = waveIntent.IntermissionMsOverride };
+                foreach (WaveEntryIntent entryIntent in waveIntent.Entries)
+                {
+                    wave.Entries.Add(new WaveEntryDef
+                    {
+                        AgentRef = entryIntent.AgentRef,
+                        HeroRef = entryIntent.HeroRef,
+                        IsEnemyPhantom = entryIntent.IsEnemyPhantom,
+                        Count = entryIntent.Count,
+                        Level = entryIntent.Level,
+                        Rank = entryIntent.Rank,
+                    });
+                }
+                waves.Add(wave);
+            }
+            if (waves.Count == 0) return;
+
+            string result = StartWaveRun(waves, intent.IntermissionMs, intent.ArenaRegionRef, intent.ClearArena,
+                intent.Loop, intent.CountScalePerWave, intent.LevelBumpPerWave,
+                (WaveRewardMode)intent.RewardMode, intent.RewardLootTableRef, caller);
+            WaveLogger.Info($"[WaveDirector] {GetName()}: resumed run after cross-region transfer: {result}");
+        }
+
+        /// <summary>
         /// Start (or restart) a wave run. Game thread only. With an arena
         /// region set, the player is warped there first (and the room
         /// optionally cleared of its native hostiles) before wave 1 spawns —
@@ -82,10 +191,15 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         public string StartWaveRun(List<WaveDef> waves, int intermissionMs, ulong arenaRegionRef = 0, bool clearArena = false,
             bool loop = false, float countScalePerWave = 0f, int levelBumpPerWave = 0,
-            WaveRewardMode rewardMode = WaveRewardMode.None, ulong rewardLootTableRef = 0)
+            WaveRewardMode rewardMode = WaveRewardMode.None, ulong rewardLootTableRef = 0, Avatar avatarOverride = null)
         {
             if (waves == null || waves.Count == 0) return "no waves defined";
-            Avatar avatar = CurrentAvatar;
+            // avatarOverride is used by RestoreWaveRunFromMigration: at that
+            // call site (Avatar.OnEnteredWorld, mirroring
+            // RestorePhantomsFromMigration's identical need) CurrentAvatar
+            // isn't reliably set to the arriving avatar yet, so the caller
+            // is passed explicitly instead of relying on it.
+            Avatar avatar = avatarOverride ?? CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false) return "no avatar in world";
 
             StopWaveRun(cleanup: true);
@@ -255,7 +369,22 @@ namespace MHServerEmu.Games.Entities
             }
 
             var mgr = Game?.EntityManager;
-            if (mgr == null) return;
+            if (mgr == null)
+            {
+                // Every other exit path below reschedules before returning
+                // (or is the deliberate no-reschedule at Done). This one
+                // didn't — confirmed live: EntityManager can read transiently
+                // null during the region-transfer/warp window, which killed
+                // the self-rescheduling tick permanently and left the run
+                // stuck in WarpingToArena forever. The user's own workaround
+                // (pressing Start again) "worked" only because StartWaveRun
+                // re-arms the tick from scratch, and by then the warp had
+                // already landed — i.e. Start Run needing two presses was
+                // this bug, not a separate one. Self-heal instead: keep
+                // retrying once a second rather than dying silently.
+                ScheduleWaveTick();
+                return;
+            }
 
             // Prune the alive list — anything gone or dead counts as a kill.
             for (int i = _waveAliveIds.Count - 1; i >= 0; i--)
@@ -469,7 +598,18 @@ namespace MHServerEmu.Games.Entities
 
                     if (entry.IsEnemyPhantom)
                     {
-                        spawnedId = avatar.SpawnEnemyPhantomHero((PrototypeId)entry.HeroRef, level, out string err);
+                        string err;
+                        if (entry.Rank > 0)
+                        {
+                            PrototypeId heroRef = (PrototypeId)entry.HeroRef;
+                            string heroName = heroRef != PrototypeId.Invalid ? LeafHeroName(heroRef) : "Phantom";
+                            string display = $"★{Math.Clamp(entry.Rank, 1, 5)} {heroName}";
+                            spawnedId = avatar.SpawnNemesisPhantomHero(heroRef, level, display, entry.Rank, out err);
+                        }
+                        else
+                        {
+                            spawnedId = avatar.SpawnEnemyPhantomHero((PrototypeId)entry.HeroRef, level, out err);
+                        }
                         if (spawnedId == 0)
                             WaveLogger.Warn($"[WaveDirector] enemy phantom spawn failed: {err}");
                     }
@@ -503,6 +643,19 @@ namespace MHServerEmu.Games.Entities
             _waveSpawnedTotal += spawned;
             _waveState = WaveState.Fighting;
             WaveLogger.Info($"[WaveDirector] {GetName()}: wave {_waveIndex + 1}/{_waveDefs.Count} spawned {spawned} combatant(s)");
+        }
+
+        /// <summary>Leaf hero name for a nemesis display name — "Powers/Player/Thor/Thor.prototype" -> "Thor".</summary>
+        private static string LeafHeroName(PrototypeId avatarRef)
+        {
+            string path = GameDatabase.GetPrototypeName(avatarRef);
+            if (string.IsNullOrEmpty(path)) return "Phantom";
+            int slash = path.LastIndexOf('/');
+            string leaf = slash >= 0 ? path[(slash + 1)..] : path;
+            const string suffix = ".prototype";
+            if (leaf.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                leaf = leaf[..^suffix.Length];
+            return leaf;
         }
 
         public sealed class WaveStatusSnapshot

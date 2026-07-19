@@ -196,6 +196,16 @@ namespace MHServerEmu.WebFrontend
 
             // OmegaDev2 God Mode.
             _webService.RegisterHandler("/webapi/playeradmin/godmode", new MHServerEmu.WebFrontend.Handlers.WebApi.GodModeWebHandler());
+            _webService.RegisterHandler("/webapi/playeradmin/godmode/status", new MHServerEmu.WebFrontend.Handlers.WebApi.GodModeStatusWebHandler());
+
+            // OmegaDev2 Currency Editor.
+            _webService.RegisterHandler("/webapi/currency/list", new MHServerEmu.WebFrontend.Handlers.WebApi.CurrencyListWebHandler());
+            _webService.RegisterHandler("/webapi/currency/set",  new MHServerEmu.WebFrontend.Handlers.WebApi.CurrencySetWebHandler());
+
+            // OmegaDev2 Live Events (real live-tuning event toggle).
+            _webService.RegisterHandler("/webapi/livetuning/events",          new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventsListWebHandler());
+            _webService.RegisterHandler("/webapi/livetuning/events/activate", new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventActivateWebHandler());
+            _webService.RegisterHandler("/webapi/livetuning/events/clear",    new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventClearWebHandler());
 
             // OmegaDev2 icon/portrait pipeline. Reads textures from the
             // USER'S OWN client install ([ClientAssets] in Config.ini —
@@ -203,6 +213,12 @@ namespace MHServerEmu.WebFrontend
             // no pictures). No game assets ship with the server.
             _webService.RegisterHandler("/webapi/portrait",  new MHServerEmu.WebFrontend.Handlers.WebApi.PortraitWebHandler());
             _webService.RegisterHandler("/webapi/texbyname", new MHServerEmu.WebFrontend.Handlers.WebApi.TextureByNameWebHandler());
+
+            // OmegaDev2 Prototype Field Editor (runtime, MetaGame/MetaState) — see RuntimePrototypeEditor for the mutation model.
+            _webService.RegisterHandler("/webapi/protoeditor/discover", new MHServerEmu.WebFrontend.Handlers.WebApi.PrototypeEditorDiscoverWebHandler());
+            _webService.RegisterHandler("/webapi/protoeditor/fields",   new MHServerEmu.WebFrontend.Handlers.WebApi.PrototypeEditorReadWebHandler());
+            _webService.RegisterHandler("/webapi/protoeditor/write",    new MHServerEmu.WebFrontend.Handlers.WebApi.PrototypeEditorWriteWebHandler());
+            _webService.RegisterHandler("/webapi/protoeditor/clone",    new MHServerEmu.WebFrontend.Handlers.WebApi.PrototypeEditorCloneWebHandler());
 
             _webService.RegisterHandler("/RegionReport", new RegionReportWebHandler());
             _webService.RegisterHandler("/Metrics/Performance", new MetricsPerformanceWebHandler());

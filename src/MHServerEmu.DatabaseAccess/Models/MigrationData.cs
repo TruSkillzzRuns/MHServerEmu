@@ -48,6 +48,23 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// </summary>
         public Dictionary<ulong, ulong> PreferredPowers { get; } = new();
 
+        /// <summary>
+        /// Wave Director run-start intent, carried across a cross-region
+        /// arena warp the same way phantoms ride via PhantomIntents.
+        /// Confirmed live: a cross-region transfer destroys the ENTIRE Game
+        /// instance (Player/Avatar/WaveDirector state all go with it) —
+        /// "Start Run" would successfully teleport the player to the arena,
+        /// but the WaveDirector polling loop watching for arrival was left
+        /// behind on the now-destroyed old Player object, so the region was
+        /// never cleared and no waves ever spawned. Only set while the run
+        /// is still in WaveState.WarpingToArena (i.e. the very first step of
+        /// a run, before anything has spawned yet) — snapshotted by
+        /// Player.SnapshotWaveRunForTransfer() at BeginRegionTransfer, read
+        /// back by Player.RestoreWaveRunFromMigration() from the new
+        /// Avatar's OnEnteredWorld once it's actually standing in the arena.
+        /// </summary>
+        public WaveRunIntent PendingWaveRun { get; set; }
+
         public MigrationData() { }
 
         public List<(ulong, ulong)> GetOrCreatePropertyList(ulong entityDbId)
@@ -82,6 +99,7 @@ namespace MHServerEmu.DatabaseAccess.Models
             PhantomIntents.Clear();
             Nemeses.Clear();
             PreferredPowers.Clear();
+            PendingWaveRun = null;
         }
     }
 
@@ -196,5 +214,40 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// the new region instance.
         /// </summary>
         public bool BypassCap;
+    }
+
+    /// <summary>
+    /// Mirrors Player.WaveDirector's StartWaveRun parameters using only
+    /// primitives (ulong/int/bool/float) to stay free of a GameData
+    /// reference from this DatabaseAccess project — same convention as
+    /// PhantomIntent.
+    /// </summary>
+    public sealed class WaveRunIntent
+    {
+        public List<WaveDefIntent> Waves { get; } = new();
+        public int IntermissionMs;
+        public ulong ArenaRegionRef;
+        public bool ClearArena;
+        public bool Loop;
+        public float CountScalePerWave;
+        public int LevelBumpPerWave;
+        public int RewardMode;
+        public ulong RewardLootTableRef;
+    }
+
+    public sealed class WaveDefIntent
+    {
+        public List<WaveEntryIntent> Entries { get; } = new();
+        public int? IntermissionMsOverride;
+    }
+
+    public sealed class WaveEntryIntent
+    {
+        public ulong AgentRef;
+        public ulong HeroRef;
+        public bool IsEnemyPhantom;
+        public int Count;
+        public int Level;
+        public int Rank;
     }
 }

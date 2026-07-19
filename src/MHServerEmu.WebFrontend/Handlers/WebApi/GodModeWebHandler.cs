@@ -11,6 +11,14 @@
 //   applied, so a single slider drag doesn't clobber the other toggles.
 //   Response echoes a read-back snapshot so the UI can always resync to what
 //   the server actually has, even if multiple clients touch it at once.
+//
+//   GET /webapi/playeradmin/godmode/status?player=...
+//   Read-only snapshot, no writes — lets the app show a persistent
+//   "God Mode active" indicator without the operator needing to remember
+//   it's on. These properties have no auto-expiration (confirmed: a real
+//   Property write, not a timed Condition), so a toggle left on from an
+//   earlier session silently persists across zone changes/logout until
+//   explicitly reset — this endpoint is what makes that state visible.
 
 using System;
 using System.Collections.Generic;
@@ -151,6 +159,57 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 {
                     Ok = true,
                     Message = changes.Count > 0 ? string.Join(", ", changes) : "no changes",
+                    Snapshot = new
+                    {
+                        invulnerable = snapInvuln,
+                        noEnduranceCosts = snapNoEnd,
+                        noCooldowns = snapNoCd,
+                        damageMult = snapDamageMult,
+                        speedMult = snapSpeedMult,
+                    },
+                };
+            });
+
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    public class GodModeStatusWebHandler : WebHandler
+    {
+        protected override async Task Get(WebRequestContext context)
+        {
+            string playerName = PhantomsWebUtil.QueryParam(context, "player");
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                Avatar avatar = p.CurrentAvatar;
+                if (avatar == null || avatar.IsInWorld == false)
+                    return new { Ok = false, Error = "no avatar in world" };
+
+                var props = avatar.Properties;
+                bool snapInvuln = props[PropertyEnum.Invulnerable];
+                bool snapNoEnd = props[PropertyEnum.NoEnduranceCosts, (int)ManaType.TypeAll];
+                float cdPct = props[PropertyEnum.CooldownModifierPctGlobal];
+                bool snapNoCd = cdPct <= -0.99f;
+                float dmgPct = props[PropertyEnum.DamagePctBonus];
+                float snapDamageMult = 1.0f + (dmgPct / 100.0f);
+                float spdOverride = props[PropertyEnum.MovementSpeedOverride];
+                float baseSp = avatar.Locomotor?.DefaultRunSpeed ?? 400.0f;
+                float snapSpeedMult = spdOverride > 0f && baseSp > 0f ? spdOverride / baseSp : 1.0f;
+
+                bool anyActive = snapInvuln || snapNoEnd || snapNoCd || snapDamageMult > 1.01f || snapSpeedMult > 1.01f;
+
+                return new
+                {
+                    Ok = true,
+                    Player = p.GetName(),
+                    Active = anyActive,
                     Snapshot = new
                     {
                         invulnerable = snapInvuln,

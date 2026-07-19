@@ -245,6 +245,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                                 if (el.TryGetProperty("enemyPhantom", out var ep)) entry.IsEnemyPhantom = ep.GetBoolean();
                                 if (el.TryGetProperty("count", out var cn)) entry.Count = cn.GetInt32();
                                 if (el.TryGetProperty("level", out var lv)) entry.Level = lv.GetInt32();
+                                if (el.TryGetProperty("rank", out var rk)) entry.Rank = rk.GetInt32();
                                 if (entry.AgentRef != 0 || entry.IsEnemyPhantom)
                                     wave.Entries.Add(entry);
                             }
@@ -442,6 +443,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                                     if (el.TryGetProperty("enemyPhantom", out var ep)) entry.IsEnemyPhantom = ep.GetBoolean();
                                     if (el.TryGetProperty("count", out var cn)) entry.Count = cn.GetInt32();
                                     if (el.TryGetProperty("level", out var lv)) entry.Level = lv.GetInt32();
+                                    if (el.TryGetProperty("rank", out var rk)) entry.Rank = rk.GetInt32();
                                     if (entry.AgentRef != 0 || entry.IsEnemyPhantom)
                                         wave.Entries.Add(entry);
                                 }

@@ -7049,6 +7049,12 @@ namespace MHServerEmu.Games.Entities.Avatars
             // region so the phantoms come along for the ride.
             try { player?.RestorePhantomsFromMigration(this); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] RestorePhantomsFromMigration threw: {ex.Message}"); }
 
+            // Same idea for a Wave Director run that was mid-warp to this
+            // arena when the cross-region transfer destroyed the old Game
+            // instance — see Player.WaveDirector.cs's
+            // RestoreWaveRunFromMigration for the full story.
+            try { player?.RestoreWaveRunFromMigration(this); } catch (Exception ex) { PhantomLogger.Warn($"[WaveDirector] RestoreWaveRunFromMigration threw: {ex.Message}"); }
+
             // Default squad: fires once per login session (no-op on every
             // subsequent region hop / hero swap — see the guard flag in
             // Player.TryAutoSpawnDefaultSquad). Runs after the migration

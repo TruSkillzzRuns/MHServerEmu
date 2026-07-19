@@ -36,37 +36,51 @@ namespace MHServerEmu.Games.GameData.PatchManager
             Description = description;
             Value = value;
 
+            ParsePath(path, out string clearPath, out string fieldName, out bool arrayValue, out int arrayIndex);
+            СlearPath = clearPath;
+            FieldName = fieldName;
+            ArrayValue = arrayValue;
+            ArrayIndex = arrayIndex;
+
+            Patched = false;
+        }
+
+        /// <summary>
+        /// Splits a dotted field path (optionally with a trailing "[index]" or "[]" append marker) into its
+        /// parent path, field name, and array-index parts. Shared with <see cref="RuntimePrototypeEditor"/> so
+        /// the runtime field editor's wire format stays identical to this patch-entry format.
+        /// </summary>
+        public static void ParsePath(string path, out string clearPath, out string fieldName, out bool isArray, out int arrayIndex)
+        {
             int lastDotIndex = path.LastIndexOf('.');
             if (lastDotIndex == -1)
             {
-                СlearPath = string.Empty;
-                FieldName = path;
+                clearPath = string.Empty;
+                fieldName = path;
             }
             else
             {
-                СlearPath = path[..lastDotIndex];
-                FieldName = path[(lastDotIndex + 1)..];
+                clearPath = path[..lastDotIndex];
+                fieldName = path[(lastDotIndex + 1)..];
             }
 
-            ArrayIndex = -1;
-            ArrayValue = false;
-            int index = FieldName.LastIndexOf('[');
+            arrayIndex = -1;
+            isArray = false;
+            int index = fieldName.LastIndexOf('[');
             if (index != -1)
             {
-                ArrayValue = true;
+                isArray = true;
 
-                int endIndex = FieldName.LastIndexOf(']');
+                int endIndex = fieldName.LastIndexOf(']');
                 if (endIndex > index)
                 {
-                    string indexStr = FieldName.Substring(index + 1, endIndex - index - 1);
+                    string indexStr = fieldName.Substring(index + 1, endIndex - index - 1);
                     if (int.TryParse(indexStr, out int parsedIndex))
-                        ArrayIndex = parsedIndex;
+                        arrayIndex = parsedIndex;
                 }
 
-                FieldName = FieldName[..index];
+                fieldName = fieldName[..index];
             }
-
-            Patched = false;
         }
     }
 

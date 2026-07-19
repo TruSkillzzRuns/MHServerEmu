@@ -379,6 +379,13 @@ namespace MHServerEmu.Games.Network
             try { Player.SnapshotPhantomsForTransfer(); }
             catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotPhantomsForTransfer threw: {ex.Message}"); }
 
+            // Same idea for a Wave Director run still warping to its arena —
+            // see Player.WaveDirector.cs's SnapshotWaveRunForTransfer for why
+            // this was needed (the polling loop watching for arrival was
+            // being destroyed along with this Game instance mid-warp).
+            try { Player.SnapshotWaveRunForTransfer(); }
+            catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotWaveRunForTransfer threw: {ex.Message}"); }
+
             Player.CurrentAvatar.ExitWorld();
 
             // We are likely to be on our way to another game instance, so don't save player data just yet.

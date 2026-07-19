@@ -56,6 +56,29 @@ namespace MHServerEmu.Games.GameData.LiveTuning
             return @event;
         }
 
+        /// <summary>Every event name the scheduler knows about (from Events.json + override), regardless of whether it's active today.</summary>
+        public IEnumerable<string> GetKnownEventNames() => _events.Keys;
+
+        /// <summary>
+        /// Read-only variant of the per-rule loop in <see cref="GetLiveTuningSettings"/> — evaluates which
+        /// events are active right now without touching daily gifts, mission settings, or the event message
+        /// text. Used by the OmegaDev2 "Live Events" tool to show what's active before deciding to force one on.
+        /// </summary>
+        public List<string> GetActiveEventNamesForToday()
+        {
+            List<string> names = new();
+            if (_rules.Count == 0)
+                return names;
+
+            DateTime now = GetCurrentDateTime();
+            SortedDictionary<string, int> activeEvents = new();
+            foreach (LiveTuningEventRule rule in _rules)
+                rule.GetActiveEvents(now, activeEvents);
+
+            names.AddRange(activeEvents.Keys);
+            return names;
+        }
+
         public void GetLiveTuningSettings(List<NetStructLiveTuningSettingProtoEnumValue> settings)
         {
             if (_rules.Count == 0)

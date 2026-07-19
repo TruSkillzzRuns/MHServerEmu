@@ -138,8 +138,8 @@ namespace MHServerEmu.Games.Entities.Avatars
         // Ambush phantoms (Rogue Encounter spawns and tracked nemeses — NOT
         // the manual Enemy Phantoms farm-tool spawns, which stay instantly
         // aggressive by design) get a stealthier profile: spawn well clear of
-        // the player instead of on top of them, then patrol randomly near
-        // their own spawn point until a player actually comes within
+        // the player instead of on top of them, then actively search for one
+        // (see UpdateNemesisPatrol) until a player actually comes within
         // detection range of THEM — see the ambush branch in
         // SpawnPhantomHeroCore's spawn-position block and UpdatePhantomHunt's
         // enemyMode candidate filter / no-candidates fallback.
@@ -147,11 +147,20 @@ namespace MHServerEmu.Games.Entities.Avatars
         private const float NemesisSpawnMaxRadius = 1600f;
         private const float NemesisDetectRange = 1800f;
         private const float NemesisDetectRangeSq = NemesisDetectRange * NemesisDetectRange;
-        // Patrol wander radius around the phantom's own spawn anchor (not the
-        // caller) — keeps it roaming its own territory instead of drifting
-        // across the map or beelining back to the player like the old leash did.
+        // Search-point wander radius around the phantom's current search
+        // anchor — keeps each leg of the search looking organic (not a
+        // beeline) instead of walking a laser-straight line toward the caller.
         private const float NemesisPatrolRadius = 600f;
         private const long NemesisPatrolRepickMs = 10_000; // re-roll a random patrol point at least this often
+        // "Hunting" instead of static patrolling: each repick, the search
+        // anchor itself advances up to this far toward the caller's current
+        // position (never past it) before a random point is picked around
+        // it. Confirmed live: pure random wander near the fixed spawn point
+        // read as inert/stuck, especially when spawn landed somewhere
+        // secluded — this makes them close in over time like they're
+        // actually searching, while UpdatePhantomHunt's detect-range gate
+        // still governs when a real chase/fight actually starts.
+        private const float NemesisHuntAdvanceDist = 500f;
         private static readonly HashSet<ulong> s_enemyPhantomAmbush = new();
         private static readonly Dictionary<ulong, Vector3> s_nemesisSpawnAnchor = new();
         private static readonly Dictionary<ulong, (Vector3 target, long nextPickMs)> s_nemesisPatrol = new();
@@ -204,24 +213,65 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // same maintenance path (level sync, downed detection,
                 // leash, party sync).
                 Agent phantom = Game.EntityManager.GetEntity<Agent>(id);
-                if (phantom == null || phantom.IsDestroyed || phantom.IsInWorld == false)
+                if (phantom == null || phantom.IsDestroyed)
                 {
                     // Team-up respawn hook: friendly team-up phantoms that
                     // died get re-queued for spawn 90s later so the squad
-                    // heals itself instead of shrinking permanently. Avatar
-                    // phantoms use the downed/revive flow instead and never
-                    // enter this branch unless truly destroyed.
+                    // heals itself instead of shrinking permanently.
+                    var goneDescriptor = host.GetPhantomDescriptor(id);
+                    if (goneDescriptor.AvatarRef != 0
+                        && ((PrototypeId)goneDescriptor.AvatarRef).As<AgentTeamUpPrototype>() != null)
+                    {
+                        long dueAt = (Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond) + TeamUpRespawnDelayMs;
+                        host.EnqueueTeamUpRespawn(goneDescriptor, dueAt);
+                        PhantomLogger.Info($"[PhantomHero:TeamUp:Respawn] queued team-up '{((PrototypeId)goneDescriptor.AvatarRef).GetName()}' respawn in {TeamUpRespawnDelayMs / 1000}s");
+                    }
+                    (stale ??= new List<ulong>()).Add(id);
+                    s_phantomReattachGraceSinceMs.Remove(id);
+                    continue;
+                }
+
+                if (phantom.IsInWorld == false)
+                {
                     var descriptor = host.GetPhantomDescriptor(id);
-                    if (descriptor.AvatarRef != 0
-                        && ((PrototypeId)descriptor.AvatarRef).As<AgentTeamUpPrototype>() != null)
+                    bool isTeamUp = descriptor.AvatarRef != 0
+                        && ((PrototypeId)descriptor.AvatarRef).As<AgentTeamUpPrototype>() != null;
+
+                    // Team-ups have no persistent revive flow — keep their
+                    // existing immediate-requeue behavior unchanged.
+                    if (isTeamUp)
                     {
                         long dueAt = (Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond) + TeamUpRespawnDelayMs;
                         host.EnqueueTeamUpRespawn(descriptor, dueAt);
                         PhantomLogger.Info($"[PhantomHero:TeamUp:Respawn] queued team-up '{((PrototypeId)descriptor.AvatarRef).GetName()}' respawn in {TeamUpRespawnDelayMs / 1000}s");
+                        (stale ??= new List<ulong>()).Add(id);
+                        s_phantomReattachGraceSinceMs.Remove(id);
+                        continue;
                     }
+
+                    // Avatar/nemesis phantoms: this tick runs every 500ms, far
+                    // more often than ReattachPhantomTick's once-per-world-
+                    // enter check, and used to instant-unregister (silently
+                    // dropping the phantom from the squad, no revive UI) on
+                    // any transient not-in-world tick — confirmed live: a
+                    // player lost 2 of 4 friendly phantoms mid-fight with no
+                    // death shown. Give it the same grace window instead.
+                    long nowMsGrace = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+                    if (s_phantomReattachGraceSinceMs.TryGetValue(id, out long graceSince) == false)
+                    {
+                        s_phantomReattachGraceSinceMs[id] = nowMsGrace;
+                        continue; // skip this tick's Hunt/leash work, but don't prune yet
+                    }
+                    if (nowMsGrace - graceSince < PhantomReattachGraceMs)
+                        continue;
+
+                    // Genuinely stuck out of world past the grace window.
                     (stale ??= new List<ulong>()).Add(id);
+                    s_phantomReattachGraceSinceMs.Remove(id);
                     continue;
                 }
+
+                s_phantomReattachGraceSinceMs.Remove(id);
 
                 // Level sync: if the human has levelled since the last tick,
                 // bring phantoms up to match so a lvl-15 hero doesn't drag
@@ -471,13 +521,17 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static readonly Dictionary<ulong, (int rank, int level)> s_enemyPhantomRankLevel = new();
 
         /// <summary>
-        /// Rogue/nemesis ambush phantoms patrol randomly near their own spawn
-        /// anchor instead of leashing to the caller. Picks a new random point
-        /// within NemesisPatrolRadius of the anchor whenever the phantom
-        /// arrives at its current target or the repick timer elapses — this
-        /// is the "wander searching for a player" half of the ambush
-        /// behavior; UpdatePhantomHunt's detect-range gate is what breaks
-        /// them out of patrol and into a real chase once someone gets close.
+        /// Rogue/nemesis ambush phantoms actively hunt instead of standing
+        /// around or leashing to the caller: each repick, the phantom's
+        /// search anchor advances up to NemesisHuntAdvanceDist toward the
+        /// caller's current position (never past it), then a random point
+        /// within NemesisPatrolRadius of that (now-closer) anchor is picked
+        /// and validated against the navmesh before committing to it — a
+        /// live nemesis got stuck spawned onto an unreachable ledge before
+        /// this validation existed. Repicks whenever the phantom arrives at
+        /// its current target or the repick timer elapses.
+        /// UpdatePhantomHunt's detect-range gate is what breaks them out of
+        /// the hunt and into a real chase/fight once someone gets close.
         /// </summary>
         private void UpdateNemesisPatrol(Agent phantom, Region region, MHServerEmu.Core.System.Random.GRandom rng)
         {
@@ -485,7 +539,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (loco == null) return;
 
             if (!s_nemesisSpawnAnchor.TryGetValue(phantom.Id, out Vector3 anchor))
-                anchor = phantom.RegionLocation.Position; // no anchor recorded (e.g. migrated) — patrol around here instead
+                anchor = phantom.RegionLocation.Position; // no anchor recorded (e.g. migrated) — hunt from here instead
 
             long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
             Vector3 phantomPos = phantom.RegionLocation.Position;
@@ -499,10 +553,45 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
             if (needNewTarget == false) return;
 
-            float ang = (float)(rng.NextDouble() * Math.PI * 2.0);
-            float radius = (float)(rng.NextDouble() * NemesisPatrolRadius);
-            Vector3 candidate = anchor + new Vector3((float)Math.Cos(ang) * radius, (float)Math.Sin(ang) * radius, 0f);
-            Vector3 patrolTarget = RegionLocation.ProjectToFloor(region, candidate);
+            // Advance the search anchor toward the caller so the hunt actually
+            // closes distance over time instead of looping the same small
+            // area forever. Clamped so a single repick never overshoots past
+            // the caller's own position (that would be indistinguishable
+            // from the old leash behavior this replaced).
+            Vector3 callerPos = RegionLocation.Position;
+            float distToCallerSq = Vector3.DistanceSquared2D(anchor, callerPos);
+            if (distToCallerSq > NemesisHuntAdvanceDist * NemesisHuntAdvanceDist)
+            {
+                Vector3 toCaller = callerPos - anchor;
+                float distToCaller = MathF.Sqrt(distToCallerSq);
+                anchor += toCaller * (NemesisHuntAdvanceDist / distToCaller);
+            }
+            else
+            {
+                anchor = callerPos;
+            }
+            s_nemesisSpawnAnchor[phantom.Id] = anchor;
+
+            var walkCheck = new DefaultContainsPathFlagsCheck(PathFlags.Walk);
+            float navRadius = MathF.Max(20f, phantom.Bounds.Radius);
+            Vector3 patrolTarget = anchor;
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                float ang = (float)(rng.NextDouble() * Math.PI * 2.0);
+                float radius = (float)(rng.NextDouble() * NemesisPatrolRadius);
+                Vector3 candidate = anchor + new Vector3((float)Math.Cos(ang) * radius, (float)Math.Sin(ang) * radius, 0f);
+                Vector3 floored = RegionLocation.ProjectToFloor(region, candidate);
+                if (region.NaviMesh.Contains(floored, navRadius, walkCheck))
+                {
+                    patrolTarget = floored;
+                    break;
+                }
+                // Last attempt: fall back to the anchor itself rather than an
+                // unvalidated point — the anchor was reachable when it was
+                // last used as a target, or is the caller's own position.
+                if (attempt == 5)
+                    patrolTarget = RegionLocation.ProjectToFloor(region, anchor);
+            }
             s_nemesisPatrol[phantom.Id] = (patrolTarget, nowMs + NemesisPatrolRepickMs);
 
             var opts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(400) };
@@ -816,12 +905,18 @@ namespace MHServerEmu.Games.Entities.Avatars
             foreach (WorldEntity we in region.IterateEntitiesInVolume(sweepSphere, ctx))
             {
                 if (we == null || we.Id == phantom.Id) continue;
-                // Friendly phantoms never target their caller; enemy phantoms
-                // consider the caller a first-class target.
-                if (enemyMode == false && we.Id == Id) continue;
                 if (we.IsDead || we.IsInWorld == false) continue;
 
-                if (enemyMode)
+                if (enemyMode == false && we.Id == Id)
+                {
+                    // Friendly phantom's own caller — always a valid support
+                    // target. TryPhantomAttack's per-power filter only lets a
+                    // TargetsFriendly power actually fire here (see
+                    // GetTargetingReach() check below), so this can never be
+                    // used to land an offensive power on the player — only
+                    // genuine buff/heal-type powers get selected.
+                }
+                else if (enemyMode)
                 {
                     // Enemy phantoms only hunt player-side avatars — the
                     // caller (this human), other real players in the region,
@@ -1141,6 +1236,20 @@ namespace MHServerEmu.Games.Entities.Avatars
         // first alive tick after a revive so the alive branch can detect
         // the transition and force a client-side pose refresh.
         private static readonly Dictionary<ulong, long> s_phantomDownedSinceMs = new();
+
+        // Grace window (ms) for ReattachPhantomTick's same-region
+        // IsInWorld==false check — a phantom whose leash/teleport catch-up
+        // hasn't landed yet at the exact instant the caller re-enters world
+        // (scripted boss-arena entrance, mission-portal cutscene, any local
+        // same-region transition) used to get force-destroyed immediately,
+        // with no revive and no requeue — confirmed live: a player lost 2 of
+        // 4 friendly phantoms during a subway boss fight with no death UI.
+        // Only destroy if the phantom has been out-of-world in the SAME
+        // region for longer than this; a real cross-region divergence
+        // (phantom.Region != myRegion) is unambiguous and still destroys
+        // immediately, same as before.
+        private const long PhantomReattachGraceMs = 8_000;
+        private static readonly Dictionary<ulong, long> s_phantomReattachGraceSinceMs = new();
 
         // Per-phantom next-attack timestamp (ms). Enforces at least ~800ms
         // between casts so the tick doesn't spam-fire.
@@ -2253,6 +2362,23 @@ namespace MHServerEmu.Games.Entities.Avatars
             return applied;
         }
 
+        // Floor for ScaleHealthMultForLevel — at level 1, an ambush phantom
+        // gets this fraction of its full rank-tuned HealthMaxMult; ramps
+        // (quadratically, same curve as ApplyPhantomDamageScaling) up to
+        // 100% by level 60. Keeps rank still meaningful at low level (a
+        // rank 5 nemesis is still tankier than rank 1 at any given level)
+        // without being effectively unkillable relative to a low-level
+        // hero's real damage output.
+        private const float NemesisHealthMultLevelFloorFactor = 0.35f;
+
+        private static float ScaleHealthMultForLevel(float fullMult, int level)
+        {
+            float t = Math.Clamp((level - 1) / 59f, 0f, 1f);
+            t *= t;
+            float floorMult = fullMult * NemesisHealthMultLevelFloorFactor;
+            return floorMult + t * (fullMult - floorMult);
+        }
+
         private static void ApplyPhantomDamageScaling(Agent phantom, int level, bool enemy = false)
         {
             float t = Math.Clamp((level - 1) / 59f, 0f, 1f);
@@ -2389,6 +2515,40 @@ namespace MHServerEmu.Games.Entities.Avatars
                     if (pp.Activation == PowerActivationType.Passive) continue;
                     if (pp.IsToggled) continue;
                     if (pp.IsTravelPower) continue;
+
+                    // A power may only be picked here if it's actually meant
+                    // for the relationship it would be used against. Without
+                    // this, support/buff powers (KittyPryde/BuddySystem,
+                    // SheHulk/LawyerUp, etc.) could make it into the
+                    // candidate pool and get their hard target set to the
+                    // real player when a phantom is hostile-aligned
+                    // (rogue/nemesis) — normally EvalCanTrigger would catch a
+                    // misfire like that, but Power.CanTrigger bypasses
+                    // EvalCanTrigger entirely for every phantom-owned power
+                    // (see Power.Validation.cs), so this is the only
+                    // remaining gate. TargetsEnemy/TargetsFriendly are the
+                    // same fields Power.Validation.cs's AI-specific target
+                    // check already treats as authoritative.
+                    //
+                    // Friendly (party) phantoms CAN target the real player —
+                    // that's intentional, so their squadmate can buff/heal
+                    // them — but only with a power flagged TargetsFriendly,
+                    // never one that's only meant to hit hostiles. Hostile
+                    // (rogue/nemesis) phantoms targeting the player must use
+                    // a TargetsEnemy power, which excludes every buff/support
+                    // power by definition — this is what stops enemy
+                    // phantoms from ever landing a "buff" on the player.
+                    var targetingReach = pp.GetTargetingReach();
+                    if (targetingReach == null) continue;
+                    bool targetIsHostileToPhantom = phantom.IsHostileTo(target);
+                    if (targetIsHostileToPhantom)
+                    {
+                        if (targetingReach.TargetsEnemy == false) continue;
+                    }
+                    else
+                    {
+                        if (targetingReach.TargetsFriendly == false) continue;
+                    }
 
                     // GetRange() reporting <= 0 does NOT mean "unlimited" —
                     // it means this power has no genuine ranged-targeting
@@ -3011,7 +3171,9 @@ namespace MHServerEmu.Games.Entities.Avatars
                 float hpMult = nemesisRank > 0
                     ? Player.NemesisHealthMultForRank(nemesisRank) * (1f + Player.NemesisEscapeHealthBonusPerEscape * nemesisEscapeCount)
                     : enemyHpBase;
-                teamUp.Properties[PropertyEnum.HealthMaxMult] = hpMult;
+                // Same low-level tankiness fix as avatar-type ambush
+                // phantoms — see ScaleHealthMultForLevel.
+                teamUp.Properties[PropertyEnum.HealthMaxMult] = ScaleHealthMultForLevel(hpMult, effectiveLevel);
                 try
                 {
                     var globals = GameDatabase.PopulationGlobalsPrototype;
@@ -3307,23 +3469,52 @@ namespace MHServerEmu.Games.Entities.Avatars
             const float PhantomMinSpacing = 130f;              // ≈ 1.4 avatar widths
             const float PhantomMinSpacingSq = PhantomMinSpacing * PhantomMinSpacing;
             Player spacingHost = PhantomHost;
+            var walkCheck = new DefaultContainsPathFlagsCheck(PathFlags.Walk);
+            float navRadius = MathF.Max(20f, phantomAvatar.Bounds.Radius);
+            Vector3 bestWalkableCandidate = origin;
+            bool foundWalkableCandidate = false;
+            // Ambush spawns cover a much bigger radius (900-1600u) than the
+            // old close-in 150-320u range, which makes landing off-navmesh
+            // (a narrow catwalk, a railed-off ledge, a disconnected platform)
+            // far more likely — confirmed live: a nemesis spawned onto a dead
+            // -end walkway and could never leave it. Reject candidates the
+            // navmesh doesn't consider walkable instead of trusting whatever
+            // ProjectToFloor happens to land on.
             for (int attempt = 0; attempt < 8; attempt++)
             {
                 float ang = (float)(rng.NextDouble() * Math.PI * 2.0);
                 float radius = minRadius + (float)(rng.NextDouble() * (maxRadius - minRadius));
                 candidate = origin + new Vector3((float)Math.Cos(ang) * radius, (float)Math.Sin(ang) * radius, 0f);
-                if (spacingHost == null || spacingHost.PhantomHeroCount == 0) break;
+                Vector3 floored = RegionLocation.ProjectToFloor(region, candidate);
+
+                bool isWalkable = region.NaviMesh.Contains(floored, navRadius, walkCheck);
+                if (isWalkable && foundWalkableCandidate == false)
+                {
+                    bestWalkableCandidate = floored;
+                    foundWalkableCandidate = true;
+                }
 
                 bool tooClose = false;
-                for (int i = 0; i < spacingHost.PhantomAvatarIds.Count; i++)
+                if (spacingHost != null && spacingHost.PhantomHeroCount > 0)
                 {
-                    Avatar existing = Game.EntityManager.GetEntity<Avatar>(spacingHost.PhantomAvatarIds[i]);
-                    if (existing == null || existing.IsInWorld == false) continue;
-                    if (Vector3.DistanceSquared2D(existing.RegionLocation.Position, candidate) < PhantomMinSpacingSq) { tooClose = true; break; }
+                    for (int i = 0; i < spacingHost.PhantomAvatarIds.Count; i++)
+                    {
+                        Avatar existing = Game.EntityManager.GetEntity<Avatar>(spacingHost.PhantomAvatarIds[i]);
+                        if (existing == null || existing.IsInWorld == false) continue;
+                        if (Vector3.DistanceSquared2D(existing.RegionLocation.Position, floored) < PhantomMinSpacingSq) { tooClose = true; break; }
+                    }
                 }
-                if (tooClose == false) break;
-                // On the last attempt, accept whatever we've got — better a
-                // slight overlap than no spawn.
+
+                if (isWalkable && tooClose == false)
+                {
+                    candidate = floored;
+                    break;
+                }
+                // On the last attempt, fall back to the best walkable spot found
+                // (even if it clipped spacing), or the caller's own position —
+                // never an off-navmesh candidate — rather than no spawn at all.
+                if (attempt == 7)
+                    candidate = foundWalkableCandidate ? bestWalkableCandidate : origin;
             }
             Vector3 spawnPos = RegionLocation.ProjectToFloor(region, candidate);
             Orientation spawnOri = RegionLocation.Orientation;
@@ -3427,9 +3618,20 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // (not a factor on top of the enemy base) — see the
                 // per-rank table in Player.NemesisHealthMultForRank. Fresh
                 // rogues use the enemy base (3.0×); rank N replaces it.
-                phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = nemesisRank > 0
+                //
+                // These multipliers (8×-32×) were sized for a well-geared
+                // level 60 — confirmed live: a level-15 rogue with the flat
+                // 8× base felt like it "barely took damage," since a
+                // level-15 hero's real damage output is nowhere near what
+                // the multiplier assumes. ScaleHealthMultForLevel ramps the
+                // multiplier down at low levels (35% of the full value at
+                // level 1) up to the full intended tankiness at level 60,
+                // using the same quadratic curve ApplyPhantomDamageScaling
+                // already uses for the matching damage-side scaling.
+                float ambushHpBase = nemesisRank > 0
                     ? Player.NemesisHealthMultForRank(nemesisRank) * (1f + Player.NemesisEscapeHealthBonusPerEscape * nemesisEscapeCount)
                     : EnemyPhantomHealthMult;
+                phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = ScaleHealthMultForLevel(ambushHpBase, effectiveLevel);
                 phantomAvatar.ResetResources(false);
 
                 // Nameplate rank tag — the client uses PropertyEnum.Rank to
@@ -3682,7 +3884,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // clears its own list, so we need the ids before it runs.
             var ids = new List<ulong>(host.PhantomAvatarIds);
             int removed = host.PurgePhantoms();
-            foreach (ulong id in ids) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id); s_phantomNextDiagMs.Remove(id); s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id); s_phantomDownedSinceMs.Remove(id); PruneBlacklistFor(id); PrunePowerBlacklistFor(id); }
+            foreach (ulong id in ids) { s_phantomAttackLogged.Remove(id); s_phantomLocoLogged.Remove(id); s_phantomNextAttackMs.Remove(id); s_phantomStuckTrack.Remove(id); s_phantomNextDiagMs.Remove(id); s_phantomNextUltimateMs.Remove(id); s_phantomActivePowerTrack.Remove(id); s_phantomDownedSinceMs.Remove(id); s_phantomReattachGraceSinceMs.Remove(id); PruneBlacklistFor(id); PrunePowerBlacklistFor(id); }
             return removed;
         }
 
@@ -3712,6 +3914,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (mgr == null) return;
 
             var stale = new List<ulong>();
+            long nowMsReattach = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
             int alive = 0;
             for (int i = 0; i < host.PhantomAvatarIds.Count; i++)
             {
@@ -3724,10 +3927,37 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // whether they were actually fine.
                 Agent phantom = mgr.GetEntity<Agent>(id);
                 if (phantom == null || phantom.IsDestroyed) { stale.Add(id); continue; }
-                // Different region OR not in world = can't be driven from
-                // here; destroy so the count is honest and !phantom clear
-                // stays accurate.
-                if (phantom.IsInWorld == false || phantom.Region != myRegion) { stale.Add(id); continue; }
+
+                // Different region = unambiguous, can't be driven from here —
+                // destroy immediately so the count is honest and !phantom
+                // clear stays accurate.
+                if (phantom.Region != myRegion) { stale.Add(id); continue; }
+
+                // Same region but momentarily not in world — give it a grace
+                // window instead of instant-destroying. A scripted local
+                // transition (boss-arena entrance, mission-portal cutscene)
+                // can leave a phantom transiently out-of-world for a moment
+                // while its own leash/teleport catch-up hasn't landed yet;
+                // it's still the same phantom, not actually gone.
+                if (phantom.IsInWorld == false)
+                {
+                    if (s_phantomReattachGraceSinceMs.TryGetValue(id, out long graceSince) == false)
+                    {
+                        s_phantomReattachGraceSinceMs[id] = nowMsReattach;
+                        alive++; // don't prune on the first sighting — give it a chance to catch up
+                        continue;
+                    }
+                    if (nowMsReattach - graceSince < PhantomReattachGraceMs)
+                    {
+                        alive++;
+                        continue;
+                    }
+                    // Genuinely stuck out-of-world past the grace window.
+                    stale.Add(id);
+                    continue;
+                }
+
+                s_phantomReattachGraceSinceMs.Remove(id);
                 alive++;
             }
 
@@ -3766,6 +3996,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                     s_phantomNextUltimateMs.Remove(id);
                     s_phantomActivePowerTrack.Remove(id);
                     s_phantomDownedSinceMs.Remove(id);
+                    s_phantomReattachGraceSinceMs.Remove(id);
                     PruneBlacklistFor(id);
                     PrunePowerBlacklistFor(id);
                 }
