@@ -2710,8 +2710,17 @@ namespace MHServerEmu.Games.Entities.Avatars
 
                 // Log every failed activation so we can see WHY a cutscene boss
                 // rejects the phantom's power (Dormant/Unaffectable/etc). Log
-                // successes only once per (phantom, target) pair to avoid spam.
-                bool logThis = result != PowerUseResult.Success;
+                // successes only once per (phantom, target) pair to avoid spam
+                // — EXCEPT when the target is a real human player, where every
+                // successful hit is logged regardless of repeats. The "once
+                // per pair" suppression was hiding exactly the case under
+                // investigation: a phantom's FIRST successful hit on a player
+                // gets logged, but if it later lands a different (buff-type)
+                // power on the same player, that second success was silently
+                // dropped — making it impossible to confirm from logs alone
+                // whether a buff power ever actually connects.
+                bool targetIsRealPlayer = target is Avatar targetAv && targetAv.GetOwnerOfType<Player>()?.PlayerConnection != null;
+                bool logThis = result != PowerUseResult.Success || targetIsRealPlayer;
                 ulong key = phantom.Id ^ (target.Id * 0x9E3779B97F4A7C15UL);
                 if (!logThis && s_phantomAttackTargetLogged.Add(key)) logThis = true;
                 if (logThis)
@@ -2719,7 +2728,9 @@ namespace MHServerEmu.Games.Entities.Avatars
                     Power probePower = phantom.PowerCollection?.GetPower(chosenPower);
                     bool isValid = probePower != null && probePower.IsValidTarget(target);
                     string allianceRef = target.Alliance != null ? target.Alliance.DataRef.GetName() : "<null>";
-                    PhantomLogger.Info($"[PhantomHero:Attack] {phantom} → target={target} power={chosenPower.GetName()} result={result} isValidTarget={isValid} tgtDormant={target.IsDormant} tgtUntargetable={target.IsUntargetable} tgtUnaffectable={target.IsUnaffectable} tgtAffectedByPowers={target.IsAffectedByPowers()} tgtSim={target.IsSimulated} tgtInWorld={target.IsInWorld} tgtAlliance={allianceRef} phantomAlliance={(phantom.Alliance?.DataRef.GetName() ?? "<null>")}");
+                    var reach = probePower?.Prototype?.GetTargetingReach();
+                    string reachStr = reach == null ? "<null>" : $"TargetsEnemy={reach.TargetsEnemy} TargetsFriendly={reach.TargetsFriendly}";
+                    PhantomLogger.Info($"[PhantomHero:Attack] {phantom} → target={target} power={chosenPower.GetName()} result={result} isValidTarget={isValid} tgtDormant={target.IsDormant} tgtUntargetable={target.IsUntargetable} tgtUnaffectable={target.IsUnaffectable} tgtAffectedByPowers={target.IsAffectedByPowers()} tgtSim={target.IsSimulated} tgtInWorld={target.IsInWorld} tgtAlliance={allianceRef} phantomAlliance={(phantom.Alliance?.DataRef.GetName() ?? "<null>")} reach=[{reachStr}]");
                 }
                 return result;
             }
