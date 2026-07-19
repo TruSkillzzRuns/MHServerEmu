@@ -15,10 +15,32 @@
 //   GET /webapi/playeradmin/godmode/status?player=...
 //   Read-only snapshot, no writes — lets the app show a persistent
 //   "God Mode active" indicator without the operator needing to remember
-//   it's on. These properties have no auto-expiration (confirmed: a real
-//   Property write, not a timed Condition), so a toggle left on from an
-//   earlier session silently persists across zone changes/logout until
-//   explicitly reset — this endpoint is what makes that state visible.
+//   it's on.
+//
+// IMPORTANT — DamagePctBonus and MovementSpeedOverride/MovementSpeedRate are
+// NOT God-Mode-exclusive properties. DamagePctBonus is the same aggregate
+// stat real gear/passives contribute to (PowerPayload.cs sums
+// power.Properties + ownerProperties for it directly in damage calc), and
+// MovementSpeedRate/Override are the same properties real Sprint/dash/travel
+// powers drive (Locomotor.cs). The original implementation overwrote these
+// outright, which (a) destroyed whatever real bonus the player's own gear
+// was contributing the moment God Mode touched them, including on Reset
+// (which hard-set DamagePctBonus to exactly 0, erasing real gear bonus), and
+// (b) made the "is God Mode active" check unreliable, since a player's own
+// real gear-driven DamagePctBonus can naturally exceed the "active" threshold
+// on its own (confirmed live 2026-07-19: the nav-pane banner showed ACTIVE on
+// a fresh app launch with every God Mode toggle genuinely off, because the
+// player's real equipped gear pushed DamagePctBonus above the threshold).
+//
+// Fixed via delta tracking: GodModeIntentTracker remembers exactly how much
+// WE (God Mode) most recently added to each affected property, per avatar.
+// Every apply first subtracts our own previous contribution back out (to
+// recover whatever real/gear baseline is currently there), then adds the
+// newly requested contribution — so a real gear change happening independently
+// between two God Mode calls, or Reset, only ever removes what we introduced.
+// "Active" status is now read from the tracker's own recorded intent, not
+// from the shared properties, so real gear/mode state can never
+// false-positive the indicator.
 
 using System;
 using System.Collections.Generic;
@@ -42,6 +64,49 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         DamageMult = 1 << 3,
         SpeedMult = 1 << 4,
         All = Invulnerable | NoEnduranceCosts | NoCooldowns | DamageMult | SpeedMult,
+    }
+
+    /// <summary>
+    /// Per-avatar record of exactly what God Mode itself most recently
+    /// intended/applied, kept in memory (not persisted, not part of the
+    /// avatar's real PropertyCollection) so we never have to infer "is God
+    /// Mode on" from properties real gameplay content can also set.
+    /// </summary>
+    internal sealed class GodModeIntent
+    {
+        public bool Invulnerable;
+        public bool NoEnduranceCosts;
+        public bool NoCooldowns;
+        public float DamageMult = 1.0f;
+        public float SpeedMult = 1.0f;
+
+        // Exactly what we last wrote into the shared properties, so the next
+        // apply can subtract it back out before adding the new amount.
+        public float AppliedDamagePctDelta;
+        public float AppliedSpeedRateDelta;
+
+        public bool AnyActive =>
+            Invulnerable || NoEnduranceCosts || NoCooldowns || DamageMult > 1.01f || SpeedMult > 1.01f;
+    }
+
+    internal static class GodModeTracker
+    {
+        private static readonly Dictionary<ulong, GodModeIntent> s_intents = new();
+
+        public static GodModeIntent GetOrCreate(ulong avatarId)
+        {
+            if (s_intents.TryGetValue(avatarId, out GodModeIntent intent) == false)
+            {
+                intent = new GodModeIntent();
+                s_intents[avatarId] = intent;
+            }
+            return intent;
+        }
+
+        public static GodModeIntent Peek(ulong avatarId)
+        {
+            return s_intents.TryGetValue(avatarId, out GodModeIntent intent) ? intent : null;
+        }
     }
 
     public class GodModeWebHandler : WebHandler
@@ -91,18 +156,23 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
                 var props = avatar.Properties;
                 var changes = new List<string>();
+                GodModeIntent intent = GodModeTracker.GetOrCreate(avatar.Id);
 
                 if (flags.HasFlag(GodModeFlags.Invulnerable))
                 {
                     props[PropertyEnum.Invulnerable] = invulnerable;
+                    intent.Invulnerable = invulnerable;
                     changes.Add($"invuln={invulnerable}");
                 }
 
                 if (flags.HasFlag(GodModeFlags.NoEnduranceCosts))
                 {
+                    // Cheat-only property (no real content writer found) — plain
+                    // overwrite is safe here.
                     props[PropertyEnum.NoEnduranceCosts, (int)ManaType.Type1] = noEnduranceCosts;
                     props[PropertyEnum.NoEnduranceCosts, (int)ManaType.Type2] = noEnduranceCosts;
                     props[PropertyEnum.NoEnduranceCosts, (int)ManaType.TypeAll] = noEnduranceCosts;
+                    intent.NoEnduranceCosts = noEnduranceCosts;
                     changes.Add($"noEnduranceCosts={noEnduranceCosts}");
                 }
 
@@ -114,8 +184,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     // resulting duration is > 0). -0.999 keeps cooldowns just barely
                     // above zero so charges keep regenerating, but the wait is
                     // effectively instant — a true 0 would freeze charge regen.
+                    // Also cheat-only (no real content writer found) — plain
+                    // overwrite is safe here.
                     float pct = noCooldowns ? -0.999f : 0.0f;
                     props[PropertyEnum.CooldownModifierPctGlobal] = pct;
+                    intent.NoCooldowns = noCooldowns;
                     changes.Add($"noCooldowns={noCooldowns}");
                 }
 
@@ -123,9 +196,17 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 {
                     float wantMult = Math.Clamp(damageMult, 1.0f, 10000.0f);
                     // DamagePctBonus is a percent bonus, not a raw multiplier:
-                    // out = base * (1 + DamagePctBonus / 100).
-                    float dmg = Math.Max(0f, (wantMult - 1.0f) * 100.0f);
-                    props[PropertyEnum.DamagePctBonus] = dmg;
+                    // out = base * (1 + DamagePctBonus / 100). It's ALSO the
+                    // same property real gear/passives contribute to (see file
+                    // header) — apply as a delta on top of whatever's
+                    // currently there minus our own last contribution, so a
+                    // real gear bonus is preserved instead of clobbered.
+                    float newDelta = Math.Max(0f, (wantMult - 1.0f) * 100.0f);
+                    float current = props[PropertyEnum.DamagePctBonus];
+                    float baseline = current - intent.AppliedDamagePctDelta;
+                    props[PropertyEnum.DamagePctBonus] = baseline + newDelta;
+                    intent.AppliedDamagePctDelta = newDelta;
+                    intent.DamageMult = wantMult;
                     changes.Add($"damageMult={wantMult}x");
                 }
 
@@ -142,15 +223,19 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     // wasn't a real no-op: it left the override property set,
                     // which permanently locked out any power-driven speed
                     // stacking (Sprint, dash charges, travel powers) even
-                    // after God Mode was "reset" — confirmed live (2026-07-19,
-                    // movement powers stayed broken after Reset even though
-                    // the status readout showed speedMult=1x). At 1.0x we now
-                    // fully remove both properties so the Locomotor falls
-                    // back to its normal, power-stacking-aware code path.
+                    // after God Mode was "reset". At 1.0x we fully remove the
+                    // override so the Locomotor falls back to its normal,
+                    // power-stacking-aware code path.
+                    //
+                    // MovementSpeedRate is ALSO a property real Sprint/dash/
+                    // travel powers drive (Locomotor.cs) — same delta
+                    // treatment as DamagePctBonus so we don't clobber it.
                     if (Math.Abs(wantMult - 1.0f) < 0.001f)
                     {
                         props.RemovePropertyRange(PropertyEnum.MovementSpeedOverride);
-                        props.RemovePropertyRange(PropertyEnum.MovementSpeedRate);
+                        float currentRate = props[PropertyEnum.MovementSpeedRate];
+                        props[PropertyEnum.MovementSpeedRate] = currentRate - intent.AppliedSpeedRateDelta;
+                        intent.AppliedSpeedRateDelta = 0f;
                     }
                     else
                     {
@@ -158,25 +243,33 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         // Override gives an immediate speed bump; Rate survives the
                         // moment a power's Condition resets Override back to 0.
                         props[PropertyEnum.MovementSpeedOverride] = baseSpeed * wantMult;
-                        props[PropertyEnum.MovementSpeedRate] = wantMult;
+
+                        float newRateDelta = wantMult - 1.0f;
+                        float currentRate = props[PropertyEnum.MovementSpeedRate];
+                        float rateBaseline = currentRate - intent.AppliedSpeedRateDelta;
+                        props[PropertyEnum.MovementSpeedRate] = rateBaseline + newRateDelta;
+                        intent.AppliedSpeedRateDelta = newRateDelta;
                     }
+                    intent.SpeedMult = wantMult;
                     changes.Add($"speedMult={wantMult}x");
                 }
 
-                // Read back from the avatar itself so the snapshot always
-                // reflects what's actually live, not just what we intended.
+                if (changes.Count > 0)
+                    Logger.Info($"[GodMode] {p.GetName()}: {string.Join(", ", changes)}");
+
+                // Invulnerable/NoEnduranceCosts/NoCooldowns are read straight
+                // off the avatar (not the tracker) for the snapshot: unlike
+                // damage/speed they're either cheat-only properties (no real
+                // content ever legitimately sets NoEnduranceCosts or
+                // CooldownModifierPctGlobal) or, for Invulnerable, worth
+                // surfacing even if PvP mode set it — that's the original
+                // "catch a toggle left on from an earlier session, even
+                // across a server restart that wiped our in-memory tracker"
+                // behavior, which is still safe and valuable for these three.
                 bool snapInvuln = props[PropertyEnum.Invulnerable];
                 bool snapNoEnd = props[PropertyEnum.NoEnduranceCosts, (int)ManaType.TypeAll];
                 float cdPct = props[PropertyEnum.CooldownModifierPctGlobal];
                 bool snapNoCd = cdPct <= -0.99f;
-                float dmgPct = props[PropertyEnum.DamagePctBonus];
-                float snapDamageMult = 1.0f + (dmgPct / 100.0f);
-                float spdOverride = props[PropertyEnum.MovementSpeedOverride];
-                float baseSp = avatar.Locomotor?.DefaultRunSpeed ?? 400.0f;
-                float snapSpeedMult = spdOverride > 0f && baseSp > 0f ? spdOverride / baseSp : 1.0f;
-
-                if (changes.Count > 0)
-                    Logger.Info($"[GodMode] {p.GetName()}: {string.Join(", ", changes)}");
 
                 return new
                 {
@@ -187,8 +280,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         invulnerable = snapInvuln,
                         noEnduranceCosts = snapNoEnd,
                         noCooldowns = snapNoCd,
-                        damageMult = snapDamageMult,
-                        speedMult = snapSpeedMult,
+                        damageMult = intent.DamageMult,
+                        speedMult = intent.SpeedMult,
                     },
                 };
             });
@@ -220,11 +313,19 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 bool snapNoEnd = props[PropertyEnum.NoEnduranceCosts, (int)ManaType.TypeAll];
                 float cdPct = props[PropertyEnum.CooldownModifierPctGlobal];
                 bool snapNoCd = cdPct <= -0.99f;
-                float dmgPct = props[PropertyEnum.DamagePctBonus];
-                float snapDamageMult = 1.0f + (dmgPct / 100.0f);
-                float spdOverride = props[PropertyEnum.MovementSpeedOverride];
-                float baseSp = avatar.Locomotor?.DefaultRunSpeed ?? 400.0f;
-                float snapSpeedMult = spdOverride > 0f && baseSp > 0f ? spdOverride / baseSp : 1.0f;
+
+                // Damage/speed multipliers come from our own tracked intent,
+                // NOT the shared properties — DamagePctBonus/MovementSpeedRate
+                // can be nonzero purely from the player's own real gear,
+                // which would otherwise false-positive this status
+                // (confirmed live 2026-07-19: the banner showed ACTIVE on a
+                // fresh app launch with every God Mode toggle genuinely off,
+                // because equipped gear alone pushed DamagePctBonus above the
+                // threshold). An avatar we've never touched this session has
+                // no tracked intent at all, which correctly reads as 1.0x.
+                GodModeIntent intent = GodModeTracker.Peek(avatar.Id);
+                float snapDamageMult = intent?.DamageMult ?? 1.0f;
+                float snapSpeedMult = intent?.SpeedMult ?? 1.0f;
 
                 bool anyActive = snapInvuln || snapNoEnd || snapNoCd || snapDamageMult > 1.01f || snapSpeedMult > 1.01f;
 
