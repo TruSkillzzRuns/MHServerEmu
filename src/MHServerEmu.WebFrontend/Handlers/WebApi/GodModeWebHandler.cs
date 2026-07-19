@@ -132,11 +132,34 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (flags.HasFlag(GodModeFlags.SpeedMult))
                 {
                     float wantMult = Math.Clamp(speedMult, 0.1f, 20.0f);
-                    float baseSpeed = avatar.Locomotor?.DefaultRunSpeed ?? 400.0f;
-                    // Override gives an immediate speed bump; Rate survives the
-                    // moment a power's Condition resets Override back to 0.
-                    props[PropertyEnum.MovementSpeedOverride] = baseSpeed * wantMult;
-                    props[PropertyEnum.MovementSpeedRate] = wantMult;
+
+                    // Locomotor.GetCurrentSpeed() branches on
+                    // MovementSpeedOverride > 0 — when set (to ANY positive
+                    // value, including exactly base speed), it pins speed to
+                    // that number outright and skips the normal
+                    // BaseMoveSpeed * MovementSpeedRate path entirely. That
+                    // means simply writing "1.0x" here (baseSpeed * 1.0)
+                    // wasn't a real no-op: it left the override property set,
+                    // which permanently locked out any power-driven speed
+                    // stacking (Sprint, dash charges, travel powers) even
+                    // after God Mode was "reset" — confirmed live (2026-07-19,
+                    // movement powers stayed broken after Reset even though
+                    // the status readout showed speedMult=1x). At 1.0x we now
+                    // fully remove both properties so the Locomotor falls
+                    // back to its normal, power-stacking-aware code path.
+                    if (Math.Abs(wantMult - 1.0f) < 0.001f)
+                    {
+                        props.RemovePropertyRange(PropertyEnum.MovementSpeedOverride);
+                        props.RemovePropertyRange(PropertyEnum.MovementSpeedRate);
+                    }
+                    else
+                    {
+                        float baseSpeed = avatar.Locomotor?.DefaultRunSpeed ?? 400.0f;
+                        // Override gives an immediate speed bump; Rate survives the
+                        // moment a power's Condition resets Override back to 0.
+                        props[PropertyEnum.MovementSpeedOverride] = baseSpeed * wantMult;
+                        props[PropertyEnum.MovementSpeedRate] = wantMult;
+                    }
                     changes.Add($"speedMult={wantMult}x");
                 }
 
