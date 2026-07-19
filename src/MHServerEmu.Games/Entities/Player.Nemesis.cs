@@ -305,10 +305,19 @@ namespace MHServerEmu.Games.Entities
             };
         }
 
-        // Fractional damage boost on top of the enemy phantom base curve.
-        // Rank 1 = +5%, up to rank 5 = +60%. Numbers calibrated so a rank
-        // 5 nemesis lands roughly 1.6× the damage of a fresh rogue — a
-        // meaningful threat without one-shotting a well-geared 60.
+        // Fractional damage boost on top of the enemy phantom base curve —
+        // multiplicative on top of DamageMult, which already includes
+        // whatever the nemesis's equipped gear contributes.
+        //
+        // Rank 4/5 were rescaled down (2026-07-19) after two other fixes
+        // landed this same session: rank 5 nemeses now correctly wear their
+        // full BiS gear set with Legendaries actually leveled to max rank —
+        // previously Legendaries silently stayed Unranked, so the 0.60/0.80
+        // values here were tuned against a nemesis with a much weaker real
+        // gear contribution than what's now landing. With working gear
+        // added on top, the old values were "instantly destroying" friendly
+        // hero/team-up phantoms (confirmed live). Halved to compensate for
+        // the compounding instead of re-guessing a number from scratch.
         internal static float NemesisDmgBoostForRank(int rank)
         {
             int r = Math.Clamp(rank, 0, NemesisMaxRank);
@@ -318,8 +327,8 @@ namespace MHServerEmu.Games.Entities
                 1 => 0.05f,
                 2 => 0.15f,
                 3 => 0.25f,
-                4 => 0.60f,  // buffed — hits noticeably harder
-                5 => 0.80f,  // buffed — a hard hitter without one-shotting
+                4 => 0.30f,  // rescaled down — was 0.60 before gear/Legendary-rank fixes
+                5 => 0.40f,  // rescaled down — was 0.80 before gear/Legendary-rank fixes
                 _ => 0.00f,
             };
         }

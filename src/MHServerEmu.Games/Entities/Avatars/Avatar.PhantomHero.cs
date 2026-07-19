@@ -757,6 +757,22 @@ namespace MHServerEmu.Games.Entities.Avatars
             Vector3 callerPos = RegionLocation.Position;
             bool isAmbushPhantom = enemyMode && s_enemyPhantomAmbush.Contains(phantom.Id);
 
+            // Priority 0: self-heal at low HP, before anything else —
+            // friendly and enemy phantoms alike. This is the same medkit
+            // power real players use (bound to the M / DedicatedHealSlot
+            // hotkey): GlobalsPrototype.AvatarHealPower is granted to every
+            // avatar (real or phantom) through the ordinary InitializePowers
+            // pipeline at OnEnteredWorld, so no special grant is needed here
+            // — it's just been invisible to the AI because nothing ever
+            // looked for it. Its own cooldown (whatever the real power data
+            // defines) gates reuse via the normal IsOnCooldown() check, same
+            // as every other power this AI fires. Directly targets the
+            // "half the squad rushes in to revive and dies to the next AoE"
+            // problem — a critically hurt phantom now tries to save itself
+            // before it dies, instead of only ever being reactively revived.
+            if (TryPhantomSelfHeal(phantom))
+                return;
+
             // Enemy phantoms don't do triage — straight to the hunt.
             if (enemyMode)
                 goto Hunt;
@@ -829,6 +845,33 @@ namespace MHServerEmu.Games.Entities.Avatars
                     if (d < downedDistSq) { downedDistSq = d; downed = candidate; }
                 }
             }
+            // Claim the downed target so the rest of the squad doesn't also
+            // converge on the exact same revive — every phantom runs this
+            // same search independently every tick with no coordination, so
+            // without a claim, 3 nearby phantoms all pick the same nearest
+            // downed ally and all 3 abandon the fight to pile on one revive
+            // (confirmed live 2026-07-19). Whoever gets here first on a
+            // given target keeps it; everyone else treats it as "nothing to
+            // revive" and falls through to normal combat instead. The claim
+            // expires on its own after PhantomReviveClaimTimeoutMs (covers
+            // the claimant dying, getting stuck, or the target being
+            // revived by something else entirely) so a downed ally is never
+            // permanently orphaned by a stale claim.
+            if (downed != null)
+            {
+                long nowMsRevive = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+                if (s_phantomReviveClaim.TryGetValue(downed.Id, out var claim)
+                    && claim.claimantId != phantom.Id
+                    && nowMsRevive - claim.claimedAtMs < PhantomReviveClaimTimeoutMs)
+                {
+                    downed = null;
+                }
+                else
+                {
+                    s_phantomReviveClaim[downed.Id] = (phantom.Id, nowMsRevive);
+                }
+            }
+
             if (downed != null)
             {
                 PrototypeId reviveCastPowerRef = phantom.AvatarPrototype?.ResurrectOtherEntityPower ?? PrototypeId.Invalid;
@@ -876,6 +919,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                         var reviveResult = phantom.ResurrectOtherAvatar(downed, bypassCooldown: true);
                         if (reviveResult != null && reviveResult != PowerUseResult.Success)
                             PhantomLogger.Info($"[PhantomHero:Revive] {phantom} -> {downed} rejected: {reviveResult}");
+                        else
+                            s_phantomReviveClaim.Remove(downed.Id);
                     }
                     catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Revive] {phantom.Id:X} -> {downed.Id:X} failed: {ex.Message}"); }
                 }
@@ -905,18 +950,27 @@ namespace MHServerEmu.Games.Entities.Avatars
             foreach (WorldEntity we in region.IterateEntitiesInVolume(sweepSphere, ctx))
             {
                 if (we == null || we.Id == phantom.Id) continue;
+                // Friendly phantoms never target their caller in THIS list —
+                // it drives movement/attack-target priority (candidates[0]
+                // becomes "nearest" for both the Locomotor and the attack
+                // try-loop), and the caller is almost always the closest
+                // thing to a friendly phantom. Adding them here made
+                // candidates[0] the caller instead of the nearest hostile,
+                // which broke friendly-phantom combat AI outright: they
+                // stopped chasing distant enemies (Locomotor followed the
+                // already-adjacent caller instead) and lost their smooth
+                // idle-follow-slot behavior (the "candidates.Count == 0"
+                // branch below never triggered anymore since the caller was
+                // always a valid candidate) — confirmed via a live user
+                // report (2026-07-19) of friendly bots going sluggish and no
+                // longer approaching enemies in combat. Buffing the caller
+                // would need a genuinely separate, lower-priority mechanism
+                // that can't preempt this list; reverted rather than risk
+                // shipping the regression again.
+                if (enemyMode == false && we.Id == Id) continue;
                 if (we.IsDead || we.IsInWorld == false) continue;
 
-                if (enemyMode == false && we.Id == Id)
-                {
-                    // Friendly phantom's own caller — always a valid support
-                    // target. TryPhantomAttack's per-power filter only lets a
-                    // TargetsFriendly power actually fire here (see
-                    // GetTargetingReach() check below), so this can never be
-                    // used to land an offensive power on the player — only
-                    // genuine buff/heal-type powers get selected.
-                }
-                else if (enemyMode)
+                if (enemyMode)
                 {
                     // Enemy phantoms only hunt player-side avatars — the
                     // caller (this human), other real players in the region,
@@ -967,7 +1021,23 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // distance even when it's actually far away in 3D space,
                 // which is what let ranged (and melee) powers fire at
                 // targets that were visibly nowhere near in-range.
-                float d = Vector3.DistanceSquared(we.RegionLocation.Position, phantomPos);
+                //
+                // Edge-to-edge, not center-to-center: the real in-game range
+                // check (Power.Validation.cs's IsInRangeInternal) subtracts
+                // the target's Bounds.Radius before comparing against a
+                // power's range — this AI didn't, so for a target with any
+                // real collision size (bosses especially) the phantom had to
+                // walk nearly into the target's CENTER before the melee gate
+                // passed, producing a multi-second "walks into the enemy"
+                // visual before the first attack could fire (confirmed live
+                // 2026-07-19). Subtracting the target's radius here matches
+                // the real validation and makes every downstream range check
+                // (PhantomMeleeRangeSq/PhantomAttackRangeSq, and each
+                // per-power range filter in TryPhantomAttack) agree with what
+                // the client actually shows as "in range."
+                float rawDist = Vector3.Distance(we.RegionLocation.Position, phantomPos);
+                float edgeDist = MathF.Max(0f, rawDist - we.Bounds.Radius);
+                float d = edgeDist * edgeDist;
                 // Ambush phantoms only notice a target once it's actually
                 // within THEIR detection range — the caller-is-always-valid
                 // rule above still applies, but doesn't mean "always in
@@ -1153,6 +1223,13 @@ namespace MHServerEmu.Games.Entities.Avatars
             bool inMelee = nearestDistSq <= PhantomMeleeRangeSq;
             if ((arrived || inMelee) && nearestDistSq <= PhantomAttackRangeSq)
             {
+                // Anti-clustering spacing dash — checked first so it can
+                // preempt the attack this tick when it fires (own internal
+                // cooldown means this is rare, ~every 10-16s per phantom).
+                // See PhantomSpacingDashCooldownMs.
+                if (TryPhantomSpacingDash(phantom, region, rng))
+                    return;
+
                 // Per-phantom attack cooldown — prevents the 2 Hz tick from
                 // burst-firing 2 attacks per second. Real players average
                 // closer to 1 attack per 800-1200 ms after animation locks.
@@ -1255,6 +1332,25 @@ namespace MHServerEmu.Games.Entities.Avatars
         // between casts so the tick doesn't spam-fire.
         private static readonly Dictionary<ulong, long> s_phantomNextAttackMs = new();
 
+        // Per-phantom next-spacing-dash timestamp (ms). Movement/dash
+        // powers are otherwise never used by phantom AI at all (excluded
+        // from the normal attack candidate pool) — this fires one purely
+        // for anti-clustering spacing every ~10-16s per phantom (jittered
+        // so a squad doesn't dash in lockstep), not as a tactical dodge
+        // (no hazard/AoE detection exists to dodge with). Requested live
+        // (2026-07-19): a 9-phantom Ultron raid saw the whole squad
+        // converge into one blob that a single boss AoE could half-wipe.
+        private const long PhantomSpacingDashCooldownMs = 10_000;
+        private const long PhantomSpacingDashJitterMs = 6_000;
+        private static readonly Dictionary<ulong, long> s_phantomNextDashMs = new();
+
+        // Per-downed-target revive claim (downedId -> (claimantPhantomId,
+        // claimedAtMs)) — stops the whole squad from independently deciding
+        // to revive the same ally at once. See the claim check in
+        // UpdatePhantomHunt for the full rationale.
+        private const long PhantomReviveClaimTimeoutMs = 6_000;
+        private static readonly Dictionary<ulong, (ulong claimantId, long claimedAtMs)> s_phantomReviveClaim = new();
+
         // Per-phantom next-ultimate timestamp (ms). Ultimates fire on any
         // target once available, then rest for 20 minutes regardless of
         // what the power data's own cooldown says.
@@ -1346,6 +1442,28 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Fallback: caller's exact position. Guaranteed walkable since
             // the caller is standing on it.
             return callerPos;
+        }
+
+        /// <summary>
+        /// Picks a random walkable point near <paramref name="fromPos"/> for
+        /// a pure anti-clustering spacing dash — not danger-aware (no
+        /// hazard/AoE detection exists for this AI to dodge with), just a
+        /// random nearby spot so a squad breaks up its blob shape over time.
+        /// </summary>
+        private static Vector3 ChoosePhantomDashDestination(Region region, Vector3 fromPos, MHServerEmu.Core.System.Random.GRandom rng, float avatarRadius)
+        {
+            if (region == null) return fromPos;
+            var walkCheck = new DefaultContainsPathFlagsCheck(PathFlags.Walk);
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
+                float radius = 150f + (float)(rng.NextDouble() * 200f);
+                Vector3 candidate = fromPos + new Vector3((float)Math.Cos(angle) * radius, (float)Math.Sin(angle) * radius, 0f);
+                candidate = RegionLocation.ProjectToFloor(region, candidate);
+                if (region.NaviMesh.Contains(candidate, MathF.Max(20f, avatarRadius), walkCheck))
+                    return candidate;
+            }
+            return fromPos;
         }
 
         /// <summary>
@@ -2030,6 +2148,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (pc == null) return PhantomFollowStopMin;
 
             float bestRange = 0f;
+            bool hasUsableMelee = false;
             foreach (var kvp in pc)
             {
                 Power power = kvp.Value?.Power;
@@ -2044,13 +2163,44 @@ namespace MHServerEmu.Games.Entities.Avatars
                 if (power.IsOnCooldown()) continue;
 
                 float r = power.GetRange();
-                if (r > bestRange) bestRange = r;
+                if (Power.IsMelee(pp) || r <= 0f)
+                    hasUsableMelee = true;
+                else if (r > bestRange)
+                    bestRange = r;
             }
 
-            if (bestRange <= 0f) return PhantomFollowStopMin;
+            // If the kit has ANY usable melee power ready, close all the way
+            // in — regardless of what other ranged powers are also
+            // available. Previously this always used the WIDEST range
+            // among ready powers, so a hero with a mixed kit (both melee
+            // and ranged options, which is common) stopped at ranged
+            // distance and never actually entered true melee range —
+            // meaning TryPhantomAttack's melee range gate
+            // (targetDistSq <= PhantomMeleeRangeSq) could never pass, so
+            // the melee powers in their kit could structurally never be
+            // picked even though they "had" them. Confirmed via a live
+            // user report (2026-07-19): "seeing heroes use more range
+            // powers than melee if they have melee powers."
+            // FollowEntity's stop distance is measured center-to-center by
+            // the Locomotor (confirmed — it never subtracts either side's
+            // Bounds.Radius), unlike the real in-game range validation
+            // (Power.Validation.cs's IsInRangeInternal, which subtracts the
+            // target's radius). Without adding it back here, "stop 50u from
+            // the target's CENTER" could put the walk destination inside a
+            // large-radius target's own collision (bosses especially),
+            // which is what produced the "walks into the enemy for a few
+            // seconds" visual even after the melee range gate above was
+            // already fixed to be edge-aware. Add the target's own radius so
+            // the phantom actually stops at its edge.
+            float targetRadius = target != null ? target.Bounds.Radius : 0f;
+
+            if (hasUsableMelee)
+                return PhantomFollowStopMin + targetRadius;
+
+            if (bestRange <= 0f) return PhantomFollowStopMin + targetRadius;
 
             float dist = Math.Clamp(bestRange - PhantomFollowRangeMargin,
-                PhantomFollowStopMin, PhantomFollowStopMax);
+                PhantomFollowStopMin, PhantomFollowStopMax) + targetRadius;
             return dist;
         }
 
@@ -2343,6 +2493,38 @@ namespace MHServerEmu.Games.Entities.Avatars
                         continue;
                     }
 
+                    // Legendary items have their own affix-rank progression
+                    // (Rank 1-5 in the client UI) separate from item level/
+                    // rarity, gated behind a large XP grind that GROWS per
+                    // rank (confirmed live 2026-07-19: rank 3->4 alone
+                    // needed 240,000,000 — the curve isn't flat). A phantom
+                    // that spawns with the right Legendary but isn't at max
+                    // rank is only wearing a fraction of what that item
+                    // actually does — the higher-rank bonuses/procs never
+                    // apply. AwardAffixXP is the real leveling entry point
+                    // (Item.cs) — it walks TryLevelUpAffix's loop and calls
+                    // AwardLevelUpAffixes for every rank crossed, so this
+                    // grants the actual rank bonuses, not just a rank
+                    // number.
+                    //
+                    // AwardAffixXP(long) internally does `(int)amount`
+                    // before applying it, so a single call is hard-capped
+                    // at int.MaxValue (~2.147B) worth of XP regardless of
+                    // what's passed in — confirmed live twice: first
+                    // long.MaxValue/2 overflowed that cast into garbage and
+                    // granted nothing, then a single 2B-XP call only
+                    // reached rank 3 because the real cumulative cost to
+                    // rank 5 exceeds what one call can carry. Loop it
+                    // instead of assuming one call is enough — each call
+                    // self-caps at GetAffixLevelCap() so this is safe, and
+                    // stops as soon as the real cap is actually reached.
+                    if (item.Prototype is LegendaryPrototype)
+                    {
+                        int affixLevelCap = item.GetAffixLevelCap();
+                        for (int guard = 0; guard < 10 && item.Properties[PropertyEnum.ItemAffixLevel] < affixLevelCap; guard++)
+                            item.AwardAffixXP(2_000_000_000L);
+                    }
+
                     InventoryResult moveResult = item.ChangeInventoryLocation(equipInventory);
                     if (moveResult != InventoryResult.Success)
                     {
@@ -2450,6 +2632,110 @@ namespace MHServerEmu.Games.Entities.Avatars
                 sb.Append(']');
             }
             PhantomLogger.Info(sb.ToString());
+        }
+
+        // Fraction of HealthMax at or below which a phantom will try to
+        // medkit itself instead of continuing whatever it was doing.
+        private const float PhantomSelfHealHpThreshold = 0.35f;
+
+        /// <summary>
+        /// Fires the same medkit/self-heal power real players use
+        /// (GlobalsPrototype.AvatarHealPower) if this phantom is below
+        /// PhantomSelfHealHpThreshold and the power isn't on cooldown.
+        /// Returns true if it fired (caller should skip the rest of its
+        /// tick), false if not applicable (full HP, no such power, on
+        /// cooldown, etc.) so the normal hunt/attack/revive logic proceeds
+        /// as usual.
+        /// </summary>
+        private bool TryPhantomSelfHeal(Avatar phantom)
+        {
+            if (phantom.IsDead || phantom.IsInWorld == false) return false;
+
+            float healthMax = phantom.Properties[PropertyEnum.HealthMax];
+            if (healthMax <= 0f) return false;
+            float health = phantom.Properties[PropertyEnum.Health];
+            if (health / healthMax > PhantomSelfHealHpThreshold) return false;
+
+            PrototypeId healPowerRef = GameDatabase.GlobalsPrototype?.AvatarHealPower ?? PrototypeId.Invalid;
+            if (healPowerRef == PrototypeId.Invalid) return false;
+
+            Power healPower = phantom.GetPower(healPowerRef);
+            if (healPower == null || healPower.IsOnCooldown()) return false;
+
+            Vector3 phantomPos = phantom.RegionLocation.Position;
+            var settings = new PowerActivationSettings(phantom.Id, phantomPos, phantomPos);
+            settings.Flags |= PowerActivationSettingsFlags.NotifyOwner;
+
+            try
+            {
+                PowerUseResult result = phantom.ActivatePower(healPowerRef, ref settings);
+                if (result == PowerUseResult.Success)
+                {
+                    PhantomLogger.Info($"[PhantomHero:SelfHeal] {phantom} used medkit at {health / healthMax:P0} HP");
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                PhantomLogger.Warn($"[PhantomHero:SelfHeal] {phantom.Id:X} medkit threw: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Fires one of the phantom's own movement/dash powers toward a
+        /// random nearby spot, purely to break up squad clustering — see
+        /// PhantomSpacingDashCooldownMs for why. Returns true if it fired
+        /// (caller should skip its normal attack this tick so the phantom
+        /// doesn't try to cast two powers at once), false otherwise (not
+        /// its turn yet, no movement power in the kit, or activation
+        /// failed).
+        /// </summary>
+        private bool TryPhantomSpacingDash(Avatar phantom, Region region, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            if (s_phantomNextDashMs.TryGetValue(phantom.Id, out long nextAt) && nowMs < nextAt)
+                return false;
+
+            var pc = phantom.PowerCollection;
+            if (pc == null) return false;
+
+            PrototypeId dashPowerRef = PrototypeId.Invalid;
+            foreach (var kvp in pc)
+            {
+                Power power = kvp.Value?.Power;
+                if (power == null) continue;
+                PowerPrototype pp = power.Prototype;
+                if (pp is not MovementPowerPrototype) continue;
+                if (pp.Activation == PowerActivationType.Passive || pp.IsToggled || pp.IsTravelPower) continue;
+                if (power.IsOnCooldown()) continue;
+                dashPowerRef = kvp.Key;
+                break;
+            }
+
+            // Roll the next eligible time regardless of outcome — a phantom
+            // with no ready movement power right now shouldn't be re-checked
+            // every 500ms tick until one comes off cooldown.
+            s_phantomNextDashMs[phantom.Id] = nowMs + PhantomSpacingDashCooldownMs + (long)(rng.NextDouble() * PhantomSpacingDashJitterMs);
+
+            if (dashPowerRef == PrototypeId.Invalid) return false;
+
+            Vector3 phantomPos = phantom.RegionLocation.Position;
+            Vector3 destPos = ChoosePhantomDashDestination(region, phantomPos, rng, phantom.Bounds.Radius);
+            var settings = new PowerActivationSettings(0, destPos, phantomPos);
+            settings.Flags |= PowerActivationSettingsFlags.NotifyOwner;
+
+            try
+            {
+                PowerUseResult result = phantom.ActivatePower(dashPowerRef, ref settings);
+                return result == PowerUseResult.Success;
+            }
+            catch (Exception ex)
+            {
+                PhantomLogger.Warn($"[PhantomHero:Dash] {phantom.Id:X} spacing dash threw: {ex.Message}");
+                return false;
+            }
         }
 
         private PowerUseResult TryPhantomAttack(Avatar phantom, WorldEntity target, float targetDistSq, MHServerEmu.Core.System.Random.GRandom rng)
@@ -3452,11 +3738,17 @@ namespace MHServerEmu.Games.Entities.Avatars
             //
             // Rank-5 level-60 nemeses WEAR the community best-in-slot set for
             // their hero — a real gear-check fight, and (because the drop path
-            // drops what's worn) a full BiS jackpot on defeat. Everyone else
-            // rolls the normal level-banded random gear.
+            // drops what's worn) a full BiS jackpot on defeat. Level-60
+            // friendly phantoms get the same BiS set for the same reason a
+            // real level-60 player would be geared, not because they're
+            // "the content" — a squadmate that's still rolling random
+            // level-banded gear at max level reads as broken, not balanced
+            // (confirmed live 2026-07-19: "they are just wearing crappy
+            // random gear"). Sub-max-rank enemy phantoms and everyone below
+            // level 60 still roll the normal level-banded random gear.
             IReadOnlyDictionary<EquipmentInvUISlot, PrototypeId> bisLoadout = null;
-            if (enemy && nemesisRank >= Player.NemesisMaxRank && effectiveLevel >= 60
-                && PhantomBiSData.TryGetLoadout(avatarRef, Game, out var bis))
+            bool wantsBiS = effectiveLevel >= 60 && (enemy == false || nemesisRank >= Player.NemesisMaxRank);
+            if (wantsBiS && PhantomBiSData.TryGetLoadout(avatarRef, Game, out var bis))
             {
                 bisLoadout = bis;
             }
