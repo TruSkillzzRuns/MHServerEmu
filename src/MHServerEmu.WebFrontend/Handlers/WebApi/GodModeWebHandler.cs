@@ -327,7 +327,22 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 float snapDamageMult = intent?.DamageMult ?? 1.0f;
                 float snapSpeedMult = intent?.SpeedMult ?? 1.0f;
 
-                bool anyActive = snapInvuln || snapNoEnd || snapNoCd || snapDamageMult > 1.01f || snapSpeedMult > 1.01f;
+                // Active is ALSO driven purely by tracked intent, not the raw
+                // Invulnerable/CooldownModifierPctGlobal reads above (those
+                // stay in Snapshot for informational purposes only). Real
+                // content can flip both transiently and legitimately —
+                // PvPDefenderGameMode sets Invulnerable directly on the
+                // player avatar during defender objectives, and any hero
+                // power/ultimate that grants a temporary "cooldowns reset"
+                // effect would push CooldownModifierPctGlobal past our
+                // threshold on its own. Reading either of those for the
+                // banner flickered it on/off during ordinary play with zero
+                // God Mode POSTs happening (confirmed live 2026-07-19: no
+                // [GodMode] log lines at all while the banner kept flipping).
+                // Tracked intent only reflects what an operator explicitly
+                // asked for via this endpoint, so it can't be tripped by
+                // anything else in the game.
+                bool anyActive = intent?.AnyActive ?? false;
 
                 return new
                 {
