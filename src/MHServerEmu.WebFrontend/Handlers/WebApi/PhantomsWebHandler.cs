@@ -1,4 +1,4 @@
-// OmegaDev2 Phantom Heroes endpoints — the full phantom feature set over
+﻿// OmegaDev2 Phantom Heroes endpoints — the full phantom feature set over
 // WebAPI, mirroring the !phantom chat commands.
 //
 //   GET  /webapi/phantoms/catalog             — playable-hero roster (+ portraits)
@@ -575,8 +575,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         //   → { Ok, HeroRef, HeroName, PreferredPower, Powers:[{Ref, Name, Level}] }
         //
         // POST /webapi/phantoms/rotation
-        //   body: { playerName, heroRef: 0x..., powerRef: 0x... | "" | null }
+        //   body: { playerName, heroRef: 0x..., powerRef: 0x... | "" | null,
+        //           combatRange: 0|1|2 (optional) }
         //     empty / null powerRef = clear the preference (fall back to default AI).
+        //     combatRange: 0 = Auto (kit-derived, default), 1 = Melee, 2 = Ranged.
+        //     Omit combatRange to leave the existing preference untouched.
         protected override async Task Get(WebRequestContext context)
         {
             string playerQ = PhantomsWebUtil.QueryParam(context, "player");
@@ -668,6 +671,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     HeroRef = "0x" + ((ulong)heroRef).ToString("X"),
                     HeroName = heroRef.GetName() ?? string.Empty,
                     PreferredPower = pref == 0 ? string.Empty : ("0x" + pref.ToString("X")),
+                    CombatRange = (int)p.GetCombatRangePref(heroRef),
                     Powers = powers,
                 };
             });
@@ -681,6 +685,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             string playerName = null;
             string heroRefStr = null;
             string powerRefStr = null;
+            int? combatRange = null;
             try
             {
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
@@ -692,6 +697,13 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     pr.ValueKind != JsonValueKind.Null &&
                     pr.ValueKind != JsonValueKind.Undefined)
                     powerRefStr = pr.GetString();
+
+                // combatRange is optional and independent of powerRef — omitting
+                // it must not silently reset the hero's range preference.
+                if (root.TryGetProperty("combatRange", out var cr) &&
+                    cr.ValueKind == JsonValueKind.Number &&
+                    cr.TryGetInt32(out int crVal))
+                    combatRange = crVal;
             }
             catch (System.Exception ex)
             {
@@ -720,6 +732,9 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
             {
                 p.SetPreferredPower(heroRef, powerRef);
+                if (combatRange.HasValue)
+                    p.SetCombatRangePref(heroRef, combatRange.Value);
+
                 return new
                 {
                     Ok = true,
@@ -727,6 +742,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         ? "preferred power cleared (default AI)"
                         : "preferred power set",
                     PreferredPower = powerRef == 0 ? string.Empty : ("0x" + powerRef.ToString("X")),
+                    CombatRange = (int)p.GetCombatRangePref((PrototypeId)heroRef),
                 };
             });
             await context.SendJsonAsync(result);

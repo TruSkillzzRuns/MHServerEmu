@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Gazillion;
 using MHServerEmu.Core.Logging;
@@ -422,6 +422,7 @@ namespace MHServerEmu.Games.Entities
                 mig.RogueEncounterEnabled = _rogueEncounterEnabled;
                 SnapshotNemesesForTransfer(mig);
                 SnapshotPreferredPowersForTransfer(mig);
+                SnapshotCombatRangePrefsForTransfer(mig);
             }
 
             if (_phantomDescriptors.Count == 0) return;
@@ -468,6 +469,7 @@ namespace MHServerEmu.Games.Entities
 
             RestoreNemesesFromMigration(mig);
             RestorePreferredPowersFromMigration(mig);
+            RestoreCombatRangePrefsFromMigration(mig);
 
             if (mig.PhantomIntents.Count == 0) return 0;
             int spawned = 0;

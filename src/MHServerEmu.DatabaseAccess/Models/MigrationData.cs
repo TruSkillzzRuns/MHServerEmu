@@ -49,6 +49,14 @@ namespace MHServerEmu.DatabaseAccess.Models
         public Dictionary<ulong, ulong> PreferredPowers { get; } = new();
 
         /// <summary>
+        /// Per-hero phantom combat range preference. Key = AvatarPrototypeId
+        /// (as ulong), value = PhantomCombatRangePref (0 = Auto, 1 = Melee,
+        /// 2 = Ranged). Absent/0 means Auto, i.e. derive the stop distance from
+        /// the kit as before. Persists across region transfers.
+        /// </summary>
+        public Dictionary<ulong, int> CombatRangePrefs { get; } = new();
+
+        /// <summary>
         /// Wave Director run-start intent, carried across a cross-region
         /// arena warp the same way phantoms ride via PhantomIntents.
         /// Confirmed live: a cross-region transfer destroys the ENTIRE Game
@@ -99,6 +107,7 @@ namespace MHServerEmu.DatabaseAccess.Models
             PhantomIntents.Clear();
             Nemeses.Clear();
             PreferredPowers.Clear();
+            CombatRangePrefs.Clear();
             PendingWaveRun = null;
         }
     }

@@ -515,7 +515,14 @@ namespace MHServerEmu.Games.Entities
             }
         }
 
-        public bool ContainsAvatar(Avatar avatar)
+        // Widened from Avatar to WorldEntity (2026-07-21): the check itself
+        // only ever touched entity.Id, nothing Avatar-specific, and phantom
+        // team-up entities (Agent, not Avatar) need to run this same
+        // mission-hotspot containment test for hazard avoidance. Both
+        // existing callers (Mission.cs's real-avatar check, and the phantom
+        // hazard-avoidance sweep) still compile unchanged — Avatar IS-A
+        // WorldEntity.
+        public bool ContainsAvatar(WorldEntity avatar)
         {
             return _missionAvatars != null && _missionAvatars.Contains(avatar.Id);
         }
