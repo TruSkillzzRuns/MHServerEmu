@@ -2388,7 +2388,6 @@ namespace MHServerEmu.Games.Entities.Avatars
             s_phantomNextKiteMs.Remove(phantomId);
             s_phantomNextSupportMs.Remove(phantomId);
             s_phantomNextHazardMs.Remove(phantomId);
-            s_phantomNextScoreDiagMs.Remove(phantomId);
         }
 
         // ---- Hazard / ground-effect avoidance -----------------------------
@@ -2534,7 +2533,6 @@ namespace MHServerEmu.Games.Entities.Avatars
         private const long PhantomSupportJitterMs   = 4000;
         private const float PhantomSupportRange     = 900f;
         private static readonly Dictionary<ulong, long> s_phantomNextSupportMs = new();
-        private static readonly HashSet<ulong> s_phantomSupportInventoryLogged = new();
 
         /// <summary>
         /// Fires one ready TargetsFriendly power on the ally that most needs
@@ -2545,40 +2543,6 @@ namespace MHServerEmu.Games.Entities.Avatars
             MHServerEmu.Core.System.Random.GRandom rng)
         {
             if (region == null) return false;
-
-            // ONE-SHOT INVENTORY DIAGNOSTIC (2026-07-21) — the support pass
-            // fired zero times in live testing. The attack log can't answer
-            // whether that's a bug or simply "these kits have no friendly-
-            // targeting powers", because it only ever logs powers that already
-            // passed an enemy-targeting filter (biased sample). This dumps the
-            // phantom's ENTIRE power list with its reach flags once, so the
-            // question is settled from data instead of assumption.
-            // Remove once answered.
-            if (s_phantomSupportInventoryLogged.Add(phantom.Id))
-            {
-                var inv = new System.Text.StringBuilder();
-                var pcDump = phantom.PowerCollection;
-                if (pcDump != null)
-                {
-                    foreach (var kv in pcDump)
-                    {
-                        Power pw = kv.Value?.Power;
-                        PowerPrototype ppd = pw?.Prototype;
-                        if (ppd == null) continue;
-                        var rd = ppd.GetTargetingReach();
-                        if (inv.Length > 0) inv.Append(" | ");
-                        inv.Append($"{kv.Key.GetName()}:cat={ppd.PowerCategory},tgl={ppd.IsToggled},psv={ppd.Activation == PowerActivationType.Passive}");
-                        inv.Append($",melee={Power.IsMelee(ppd)},range={pw.GetRange():F0},dmg={EstimatePhantomPowerDamage(pw, phantom.CombatLevel):F0}");
-                        inv.Append(rd == null ? ",reach=null" : $",enemy={rd.TargetsEnemy},friendly={rd.TargetsFriendly}");
-                    }
-                }
-                // Also record the role the movement logic derives from this kit.
-                // "Any ready melee power => close to 50u" (the Update-13 fix for
-                // melee heroes never meleeing) may be classifying mixed-kit
-                // RANGED heroes like Iron Man as melee, which would explain both
-                // them hugging enemies and the kite pass never triggering.
-                PhantomLogger.Info($"[PhantomHero:PowerInv] {phantom} standoff={ComputePhantomFollowStopDist(phantom, null):F0} :: {inv}");
-            }
 
             if (s_phantomNextSupportMs.TryGetValue(phantom.Id, out long nextAt) && nowMs < nextAt)
                 return false;
@@ -2680,8 +2644,6 @@ namespace MHServerEmu.Games.Entities.Avatars
             };
 
             PowerUseResult result = phantom.ActivatePower(chosen, ref settings);
-            // VERIFICATION DIAGNOSTIC — remove once confirmed live.
-            PhantomLogger.Info($"[PhantomHero:Support] {phantom} -> {neediest} ({neediestPct:P0} hp) power={chosen.GetName()} result={result}");
             if (result != PowerUseResult.Success)
             {
                 // Same treatment attack powers get (see the blacklist block in
@@ -2764,8 +2726,6 @@ namespace MHServerEmu.Games.Entities.Avatars
                 if (phantom.Locomotor?.MoveTo(candidate, ref opts) == true)
                 {
                     s_phantomNextKiteMs[phantom.Id] = nowMs + PhantomKiteCooldownMs;
-                    // VERIFICATION DIAGNOSTIC — remove once confirmed live.
-                    PhantomLogger.Info($"[PhantomHero:Kite] {phantom} backing off: threatDist={threatDist:F0} standoff={preferredStandoff:F0} moveBack={wanted:F0}");
                     return true;
                 }
             }
@@ -3347,20 +3307,6 @@ namespace MHServerEmu.Games.Entities.Avatars
             s_phantomSquadFocus[hostId] = (targetId, nowMs + PhantomSquadFocusTtlMs);
         }
 
-        // Separate throttle for power-scoring diagnostics so it doesn't
-        // consume the hunt/sweep diag budget above (they'd starve each other
-        // and each would emit half as often as intended).
-        private static readonly Dictionary<ulong, long> s_phantomNextScoreDiagMs = new();
-        private const long PhantomScoreDiagIntervalMs = 10000;
-
-        private bool ShouldEmitPhantomScoreDiag(ulong phantomId)
-        {
-            long now = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
-            if (s_phantomNextScoreDiagMs.TryGetValue(phantomId, out long nextAt) && now < nextAt) return false;
-            s_phantomNextScoreDiagMs[phantomId] = now + PhantomScoreDiagIntervalMs;
-            return true;
-        }
-
         private static void DumpPhantomHuntDiag(Agent phantom, Vector3 phantomPos, WorldEntity picked,
             float pickedDistSq, List<(WorldEntity we, float distSq, string reason)> rejected,
             Region region, Sphere sweepSphere, MHServerEmu.Games.Entities.EntityRegionSPContext ctx)
@@ -3854,23 +3800,6 @@ namespace MHServerEmu.Games.Entities.Avatars
                     {
                         acc += weights[i];
                         if (roll < acc) { chosenPower = candidates[i].Item1; break; }
-                    }
-
-                    // VERIFICATION DIAGNOSTIC (2026-07-20) — confirms the new
-                    // damage-based ranking is reading real, rank-resolved
-                    // DamageBase values in-game rather than silently scoring
-                    // everything 0 and degrading to the cooldown fallback.
-                    // Throttled to once per 10s per phantom. Remove once the
-                    // damage numbers are confirmed sane in a live log.
-                    if (ShouldEmitPhantomScoreDiag(phantom.Id))
-                    {
-                        var sb = new System.Text.StringBuilder();
-                        for (int i = 0; i < take; i++)
-                        {
-                            if (i > 0) sb.Append(", ");
-                            sb.Append($"{candidates[i].Item1.GetName()}=dmg{candidates[i].Item2:F0}/cd{candidates[i].Item3}");
-                        }
-                        PhantomLogger.Info($"[PhantomHero:Score] {phantom} lvl={phantom.CombatLevel} maxDmg={maxDamage:F0} picked={chosenPower.GetName()} | top{take}: {sb}");
                     }
                 }
                 candidates.Clear();
@@ -4510,16 +4439,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             //     AIStartsEnabled property), only runs once, from
             //     OnEnteredWorld — which has already happened by this point
             //     in spawn.
-            bool nativeAiWasDisabled = false;
-            try { nativeAiWasDisabled = teamUp.AIController != null; teamUp.AIController?.SetIsEnabled(false); }
+            try { teamUp.AIController?.SetIsEnabled(false); }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] AIController disable failed: {ex.Message}"); }
-
-            // VERIFICATION DIAGNOSTIC (2026-07-21) — confirms the native
-            // brain was actually present and got disabled (rather than
-            // AIController being null, which would mean SetIsEnabled(false)
-            // silently no-op'd and the team-up is still on native AI).
-            // Remove once confirmed live.
-            PhantomLogger.Info($"[PhantomHero:TeamUp:AI] {teamUpRef.GetName()} (agentId 0x{teamUp.Id:X}) hadAIController={nativeAiWasDisabled} nativeBrainDisabled={(teamUp.AIController != null && teamUp.AIController.IsEnabled == false)}");
 
             PhantomLogger.Info($"[PhantomHero:TeamUp] {this} spawned {(enemy ? "HOSTILE" : "friendly")} team-up '{teamUpRef.GetName()}' (agentId 0x{teamUp.Id:X}) at {teamUp.RegionLocation.Position.ToStringNames()} level {effectiveLevel}");
             return teamUp.Id;
