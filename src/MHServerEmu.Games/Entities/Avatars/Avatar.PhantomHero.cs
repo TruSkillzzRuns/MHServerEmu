@@ -770,7 +770,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // "half the squad rushes in to revive and dies to the next AoE"
             // problem — a critically hurt phantom now tries to save itself
             // before it dies, instead of only ever being reactively revived.
-            if (TryPhantomSelfHeal(phantom))
+            if (TryPhantomSelfHeal(phantom, enemyMode))
                 return;
 
             // Enemy phantoms don't do triage — straight to the hunt.
@@ -862,13 +862,25 @@ namespace MHServerEmu.Games.Entities.Avatars
                 long nowMsRevive = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
                 if (s_phantomReviveClaim.TryGetValue(downed.Id, out var claim)
                     && claim.claimantId != phantom.Id
-                    && nowMsRevive - claim.claimedAtMs < PhantomReviveClaimTimeoutMs)
+                    && nowMsRevive - claim.claimedAtMs < PhantomReviveClaimTimeoutMs
+                    && nowMsRevive - claim.firstClaimedAtMs < PhantomReviveClaimMaxHoldMs)
                 {
                     downed = null;
                 }
                 else
                 {
-                    s_phantomReviveClaim[downed.Id] = (phantom.Id, nowMsRevive);
+                    // Bug fixed (2026-07-20 audit): the claimant refreshed
+                    // BOTH timestamps every tick it held the claim, so the
+                    // 6s "timeout" was actually only an INACTIVITY timeout —
+                    // a phantom that kept trying (even if it was the
+                    // farthest one, or its revives kept getting rejected)
+                    // could hold the claim indefinitely, permanently
+                    // locking out closer phantoms. firstClaimedAtMs now only
+                    // gets set once, when a NEW claimant takes over, so a
+                    // hard cap (PhantomReviveClaimMaxHoldMs) applies
+                    // regardless of how active the claimant stays.
+                    long firstClaimedAtMs = (claim.claimantId == phantom.Id) ? claim.firstClaimedAtMs : nowMsRevive;
+                    s_phantomReviveClaim[downed.Id] = (phantom.Id, nowMsRevive, firstClaimedAtMs);
                 }
             }
 
@@ -1227,7 +1239,18 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // preempt the attack this tick when it fires (own internal
                 // cooldown means this is rare, ~every 10-16s per phantom).
                 // See PhantomSpacingDashCooldownMs.
-                if (TryPhantomSpacingDash(phantom, region, rng))
+                //
+                // Skipped when already in melee range or when this is a
+                // solo enemy phantom (only one hostile in its candidate
+                // list, i.e. just the real player) — the whole point of
+                // this dash is anti-CLUSTERING for a squad; a melee phantom
+                // that just spent seconds closing the gap immediately
+                // dashing away created an approach-dash-approach loop, and
+                // a nemesis dueling one player 1v1 has no squad to space
+                // out from, so it just randomly disengaged mid-fight
+                // (confirmed live 2026-07-20 audit).
+                bool skipDashHere = inMelee || (enemyMode && candidates.Count <= 1);
+                if (skipDashHere == false && TryPhantomSpacingDash(phantom, region, rng))
                     return;
 
                 // Per-phantom attack cooldown — prevents the 2 Hz tick from
@@ -1345,11 +1368,19 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static readonly Dictionary<ulong, long> s_phantomNextDashMs = new();
 
         // Per-downed-target revive claim (downedId -> (claimantPhantomId,
-        // claimedAtMs)) — stops the whole squad from independently deciding
-        // to revive the same ally at once. See the claim check in
-        // UpdatePhantomHunt for the full rationale.
+        // claimedAtMs, firstClaimedAtMs)) — stops the whole squad from
+        // independently deciding to revive the same ally at once. See the
+        // claim check in UpdatePhantomHunt for the full rationale.
+        // PhantomReviveClaimTimeoutMs is an INACTIVITY timeout (claim goes
+        // stale if the claimant stops re-asserting it); PhantomReviveClaimMaxHoldMs
+        // is a hard cap on total hold time regardless of activity — added
+        // 2026-07-20 after an audit found the claimant refreshing its claim
+        // every tick meant the "timeout" never actually fired for an active
+        // (even if farthest-away or repeatedly-rejected) claimant, letting
+        // it lock out closer phantoms indefinitely.
         private const long PhantomReviveClaimTimeoutMs = 6_000;
-        private static readonly Dictionary<ulong, (ulong claimantId, long claimedAtMs)> s_phantomReviveClaim = new();
+        private const long PhantomReviveClaimMaxHoldMs = 20_000;
+        private static readonly Dictionary<ulong, (ulong claimantId, long claimedAtMs, long firstClaimedAtMs)> s_phantomReviveClaim = new();
 
         // Per-phantom next-ultimate timestamp (ms). Ultimates fire on any
         // target once available, then rest for 20 minutes regardless of
@@ -1363,14 +1394,32 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static readonly Dictionary<ulong, long> s_phantomNextUltimateMs = new();
 
         // Per-(phantom, power) blacklist. Some powers fail for reasons that
-        // won't clear on their own — RestrictiveCondition (unmet condition
-        // requirement, e.g. transform-state powers), WeaponMissing (needs an
-        // equipped item the phantom doesn't have). Without this, a broken
-        // power with a big cooldown weight gets picked every tick against
-        // every target (per-TARGET blacklist doesn't help) and the phantom
-        // never lands a hit. 10-minute expiry in case the blocking state is
-        // situational.
+        // won't clear on their own — WeaponMissing (needs an equipped item
+        // the phantom doesn't have) and NotAllowedByTransformMode (needs a
+        // transform state the phantom AI never enters, e.g. Rogue's
+        // GlovesOff) are genuinely structural: nothing changes for the rest
+        // of the fight, so the long window is correct there. Without
+        // blacklisting these, a broken power with a big cooldown weight
+        // gets picked every tick against every target (per-TARGET blacklist
+        // doesn't help) and the phantom never lands a hit.
+        //
+        // RestrictiveCondition is NOT the same kind of failure — confirmed
+        // (2026-07-20) that for a phantom this result is almost always
+        // caused by the phantom's OWN transient status (stunned/held/
+        // immobilized/keyword-locked for a few seconds — Agent.cs's
+        // RestrictiveCondition sites), not a structurally broken power.
+        // Blacklisting it for the same 10 minutes as a genuinely broken
+        // power was the actual cause of a real live bug: over a long fight
+        // more and more powers eventually get unlucky enough to trip this
+        // mid-status-effect at some point, and since nothing prunes the
+        // blacklist while a fight is continuously ongoing (only phantom
+        // destruction / zero-candidates-in-range does), the working
+        // candidate pool measurably shrinks the longer the fight runs —
+        // "aggressive early, passive later," confirmed live. Given its
+        // short-lived real cause, RestrictiveCondition gets its own much
+        // shorter window instead.
         private const long PhantomPowerBlacklistMs = 10 * 60 * 1000;
+        private const long PhantomTransientPowerBlacklistMs = 15 * 1000;
         private static readonly Dictionary<(ulong phantomId, PrototypeId powerRef), long> s_phantomPowerBlacklist = new();
         private static bool IsPhantomPowerBlacklisted(ulong phantomId, PrototypeId powerRef, long nowMs)
             => s_phantomPowerBlacklist.TryGetValue((phantomId, powerRef), out long expiresAt) && nowMs < expiresAt;
@@ -2638,16 +2687,44 @@ namespace MHServerEmu.Games.Entities.Avatars
         // medkit itself instead of continuing whatever it was doing.
         private const float PhantomSelfHealHpThreshold = 0.35f;
 
+        // Own throttle, independent of the real medkit power's own
+        // (probably short, spammable-by-design) cooldown. Without this, a
+        // phantom whose HP sits at/under the threshold for an extended
+        // stretch of a long fight (incoming damage outpacing what one heal
+        // restores) re-triggers the instant the real cooldown clears and
+        // preempts the ENTIRE combat tick every single time — chain-looping
+        // into "spend most ticks healing, almost none attacking" the longer
+        // that stretch runs. This mirrors the exact "aggressive early,
+        // passive later" shape of a real, separate pre-existing bug found
+        // the same session (power-blacklist duration mismatch, see
+        // PhantomTransientPowerBlacklistMs) — same failure shape, different
+        // mechanism, so hardened preventively even though it wasn't
+        // confirmed as the cause of that specific report.
+        private const long PhantomSelfHealThrottleMs = 8_000;
+        // Enemy/nemesis phantoms get a much longer throttle than friendly
+        // squadmates. Their HealthMax is already multiplied 8-32x by rank
+        // (Player.NemesisHealthMultForRank) — the same medkit heal a real
+        // player uses is a %-of-HealthMax-scale effect on that data, not
+        // determinable exactly from source, but an 8s throttle would let a
+        // ranked nemesis camp the low-HP threshold and out-heal a solo
+        // player's damage indefinitely, effectively making it unkillable
+        // rather than "a tough fight." A rare clutch heal is fine (mirrors
+        // a real player's own medkit use); a repeatable stalling tactic is
+        // not. Flagged in the 2026-07-20 audit, hardened here rather than
+        // shipped unverified.
+        private const long PhantomSelfHealThrottleMsEnemy = 45_000;
+        private static readonly Dictionary<ulong, long> s_phantomNextSelfHealMs = new();
+
         /// <summary>
         /// Fires the same medkit/self-heal power real players use
         /// (GlobalsPrototype.AvatarHealPower) if this phantom is below
         /// PhantomSelfHealHpThreshold and the power isn't on cooldown.
         /// Returns true if it fired (caller should skip the rest of its
         /// tick), false if not applicable (full HP, no such power, on
-        /// cooldown, etc.) so the normal hunt/attack/revive logic proceeds
-        /// as usual.
+        /// cooldown, throttled, etc.) so the normal hunt/attack/revive
+        /// logic proceeds as usual.
         /// </summary>
-        private bool TryPhantomSelfHeal(Avatar phantom)
+        private bool TryPhantomSelfHeal(Avatar phantom, bool enemyMode)
         {
             if (phantom.IsDead || phantom.IsInWorld == false) return false;
 
@@ -2655,6 +2732,10 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (healthMax <= 0f) return false;
             float health = phantom.Properties[PropertyEnum.Health];
             if (health / healthMax > PhantomSelfHealHpThreshold) return false;
+
+            long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            if (s_phantomNextSelfHealMs.TryGetValue(phantom.Id, out long nextAt) && nowMs < nextAt)
+                return false;
 
             PrototypeId healPowerRef = GameDatabase.GlobalsPrototype?.AvatarHealPower ?? PrototypeId.Invalid;
             if (healPowerRef == PrototypeId.Invalid) return false;
@@ -2671,6 +2752,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                 PowerUseResult result = phantom.ActivatePower(healPowerRef, ref settings);
                 if (result == PowerUseResult.Success)
                 {
+                    long throttleMs = enemyMode ? PhantomSelfHealThrottleMsEnemy : PhantomSelfHealThrottleMs;
+                    s_phantomNextSelfHealMs[phantom.Id] = nowMs + throttleMs;
                     PhantomLogger.Info($"[PhantomHero:SelfHeal] {phantom} used medkit at {health / healthMax:P0} HP");
                     return true;
                 }
@@ -2695,8 +2778,18 @@ namespace MHServerEmu.Games.Entities.Avatars
         private bool TryPhantomSpacingDash(Avatar phantom, Region region, MHServerEmu.Core.System.Random.GRandom rng)
         {
             long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
-            if (s_phantomNextDashMs.TryGetValue(phantom.Id, out long nextAt) && nowMs < nextAt)
+            if (s_phantomNextDashMs.TryGetValue(phantom.Id, out long nextAt) == false)
+            {
+                // First time this phantom has ever been checked — seed the
+                // cooldown instead of treating "no entry yet" as
+                // "immediately eligible." Without this, a phantom's very
+                // first attack-eligible tick fired a dash instead of an
+                // attack — first contact with an enemy read as "dodge away"
+                // (confirmed live 2026-07-20 audit).
+                s_phantomNextDashMs[phantom.Id] = nowMs + PhantomSpacingDashCooldownMs + (long)(rng.NextDouble() * PhantomSpacingDashJitterMs);
                 return false;
+            }
+            if (nowMs < nextAt) return false;
 
             var pc = phantom.PowerCollection;
             if (pc == null) return false;
@@ -2911,11 +3004,21 @@ namespace MHServerEmu.Games.Entities.Avatars
 
                     // Take top 5 (or fewer). Weighted-random pick — weight = 1 + cooldownMs/1000
                     // so a 5s power is ~6x more likely than a basic (0s) attack.
+                    //
+                    // BUG FIXED (2026-07-20): `(long)rng.NextDouble()` truncates a
+                    // [0,1) double to 0 BEFORE the multiply — the old expression
+                    // computed `((long)rng.NextDouble() * totalWeight * 1000L) % ...`,
+                    // so `roll` was always exactly 0 regardless of the actual roll.
+                    // That made this whole "weighted random" block a no-op: every
+                    // phantom deterministically picked candidates[0] (the sorted
+                    // longest-cooldown power) every single time, never varying its
+                    // rotation. Cast happens AFTER the multiply now.
                     int take = Math.Min(5, candidates.Count);
                     long totalWeight = 0;
                     for (int i = 0; i < take; i++) totalWeight += 1 + (candidates[i].Item2 / 1000);
-                    long roll = ((long)rng.NextDouble() * totalWeight * 1000L) % Math.Max(1, totalWeight);
-                    if (roll < 0) roll = -roll;
+                    long roll = (long)(rng.NextDouble() * totalWeight);
+                    if (roll < 0) roll = 0;
+                    if (roll >= totalWeight) roll = totalWeight - 1;
 
                     chosenPower = candidates[0].Item1;
                     long acc = 0;
@@ -2989,10 +3092,10 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // weighted power like this keeps winning the weighted pick
                 // and the phantom looks like it "randomly stops attacking"
                 // even though it's retrying every tick and always failing.
-                if (result == PowerUseResult.RestrictiveCondition
-                    || result == PowerUseResult.WeaponMissing
-                    || result == PowerUseResult.NotAllowedByTransformMode)
+                if (result == PowerUseResult.WeaponMissing || result == PowerUseResult.NotAllowedByTransformMode)
                     s_phantomPowerBlacklist[(phantom.Id, chosenPower)] = nowMs + PhantomPowerBlacklistMs;
+                else if (result == PowerUseResult.RestrictiveCondition)
+                    s_phantomPowerBlacklist[(phantom.Id, chosenPower)] = nowMs + PhantomTransientPowerBlacklistMs;
 
                 // Log every failed activation so we can see WHY a cutscene boss
                 // rejects the phantom's power (Dormant/Unaffectable/etc). Log

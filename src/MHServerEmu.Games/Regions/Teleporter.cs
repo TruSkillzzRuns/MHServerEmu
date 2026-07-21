@@ -428,6 +428,19 @@ namespace MHServerEmu.Games.Regions
                 return false;
             }
 
+            // Queue/challenge/raid entry (Age of Ultron and other
+            // IsQueueRegion content) goes through this method instead of
+            // TeleportToRemoteTarget/PlayerConnection.BeginRegionTransfer —
+            // the only other place that calls SnapshotPhantomsForTransfer.
+            // Without this, friendly phantoms were silently dropped on
+            // every queue-based region entry: MigrationData.PhantomIntents
+            // stayed empty, so RestorePhantomsFromMigration had nothing to
+            // respawn once the real avatar landed in the match region.
+            // Confirmed live (2026-07-20): phantoms don't follow into The
+            // Age of Ultron Challenge.
+            try { Player.SnapshotPhantomsForTransfer(); }
+            catch (Exception ex) { Logger.Warn($"BeginTeleportToQueueTarget(): SnapshotPhantomsForTransfer threw: {ex.Message}"); }
+
             // Queue up straight away if there is nothing to choose (queue bypass is not allowed and we are not in a party).
             if (destinationRegionProto.AllowsQueueBypass == false && party == null)
             {
