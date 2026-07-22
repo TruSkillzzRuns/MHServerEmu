@@ -153,6 +153,8 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/phantoms/rogue-encounter", new MHServerEmu.WebFrontend.Handlers.WebApi.RogueEncounterWebHandler());
             _webService.RegisterHandler("/webapi/phantoms/nemesis",         new MHServerEmu.WebFrontend.Handlers.WebApi.NemesisWebHandler());
             _webService.RegisterHandler("/webapi/phantoms/rotation",        new MHServerEmu.WebFrontend.Handlers.WebApi.RotationWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/poweraudit",      new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomPowerAuditWebHandler());
+            _webService.RegisterHandler("/webapi/phantoms/poweraudit/damage", new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomPowerDamageAuditWebHandler());
 
             // OmegaDev2 Enemy Phantoms + Wave Director (Combat pages).
             _webService.RegisterHandler("/webapi/arena/enemyphantoms/spawn",  new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsSpawnWebHandler());

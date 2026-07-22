@@ -91,6 +91,11 @@ namespace MHServerEmu.Games.Entities
             public bool LockLevel { get; set; }
             public string CostumeRef { get; set; }
             public bool InWorld { get; set; }
+            // Null when the entity can't be resolved (despawned/never spawned
+            // this session) rather than 0 — 0 means "actually at zero HP"
+            // (downed), which is a real, different state from "unknown".
+            public int? HealthPct { get; set; }
+            public bool IsDead { get; set; }
         }
 
         public List<WebPhantomInfo> GetPhantomInfosForWeb()
@@ -104,6 +109,15 @@ namespace MHServerEmu.Games.Entities
                 Avatar av = mgr?.GetEntity<Avatar>(_phantomAvatarIds[i]);
 
                 PrototypeId heroRef = av != null ? av.PrototypeDataRef : (PrototypeId)d.AvatarRef;
+
+                int? healthPct = null;
+                if (av != null)
+                {
+                    long health = av.Properties[MHServerEmu.Games.Properties.PropertyEnum.Health];
+                    long healthMax = av.Properties[MHServerEmu.Games.Properties.PropertyEnum.HealthMax];
+                    if (healthMax > 0) healthPct = (int)(health * 100 / healthMax);
+                }
+
                 list.Add(new WebPhantomInfo
                 {
                     AvatarId = $"0x{_phantomAvatarIds[i]:X}",
@@ -114,6 +128,8 @@ namespace MHServerEmu.Games.Entities
                     LockLevel = d.LockLevel,
                     CostumeRef = d.CostumeRef != 0 ? $"0x{d.CostumeRef:X16}" : null,
                     InWorld = av?.IsInWorld == true,
+                    HealthPct = healthPct,
+                    IsDead = av?.IsDead == true,
                 });
             }
 

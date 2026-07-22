@@ -887,6 +887,92 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     }
 
     /// <summary>
+    /// GET /webapi/phantoms/poweraudit — scans EVERY playable hero and
+    /// team-up's power kit for the two categories that can one-shot a
+    /// friendly phantom regardless of HP/gear scaling: Ultimate powers and
+    /// percent-target-health execute powers (2026-07-21 balance
+    /// investigation). Fully offline — reads prototype data only, spawns
+    /// nothing, has zero gameplay side effects. Full per-power detail and a
+    /// grouped summary go to the server log under the "[PowerAudit]" tag;
+    /// this endpoint just confirms it ran and returns the headline counts.
+    ///
+    /// Runs directly on the WebFrontend request thread — no player lookup,
+    /// no game-thread marshaling. The scan only reads GameDatabase's
+    /// prototype tables, which are loaded once at server startup and never
+    /// mutated afterward (the same reasoning PrototypeSearchWebHandler
+    /// already relies on), so there's no live game/player state to touch and
+    /// no reason to require anyone to be logged in. An earlier version of
+    /// this endpoint required finding a live Player first — that made the
+    /// button silently do nothing whenever no client happened to be
+    /// connected, for a tool that has no actual need for one.
+    /// </summary>
+    public class PhantomPowerAuditWebHandler : WebHandler
+    {
+        protected override async Task Get(WebRequestContext context)
+        {
+            Avatar.RunEnemyPhantomPowerAudit(out int heroCount, out int powerCount, out var dangerous);
+            await context.SendJsonAsync(new
+            {
+                Ok = true,
+                Message = $"Scanned {heroCount} heroes/team-ups, {powerCount} enemy-targeting powers — {dangerous.Count} flagged dangerous (Ultimate or %-health execute). Full detail in the server log under [PowerAudit].",
+                HeroesScanned = heroCount,
+                PowersScanned = powerCount,
+                DangerousCount = dangerous.Count,
+            });
+        }
+    }
+
+    /// <summary>
+    /// GET /webapi/phantoms/poweraudit/damage?player=&lt;name&gt; — the
+    /// comprehensive follow-up to /webapi/phantoms/poweraudit: measures the
+    /// REAL estimated damage of every enemy-usable power on every hero and
+    /// team-up (not just the Ultimate/%-health-execute subset), by actually
+    /// spawning a real enemy phantom per (hero, rank 0-and-5) pair, reading
+    /// its live DamageMult/gear-driven stats and every power's real
+    /// DamageBase estimate, then despawning it immediately.
+    ///
+    /// Requires a logged-in player with an in-world avatar — unlike the
+    /// structural scan above, this genuinely needs a live entity to spawn
+    /// from and to read live gear/rank-driven stats off of, which don't
+    /// exist on the bare prototype. Expect ~260 rapid spawn/despawn
+    /// flickers near the target avatar while this runs — despawn is a
+    /// clean ExitWorld+Destroy with no loot/XP/nemesis-roster side effects.
+    /// Full per-power results and a worst-40 summary (sorted by estimated
+    /// real hit, regardless of category) go to the server log under
+    /// "[PowerDamageAudit]"; this endpoint returns the headline counts.
+    /// </summary>
+    public class PhantomPowerDamageAuditWebHandler : WebHandler
+    {
+        protected override async Task Get(WebRequestContext context)
+        {
+            Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "no matching player" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                Avatar avatar = p.CurrentAvatar;
+                if (avatar == null || avatar.IsInWorld == false)
+                    return (object)new { Ok = false, Error = "target player's avatar must be in-world (in a region) to spawn test phantoms from" };
+
+                avatar.RunEnemyPhantomPowerDamageAudit(out int spawnAttempts, out int spawnFailures, out var entries);
+                return new
+                {
+                    Ok = true,
+                    Message = $"Measured {entries.Count} powers across {spawnAttempts} spawn attempts ({spawnFailures} failed). Full detail + worst-40 summary in the server log under [PowerDamageAudit].",
+                    SpawnAttempts = spawnAttempts,
+                    SpawnFailures = spawnFailures,
+                    PowersMeasured = entries.Count,
+                };
+            });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    /// <summary>
     /// Shared plumbing for the phantom endpoints: target-player lookup (same
     /// reflection route as ItemGiveWebHandler) and game-thread marshaling.
     /// </summary>

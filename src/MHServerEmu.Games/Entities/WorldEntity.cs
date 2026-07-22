@@ -82,6 +82,10 @@ namespace MHServerEmu.Games.Entities
     {
         private static readonly Logger Logger = LogManager.CreateLogger();
 
+        // Max fraction of a player-side target's HealthMax that a single hit from
+        // an enemy phantom hero can remove — see ApplyHealthPowerResults' ONE-SHOT CLAMP.
+        private const float EnemyPhantomMaxHitPctOfMax = 0.15f; // was 0.35 — tightened 2026-07-21
+
         private readonly EventPointer<ScheduledExitWorldEvent> _exitWorldEvent = new();
         private readonly EventPointer<ScheduledKillEvent> _scheduledKillEvent = new();
         private readonly EventPointer<NegateHotspotsEvent> _negateHotspotsEvent = new();
@@ -753,6 +757,18 @@ namespace MHServerEmu.Games.Entities
 
             // Fix for team-up AI getting disabled when they get stuck and you run away too far from them
             if (IsTeamUpAgent)
+                return SetSimulated(true);
+
+            // Phantom heroes (friendly + enemy) MUST always stay simulated
+            // for the same reason team-ups do — their AI is driven server-
+            // side from the caller's phantom tick, and Agent.ActivatePower
+            // hard-rejects with OwnerNotSimulated (Agent.cs:373) when
+            // IsSimulated is false. AOI drops (player briefly downed,
+            // phantom leashed to a new cell, player mid-teleport) were
+            // desimulating enemy phantoms in-fight, which produced the
+            // exact "randomly get stunned / randomly stop attacking"
+            // symptom users reported.
+            if (this is Avatars.Avatar av && av.IsPhantomHero)
                 return SetSimulated(true);
 
             // Simulate is there are any player interested in this world entity or its cell
@@ -2205,6 +2221,48 @@ namespace MHServerEmu.Games.Entities
                     return false;
             }
 
+            var avatar = ultimateOwner?.GetMostResponsiblePowerUser<Avatar>();
+
+            // ONE-SHOT CLAMP (2026-07-21) — enemy phantom hits against player-side
+            // targets (the real human, a friendly phantom hero, or a friendly
+            // team-up) can't remove more than EnemyPhantomMaxHitPctOfMax of the
+            // target's HealthMax in a single hit.
+            //
+            // Root cause (confirmed via [NemesisDamage] + live prototype read,
+            // not guessed): some phantom-granted AoE ultimates — e.g. Iceman's
+            // ShowOffStatueExplosion — deal damage through a flat DamageBase
+            // curve, not DamagePctBonus/DamageMult. Every phantom-granted power
+            // resolves PowerRank=0 (Avatar.InitializePowers hardcodes rank 0),
+            // so that curve lands on a floor value tuned for a max-level real
+            // player's much larger HealthMax + gear mitigation. Against a
+            // phantom hero's smaller HealthMax that same flat number is a
+            // near-100% hit. The existing DamageMult cap doesn't touch this
+            // because this power's damage was never primarily DamageMult-driven
+            // in the first place — confirmed live: [PhantomHero:FinalStats]
+            // showed the attacker's DamageMult correctly capped at 3.50 (under
+            // the 5.0 ceiling) on the exact same hit that took IronMan from
+            // 68148 HP to 0 in one shot.
+            if (healthDelta < 0
+                && avatar != null
+                && avatar.Id != Id
+                && avatar.IsPhantomHero
+                && powerResults.TestFlag(PowerResultFlags.Hostile))
+            {
+                bool targetIsPlayerSideForClamp = this is Agent clampTargetAgent
+                    && (clampTargetAgent.GetOwnerOfType<Player>()?.PlayerConnection != null || clampTargetAgent.IsPhantomHero);
+
+                if (targetIsPlayerSideForClamp)
+                {
+                    long targetHealthMaxForClamp = Properties[PropertyEnum.HealthMax];
+                    if (targetHealthMaxForClamp > 0)
+                    {
+                        long maxSingleHit = MathHelper.RoundToInt64(targetHealthMaxForClamp * EnemyPhantomMaxHitPctOfMax);
+                        if (-healthDelta > maxSingleHit)
+                            healthDelta = -maxSingleHit;
+                    }
+                }
+            }
+
             // Calculate the new health value
             health += healthDelta;
             health = Math.Clamp(health, Properties[PropertyEnum.HealthMin], Properties[PropertyEnum.HealthMax]);
@@ -2213,8 +2271,6 @@ namespace MHServerEmu.Games.Entities
             WorldEntity powerUser = Game.EntityManager.GetEntity<WorldEntity>(powerResults.PowerOwnerId);
 
             long adjustHealth = health - startHealth;
-
-            var avatar = ultimateOwner?.GetMostResponsiblePowerUser<Avatar>();
 
             if (region != null)
             {
@@ -2226,11 +2282,97 @@ namespace MHServerEmu.Games.Entities
             if (powerResults.IsAvoided)
                 return false;
 
+            // OmegaDev2 DPS meter — record avatar-dealt damage (human hero and
+            // phantoms alike) using the ACTUAL applied delta.
+            if (adjustHealth < 0 && avatar != null && avatar.Id != Id && powerResults.TestFlag(PowerResultFlags.Hostile))
+                Powers.DpsMeter.RecordDamage(avatar, -adjustHealth);
+
+            // VERIFICATION DIAGNOSTIC (2026-07-21) — rank 4/5 nemesis/rogue
+            // "basically one-shots phantom heroes" balance investigation.
+            // Logs every ACTUAL applied hit (post-mitigation, same value the
+            // DPS meter above records) from an enemy phantom onto a
+            // player-side target, tagged with the attacker's real numeric
+            // nemesis rank and its live damage-multiplier properties, plus
+            // the target's exact before/after/max HP.
+            //
+            // Deliberately does NOT assume the report is about rank 4/5
+            // specifically — TryGetEnemyPhantomRank reports the real rank
+            // whatever it is (0 for a plain rogue), so this settles "which
+            // rank(s) are actually doing this" from data rather than the
+            // report's guess.
+            //
+            // Discriminator: attacker.IsPhantomHero + Hostile flag true is
+            // sufficient to prove the attacker is enemy-aligned WITHOUT a
+            // separate enemy/friendly lookup — a friendly phantom's alliance
+            // (Players) can never register a Hostile-flagged hit against
+            // another Players-aligned target (the real human, a friendly
+            // phantom, or a friendly team-up), so if the flag is set and the
+            // target below is player-side, the attacker can only be the
+            // enemy side. Remove once the real numbers settle this.
+            if (adjustHealth < 0
+                && avatar != null
+                && avatar.Id != Id
+                && avatar.IsPhantomHero
+                && powerResults.TestFlag(PowerResultFlags.Hostile))
+            {
+                bool targetIsPlayerSide = this is Agent targetAgent
+                    && (targetAgent.GetOwnerOfType<Player>()?.PlayerConnection != null || targetAgent.IsPhantomHero);
+
+                if (targetIsPlayerSide)
+                {
+                    long targetHealthMax = Properties[PropertyEnum.HealthMax];
+                    float pctOfMax = targetHealthMax > 0 ? (float)(-adjustHealth) / targetHealthMax : 0f;
+                    bool hadRank = Avatars.Avatar.TryGetEnemyPhantomRank(avatar.Id, out int nemesisRank, out int nemesisLevel);
+
+                    float dmgMult = avatar.Properties[PropertyEnum.DamageMult];
+                    float dmgPctBonus = avatar.Properties[PropertyEnum.DamagePctBonus];
+                    float dmgRating = avatar.Properties[PropertyEnum.DamageRating];
+
+                    // Distinguishes "hits hard because of stat scaling" from
+                    // "hits hard because it's designed as a percent-of-max/
+                    // current-health execute" — HP scaling can only ever fix
+                    // the first category. If a power carries a nonzero
+                    // DamageBasePctTargetHealth{Cur,Max}, doubling the
+                    // target's HealthMax doubles the damage it deals too, so
+                    // the resulting pctOfMax NEVER changes no matter how
+                    // tanky the target gets.
+                    var powerProto = powerResults.PowerPrototype;
+                    float pctCurHealthDmg = powerProto?.Properties?[PropertyEnum.DamageBasePctTargetHealthCur] ?? 0f;
+                    float pctMaxHealthDmg = powerProto?.Properties?[PropertyEnum.DamageBasePctTargetHealthMax] ?? 0f;
+                    bool isUltimate = powerProto?.IsUltimate == true;
+
+                    Logger.Info($"[NemesisDamage] {avatar} (rank={(hadRank ? nemesisRank : -1)}, level={(hadRank ? nemesisLevel : avatar.CharacterLevel)}, " +
+                        $"dmgMult={dmgMult:F2}, dmgPctBonus={dmgPctBonus:F2}, dmgRating={dmgRating:F0}) " +
+                        $"-> {this} power={powerProto?.DataRef.GetName() ?? "?"} isUltimate={isUltimate} pctCurHealthDmg={pctCurHealthDmg:F2} pctMaxHealthDmg={pctMaxHealthDmg:F2} " +
+                        $"hit={-adjustHealth} targetHealthBefore={startHealth} targetHealthAfter={health} targetHealthMax={targetHealthMax} pctOfMax={pctOfMax:P0}");
+                }
+            }
+
             // Apply health change
             bool killed = false;
 
             if (health <= 0 && Properties[PropertyEnum.AIDefeated] == false)
             {
+                // DEATH DIAGNOSTIC (2026-07-21) — user reported multiple phantom
+                // heroes/real player dying simultaneously to a single hit even
+                // after the 15%-of-max one-shot clamp landed. The clamp only
+                // fires when the ATTACKER has IsPhantomHero set — a regular
+                // region mob/boss mechanic, hazard, or DoT tick would kill
+                // through it untouched and unlogged by [NemesisDamage]. Log
+                // EVERY player-side death unconditionally (attacker type
+                // included) so the next test proves whether the killing blow
+                // came from a phantom (and if so, whether the clamp actually
+                // capped it) or from something our clamp never covers.
+                if (this is Agent deathTargetAgent
+                    && (deathTargetAgent.GetOwnerOfType<Player>()?.PlayerConnection != null || deathTargetAgent.IsPhantomHero))
+                {
+                    long deathTargetHealthMax = Properties[PropertyEnum.HealthMax];
+                    float deathPctOfMax = deathTargetHealthMax > 0 ? (float)(startHealth) / deathTargetHealthMax : 0f;
+                    Logger.Info($"[PhantomDeath] {this} died — healthBeforeThisHit={startHealth} ({deathPctOfMax:P0} of max {deathTargetHealthMax}) " +
+                        $"hit={-adjustHealth} attacker={(avatar != null ? avatar.ToString() : ultimateOwner?.ToString() ?? "?")} " +
+                        $"attackerIsPhantomHero={avatar?.IsPhantomHero == true} power={powerResults.PowerPrototype?.DataRef.GetName() ?? "?"}");
+                }
+
                 Properties[PropertyEnum.Health] = 0;
 
                 if (this is Avatar killedAvatar)

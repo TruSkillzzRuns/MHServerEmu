@@ -517,6 +517,26 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static readonly Dictionary<ulong, (int rank, int level)> s_enemyPhantomRankLevel = new();
 
         /// <summary>
+        /// Public lookup for the balance/damage diagnostic in WorldEntity.cs —
+        /// lets it tag a hit/heal with the attacker's real numeric nemesis
+        /// rank (1-5) without needing this dictionary itself to be public.
+        /// Returns false (rank/level both 0) for plain rogues, which
+        /// intentionally aren't tracked here.
+        /// </summary>
+        internal static bool TryGetEnemyPhantomRank(ulong avatarId, out int rank, out int level)
+        {
+            if (s_enemyPhantomRankLevel.TryGetValue(avatarId, out var entry))
+            {
+                rank = entry.rank;
+                level = entry.level;
+                return true;
+            }
+            rank = 0;
+            level = 0;
+            return false;
+        }
+
+        /// <summary>
         /// Rogue/nemesis ambush phantoms actively hunt instead of standing
         /// around or leashing to the caller: each repick, the phantom's
         /// search anchor advances up to NemesisHuntAdvanceDist toward the
@@ -883,7 +903,25 @@ namespace MHServerEmu.Games.Entities.Avatars
                     && nowMsRevive - claim.claimedAtMs < PhantomReviveClaimTimeoutMs
                     && nowMsRevive - claim.firstClaimedAtMs < PhantomReviveClaimMaxHoldMs)
                 {
+                    // DIAGNOSTIC (2026-07-21) — user reported multiple phantoms
+                    // reviving the same downed target simultaneously. Proves
+                    // whether the claim system is actually rejecting the
+                    // duplicate attempt (if this line fires, it is).
+                    PhantomLogger.Info($"[PhantomHero:ReviveClaim] {phantom} backed off downed {downed} — already claimed by {claim.claimantId:X}");
                     downed = null;
+
+                    // Gap fix (2026-07-21): rejection alone only stops this phantom
+                    // from casting the revive THIS tick — if it was already
+                    // mid-path toward the downed target from an earlier tick
+                    // (e.g. it held the claim briefly before losing it, or found
+                    // the same target before another phantom's claim registered),
+                    // that FollowEntity command stays active in the Locomotor and
+                    // it keeps visibly walking toward/clustering on the target
+                    // even though it will never actually cast. Explicitly stop
+                    // here so Hunt (below) picks its own real destination instead
+                    // of coasting on stale movement. The team-up revive path
+                    // already does the equivalent via RestoreTeamUpAssistedEntity.
+                    phantom.Locomotor?.Stop();
                 }
                 else
                 {
@@ -955,7 +993,45 @@ namespace MHServerEmu.Games.Entities.Avatars
                     {
                         var reviveResult = avatarPhantom.ResurrectOtherAvatar(downed, bypassCooldown: true);
                         if (reviveResult != null && reviveResult != PowerUseResult.Success)
+                        {
                             PhantomLogger.Info($"[PhantomHero:Revive] {phantom} -> {downed} rejected: {reviveResult}");
+
+                            // BREAKDOWN DIAGNOSTIC (2026-07-21) — user directly
+                            // observed the claimed reviver never actually
+                            // finishing the revive, which orphans the claim
+                            // (only clears on Success) and looks like
+                            // "everyone's stuck trying." RestrictiveCondition is
+                            // a generic bucket over ~8 different caster-side
+                            // conditions (Agent.CanTriggerPower) — log every one
+                            // of them explicitly instead of guessing which.
+                            if (reviveResult == PowerUseResult.RestrictiveCondition)
+                            {
+                                PhantomLogger.Info($"[PhantomHero:ReviveBlocked] {phantom} knockback={avatarPhantom.IsInKnockback} " +
+                                    $"knockdown={avatarPhantom.IsInKnockdown} knockup={avatarPhantom.IsInKnockup} stunned={avatarPhantom.IsStunned} " +
+                                    $"mesmerized={avatarPhantom.IsMesmerized} npcAmbientLock={avatarPhantom.NPCAmbientLock} " +
+                                    $"powerLock={avatarPhantom.IsInPowerLock} aiControlPowerLock={avatarPhantom.HasAIControlPowerLock} " +
+                                    $"tutorialPowerLock={avatarPhantom.IsInTutorialPowerLock}");
+
+                                // Reverted (2026-07-21): releasing the claim on every
+                                // RestrictiveCondition failure was wrong — live data (the
+                                // breakdown above) showed it's almost always stunned=True,
+                                // i.e. the reviver got hit by ongoing enemy fire, a normal
+                                // and expected mid-combat interruption, not a stuck/broken
+                                // claimant. Releasing on that let a DIFFERENT phantom
+                                // immediately grab the claim, which likely gets stunned by
+                                // the same ongoing fight moments later too — the claim
+                                // churned between phantoms every ~0.5-1s, which is exactly
+                                // what looked like "everyone's trying to revive the same
+                                // target." Explicit requirement: exactly ONE phantom should
+                                // ever be "the reviver" for a given target at a time, stable,
+                                // while everyone else keeps fighting. So: do NOT release
+                                // here — this same claimant keeps re-claiming every tick
+                                // (it's still the closest) and will succeed once the stun
+                                // passes. The existing 6s-inactivity / 20s-hard-cap timeout
+                                // remains the only escape hatch for a claimant that's truly
+                                // stuck (e.g. dead itself).
+                            }
+                        }
                         else
                             s_phantomReviveClaim.Remove(downed.Id);
                     }
@@ -985,7 +1061,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             var candidates = new List<(WorldEntity we, float distSq, float threat)>();
             List<(WorldEntity we, float distSq, string reason)> diagRejected = null;
             ulong squadHostId = PhantomHost?.Id ?? 0;
-            ulong squadFocusId = GetPhantomSquadFocusTarget(squadHostId,
+            ulong squadFocusId = GetPhantomSquadFocusTarget(squadHostId, enemyMode,
                 Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond);
             bool diagWant = ShouldEmitPhantomDiag(phantom.Id);
             long nowMsSweep = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
@@ -1411,7 +1487,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                             // different. Refreshed on every landed hit, so the
                             // focus follows whatever the squad is actually
                             // fighting and expires on its own once they stop.
-                            SetPhantomSquadFocusTarget(squadHostId, tryTarget.Id, now);
+                            SetPhantomSquadFocusTarget(squadHostId, enemyMode, tryTarget.Id, now);
                             break;
                         }
                         // Only blacklist the TARGET for target-specific failures.
@@ -1456,7 +1532,37 @@ namespace MHServerEmu.Games.Entities.Avatars
         // they hit harder and take more punishment. Nemesis rank layers on
         // top of the enemy values so returning nemeses feel meaningfully
         // more dangerous than a fresh rogue spawn.
-        private const float PhantomHealthMult      = 2.0f;  // friendly: +200% HealthMax
+        //
+        // Doubled 2.0 -> 4.0 (2026-07-21), grounded in a real live-logged
+        // "[NemesisDamage]" balance investigation, not a guess: enemy
+        // phantom ULTIMATE/finisher powers (SolarOvercharge, Tantrum,
+        // GammaPunch, LeapImplodeEnd...) were landing for ~100% of a
+        // friendly phantom's max HP in a single hit — confirmed across
+        // ranks -1 (plain rogue), 1, and 2, so nemesis rank scaling was
+        // NOT the actual driver despite that being the initial suspicion.
+        // The real cause: this session's AI rework made the "a ready
+        // ultimate wins outright" power-pick rule reliably fire (the old
+        // broken cooldown-based picker rarely reached it), and those
+        // ultimates are balanced against a real geared level-60 player's
+        // HP/defense, not a phantom's 2x-baseline pool. Doubling the pool
+        // roughly halves the fraction of max HP one of these hits removes
+        // (~100% -> ~50%), turning a guaranteed kill into a big, survivable
+        // hit a phantom can self-heal back from (self-heal already
+        // triggers at <=35% HP) instead of dying outright.
+        // Bumped 4.0 -> 45.0 (2026-07-21), grounded in real logged HealthMax
+        // values from [NemesisDamage] (base HealthMax before any mult, i.e.
+        // observed/4.0): Wolverine ~22263, Storm ~20393, Cyclops ~18953,
+        // JeanGrey ~13757 — the weakest of these needed. User's explicit ask:
+        // a max-level (60) friendly phantom should have AT LEAST 500k HP.
+        // 45x on the weakest base (JeanGrey) lands at ~619k, comfortably
+        // over the floor with margin for other heroes' bases running lower
+        // still. Also switched both friendly spawn paths below from a flat
+        // assignment to ScaleHealthMultForLevel(PhantomHealthMult, level) —
+        // previously this mult was NOT level-scaled at all (unlike the enemy
+        // pool), so a level-1 friendly phantom would already reach full 45x;
+        // now it ramps the same quadratic 35%->100% curve enemy phantoms use,
+        // reaching the full 45x (and the 500k+ floor) only at level 60.
+        private const float PhantomHealthMult      = 45.0f;  // friendly: +4400% HealthMax at level 60 (was flat 4.0/+400%)
         // Enemy pool got a big HP bump after the PvP-damage-scaling bug fix.
         // Previously they took ~1000× reduced damage on the player's attacks,
         // so 3.0× base HP felt tanky. With full damage now landing, they melt
@@ -1816,6 +1922,28 @@ namespace MHServerEmu.Games.Entities.Avatars
                 return false;
             }
 
+            // Claim the downed target — root cause of "multiple phantoms/team-ups
+            // revive the same downed ally at once" (reported 2026-07-21): this
+            // path picks the same nearest-downed-ally logic as the avatar-phantom
+            // Hunt path but never consulted s_phantomReviveClaim, so a team-up
+            // and an avatar phantom (or two team-ups) could both lock onto and
+            // cast on the same target with zero coordination between them.
+            {
+                long nowMsRevive = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+                if (s_phantomReviveClaim.TryGetValue(downed.Id, out var claim)
+                    && claim.claimantId != teamUp.Id
+                    && nowMsRevive - claim.claimedAtMs < PhantomReviveClaimTimeoutMs
+                    && nowMsRevive - claim.firstClaimedAtMs < PhantomReviveClaimMaxHoldMs)
+                {
+                    PhantomLogger.Info($"[PhantomHero:ReviveClaim] {teamUp} backed off downed {downed} — already claimed by {claim.claimantId:X}");
+                    RestoreTeamUpAssistedEntity(teamUp);
+                    return false;
+                }
+
+                long firstClaimedAtMs = (claim.claimantId == teamUp.Id) ? claim.firstClaimedAtMs : nowMsRevive;
+                s_phantomReviveClaim[downed.Id] = (teamUp.Id, nowMsRevive, firstClaimedAtMs);
+            }
+
             // Guard against re-casting on someone already being resurrected.
             if (teamUp.Properties[PropertyEnum.PendingResurrectEntityId] == downed.Id) return true;
 
@@ -1857,9 +1985,32 @@ namespace MHServerEmu.Games.Entities.Avatars
                 settings.Flags |= PowerActivationSettingsFlags.NotifyOwner;
                 var reviveResult = teamUp.ActivatePower(resurrectPowerRef, ref settings);
                 if (reviveResult == PowerUseResult.Success)
+                {
                     teamUp.Properties[PropertyEnum.PendingResurrectEntityId] = downed.Id;
+                    s_phantomReviveClaim.Remove(downed.Id);
+                }
                 else
+                {
                     PhantomLogger.Info($"[PhantomHero:TeamUp:Revive] {teamUp} -> {downed} rejected: {reviveResult}");
+                    if (reviveResult == PowerUseResult.RestrictiveCondition)
+                    {
+                        PhantomLogger.Info($"[PhantomHero:ReviveBlocked] {teamUp} knockback={teamUp.IsInKnockback} " +
+                            $"knockdown={teamUp.IsInKnockdown} knockup={teamUp.IsInKnockup} stunned={teamUp.IsStunned} " +
+                            $"mesmerized={teamUp.IsMesmerized} npcAmbientLock={teamUp.NPCAmbientLock} " +
+                            $"powerLock={teamUp.IsInPowerLock} aiControlPowerLock={teamUp.HasAIControlPowerLock} " +
+                            $"tutorialPowerLock={teamUp.IsInTutorialPowerLock}");
+
+                        // Reverted (2026-07-21) — see the matching avatar-phantom revive
+                        // path's comment: live data showed these failures are almost
+                        // always stunned=True (ongoing combat interruption, expected),
+                        // not a stuck claimant. Releasing here caused the claim to churn
+                        // between phantoms every ~0.5-1s, which is what looked like
+                        // "everyone's trying to revive the same target." Keep this same
+                        // claimant stable — it re-claims every tick on its own since it's
+                        // still the closest — and let it succeed once un-stunned, or fall
+                        // back to the existing 6s/20s timeout if it's truly stuck.
+                    }
+                }
             }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] ActivatePower(ResurrectOther) failed: {ex.Message}"); }
             finally { RestoreTeamUpAssistedEntity(teamUp); }
@@ -3249,6 +3400,81 @@ namespace MHServerEmu.Games.Entities.Avatars
             phantom.Properties[PropertyEnum.DamageRating]   = dmgRating;
         }
 
+        // Enemy phantoms' final DamageMult was observed reaching 12.70-14.38
+        // in live combat (2026-07-21 balance investigation, read directly
+        // from the SAME property real damage calculations use — this is
+        // ground truth, not an estimate) — far beyond the ~1.7-2.38 the
+        // rank-scaling formula alone was ever meant to produce.
+        //
+        // Root cause, traced rather than guessed: DamageMult is an
+        // AGGREGATE property. ApplyPhantomDamageScaling's flat assignment
+        // sets the base contribution, but equipped gear contributes
+        // SEPARATELY as child property collections that sum on top
+        // automatically (see PropertyCollection.AddChildCollection) — so by
+        // the time the nemesis rank-boost multiply below reads
+        // Properties[DamageMult] back, it's already reading base-formula
+        // PLUS real gear's stacked bonus, then multiplies that COMBINED
+        // number by another 1.15-1.40x on top. Two real, independently
+        // correct systems (rank scaling, gear itemization) compounding
+        // multiplicatively rather than each contributing independently.
+        //
+        // Capped here, at the very end of the sequence (after both gear and
+        // rank-boost have already applied for this phantom), using the same
+        // read-then-write-back technique the rank-boost line above already
+        // uses — which is proven to durably set the value real combat reads,
+        // since that's exactly how the already-shipped rank boost works.
+        // Chosen conservatively: roughly double the highest value the
+        // rank-scaling formula alone can produce (rank 5: 1.7 x 1.40 = 2.38),
+        // so real gear still meaningfully increases damage over an ungeared
+        // phantom, without letting it compound into double digits.
+        private const float EnemyPhantomDamageMultCap = 5.0f;
+
+        private static void ClampEnemyPhantomDamageMult(Agent phantom)
+        {
+            float current = phantom.Properties[PropertyEnum.DamageMult];
+            if (current <= EnemyPhantomDamageMultCap) return;
+
+            phantom.Properties[PropertyEnum.DamageMult] = EnemyPhantomDamageMultCap;
+
+            // A flat Properties[x] = v assignment only replaces the BASE layer —
+            // it does NOT zero out child property collections (gear, and the
+            // Rank prototype's own baked-in Mod bundle attached via
+            // ModChangeModEffects during SetSimulated), which keep summing on
+            // top of whatever base we just set. Confirmed live (2026-07-21):
+            // this single-assignment version left rank 1-5 nemeses landing on
+            // a uniform dmgMult=10.00 — exactly double the 5.0 cap — because
+            // the Boss rank tag's child kept adding back ~5.0 every read.
+            //
+            // Solve algebraically for the base value that makes base+child
+            // land exactly at the cap: after setting base := cap, the
+            // read-back aggregate is (cap + child), so child = aggregate - cap.
+            // Setting base := cap - child = 2*cap - aggregate makes the next
+            // read-back (base + child) equal exactly cap.
+            float afterFirstSet = phantom.Properties[PropertyEnum.DamageMult];
+            if (afterFirstSet > EnemyPhantomDamageMultCap)
+            {
+                float correctedBase = (2f * EnemyPhantomDamageMultCap) - afterFirstSet;
+                phantom.Properties[PropertyEnum.DamageMult] = Math.Max(0.1f, correctedBase);
+            }
+        }
+
+        // VERIFICATION DIAGNOSTIC (2026-07-21) — logs the FINAL DamageMult
+        // (post-clamp) and HealthMaxMult (NOT yet clamped — data-gathering
+        // only) right after SetSimulated, so the Rank mod's real contribution
+        // to both is visible directly rather than guessed at. Specifically
+        // aimed at the "MiniBoss (rank 0) phantoms feel tougher to beat than
+        // rank 5" report — if MiniBoss's own baked-in Mod bundle happens to
+        // carry a larger health/defense bonus than Boss's, this will show it
+        // as real numbers instead of another assumption. Remove once settled.
+        private static void LogEnemyPhantomFinalStats(Agent phantom, int nemesisRank)
+        {
+            float dmgMult = phantom.Properties[PropertyEnum.DamageMult];
+            float healthMaxMult = phantom.Properties[PropertyEnum.HealthMaxMult];
+            long healthMax = phantom.Properties[PropertyEnum.HealthMax];
+            PhantomLogger.Info($"[PhantomHero:FinalStats] {phantom} rank={nemesisRank} (0=plain rogue/MiniBoss tag) " +
+                $"finalDamageMult={dmgMult:F2} (capped at {EnemyPhantomDamageMultCap:F1}) finalHealthMaxMult={healthMaxMult:F2} finalHealthMax={healthMax}");
+        }
+
         // Rate-limit the "why isn't my phantom attacking" dump to at most one
         // per phantom every 5 seconds so a 500ms tick doesn't spam the log.
         private static readonly Dictionary<ulong, long> s_phantomNextDiagMs = new();
@@ -3290,21 +3516,35 @@ namespace MHServerEmu.Games.Entities.Avatars
         // same target while the entry is fresh. Soft convergence, not a hard
         // lock — it decays so the squad can re-target naturally and never
         // gets stuck on something unkillable.
+        //
+        // Keyed by (hostId, enemyMode), NOT hostId alone. Friendly phantoms
+        // and enemy phantoms (nemesis/rogue) for the SAME human player share
+        // one hostId, but hunt in opposite directions — a friendly phantom's
+        // committed target is a hostile mob, an enemy phantom's is the real
+        // player or a friendly phantom. Keying on hostId alone meant every
+        // tick's write from one side silently clobbered the other side's
+        // entry (last-writer-wins on the same dictionary slot), so the enemy
+        // squad's OWN focus-fire coordination was intermittently reset by
+        // unrelated friendly-phantom writes and vice versa. The two candidate
+        // ID spaces never overlap, so this never caused a phantom to target
+        // the wrong side — it just made focus-fire flakier than intended.
+        // Found during a 2026-07-21 balance investigation, fixed regardless
+        // of the tuning question since it's a real, isolated correctness bug.
         private const long PhantomSquadFocusTtlMs = 5000;
-        private static readonly Dictionary<ulong, (ulong targetId, long expiryMs)> s_phantomSquadFocus = new();
+        private static readonly Dictionary<(ulong hostId, bool enemyMode), (ulong targetId, long expiryMs)> s_phantomSquadFocus = new();
 
-        private static ulong GetPhantomSquadFocusTarget(ulong hostId, long nowMs)
+        private static ulong GetPhantomSquadFocusTarget(ulong hostId, bool enemyMode, long nowMs)
         {
             if (hostId == 0) return 0;
-            if (s_phantomSquadFocus.TryGetValue(hostId, out var entry) == false) return 0;
+            if (s_phantomSquadFocus.TryGetValue((hostId, enemyMode), out var entry) == false) return 0;
             if (nowMs >= entry.expiryMs) return 0;
             return entry.targetId;
         }
 
-        private static void SetPhantomSquadFocusTarget(ulong hostId, ulong targetId, long nowMs)
+        private static void SetPhantomSquadFocusTarget(ulong hostId, bool enemyMode, ulong targetId, long nowMs)
         {
             if (hostId == 0 || targetId == 0) return;
-            s_phantomSquadFocus[hostId] = (targetId, nowMs + PhantomSquadFocusTtlMs);
+            s_phantomSquadFocus[(hostId, enemyMode)] = (targetId, nowMs + PhantomSquadFocusTtlMs);
         }
 
         private static void DumpPhantomHuntDiag(Agent phantom, Vector3 phantomPos, WorldEntity picked,
@@ -3414,7 +3654,20 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     long throttleMs = enemyMode ? PhantomSelfHealThrottleMsEnemy : PhantomSelfHealThrottleMs;
                     s_phantomNextSelfHealMs[phantom.Id] = nowMs + throttleMs;
-                    PhantomLogger.Info($"[PhantomHero:SelfHeal] {phantom} used medkit at {health / healthMax:P0} HP");
+
+                    // VERIFICATION DIAGNOSTIC (2026-07-21) — part of the "rank
+                    // 4/5 nemesis out-heals everything" balance investigation.
+                    // Logs the ACTUAL applied heal (post-mitigation, same idea
+                    // as the DPS meter's real-damage hook) rather than assuming
+                    // the medkit heals a fixed amount. If ActivatePower applies
+                    // the heal asynchronously rather than synchronously,
+                    // healthAfter will read unchanged here and that itself is
+                    // useful information — remove once this is settled with
+                    // real numbers.
+                    float healthAfterRaw = phantom.Properties[PropertyEnum.Health];
+                    float healedAmount = healthAfterRaw - health;
+                    bool hadRank = TryGetEnemyPhantomRank(phantom.Id, out int nemesisRank, out int nemesisLevel);
+                    PhantomLogger.Info($"[PhantomHero:SelfHeal] {phantom} enemyMode={enemyMode} rank={(hadRank ? nemesisRank : -1)} usedMedkitAt={health / healthMax:P0} healthMax={healthMax:F0} healedAmount={healedAmount:F0} ({healedAmount / healthMax:P0} of max) healthAfter={healthAfterRaw / healthMax:P0}");
                     return true;
                 }
                 return false;
@@ -4368,7 +4621,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
             else
             {
-                teamUp.Properties[PropertyEnum.HealthMaxMult] = PhantomHealthMult;
+                teamUp.Properties[PropertyEnum.HealthMaxMult] = ScaleHealthMultForLevel(PhantomHealthMult, effectiveLevel);
             }
             teamUp.Properties[PropertyEnum.Health] = teamUp.Properties[PropertyEnum.HealthMax];
             ApplyPhantomDamageScaling(teamUp, effectiveLevel, enemy);
@@ -4394,6 +4647,20 @@ namespace MHServerEmu.Games.Entities.Avatars
             // OwnerNotSimulated-reject.
             try { teamUp.SetSimulated(true); }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] SetSimulated(true) failed: {ex.Message}"); }
+
+            // Cap the final DamageMult AFTER SetSimulated, not before — see
+            // ClampEnemyPhantomDamageMult's header for why. Confirmed live
+            // (2026-07-21): setting Properties[PropertyEnum.Rank] earlier in
+            // this function isn't purely cosmetic the way the original
+            // comment assumed — WorldEntity's Rank property-change handler
+            // defers applying the Rank prototype's own baked-in Mod bundle
+            // (ModChangeModEffects) until SetSimulated fires, attaching real
+            // base-game damage/health bonuses as another child collection.
+            // A clamp placed before SetSimulated gets silently overridden by
+            // this — confirmed by rank-5 phantoms landing on a suspiciously
+            // uniform dmgMult=10.00 in live combat despite the 5.0 cap.
+            if (enemy) ClampEnemyPhantomDamageMult(teamUp);
+            if (enemy) LogEnemyPhantomFinalStats(teamUp, nemesisRank);
 
             // Register into the same tracking dicts avatar phantoms use so
             // !phantom clear, cross-region purge, party HUD sync, leash, and
@@ -4872,7 +5139,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // defensives — phantoms eat every hit face-first. A HP
                 // buff keeps them alive long enough to matter without
                 // trivializing content. Refill after the mult applies.
-                phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = PhantomHealthMult;
+                phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = ScaleHealthMultForLevel(PhantomHealthMult, effectiveLevel);
                 phantomAvatar.ResetResources(false);
             }
 
@@ -4909,6 +5176,24 @@ namespace MHServerEmu.Games.Entities.Avatars
             // them; phantoms may not go through that path reliably.
             try { phantomAvatar.SetSimulated(true); }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] SetSimulated(true) failed: {ex.Message}"); }
+
+            // Cap the final DamageMult AFTER SetSimulated, not before — see
+            // ClampEnemyPhantomDamageMult's header for why. Confirmed live
+            // (2026-07-21): the Rank tag set earlier isn't purely cosmetic
+            // the way the original comment assumed — WorldEntity's Rank
+            // property-change handler defers applying the Rank prototype's
+            // own baked-in Mod bundle (ModChangeModEffects, real base-game
+            // damage/health/passive-power bonuses tied to the Boss/MiniBoss
+            // tier) until SetSimulated fires. A clamp placed before
+            // SetSimulated gets silently overridden by this — confirmed by
+            // rank-5 phantoms landing on a suspiciously uniform
+            // dmgMult=10.00 in live combat despite the 5.0 cap.
+            //
+            // Unconditional on rank (not gated to nemesisRank > 0): even a
+            // plain rogue's real gear roll (or the MiniBoss rank mod itself)
+            // can push the aggregate past a sane ceiling on its own.
+            if (enemy) ClampEnemyPhantomDamageMult(phantomAvatar);
+            if (enemy) LogEnemyPhantomFinalStats(phantomAvatar, nemesisRank);
 
             // Book-keeping goes on the human Player (source of truth) — not on
             // this Avatar shell — so `!phantom clear` and tick reattachment

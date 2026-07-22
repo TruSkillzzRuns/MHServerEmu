@@ -130,6 +130,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             foreach (var kvp in raw)
             {
                 string leaf = kvp.Key;
+                if (leaf.StartsWith("_", StringComparison.Ordinal)) continue; // metadata keys (e.g. "_credit"), not a hero leaf
                 if (leafToAvatarRef.TryGetValue(leaf, out PrototypeId avatarRef) == false)
                 {
                     Logger.Warn($"[PhantomBiS] no avatar prototype for leaf '{leaf}'");
