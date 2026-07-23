@@ -13,9 +13,9 @@ namespace MHServerEmu.Games.Events
     {
         private const int MaxEventsPerUpdate = 250000;
 
-#if DEBUG
         private static readonly Logger Logger = LogManager.CreateLogger();
 
+#if DEBUG
         private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
 #endif
 
@@ -190,7 +190,28 @@ namespace MHServerEmu.Games.Events
                     {
                         CurrentTime = @event.FireTime;
 
-                        @event.EventGroupNode.Remove();
+                        // Wrapped defensively after a live NullReferenceException in
+                        // LinkedList.InternalRemoveNode here (2026-07-22 crash report,
+                        // GameInstanceCrash_2026-07-22_22.08.51.txt) with no repro found
+                        // yet — this doesn't change normal-path behavior, it just captures
+                        // enough state to actually diagnose it if it happens again, then
+                        // rethrows so the crash still surfaces exactly as before.
+                        try
+                        {
+                            @event.EventGroupNode.Remove();
+                        }
+                        catch (Exception ex)
+                        {
+                            var groupNode = @event.EventGroupNode;
+                            Logger.Error(
+                                $"[EventScheduler] Exception removing EventGroupNode while triggering " +
+                                $"{@event.GetType().Name} (FireTime={@event.FireTime}, CurrentTime={CurrentTime}, " +
+                                $"currentFrame={currentFrame}, bucket={i}, numEventsThisUpdate={numEvents}, " +
+                                $"nodeListNull={groupNode.List == null}, nodeListCount={groupNode.List?.Count}, " +
+                                $"nodeNextNull={groupNode.Next == null}, nodePreviousNull={groupNode.Previous == null}): {ex}");
+                            throw;
+                        }
+
                         @event.InvalidatePointers();
 
 #if DEBUG

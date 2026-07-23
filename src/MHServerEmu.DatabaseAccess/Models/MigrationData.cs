@@ -242,6 +242,15 @@ namespace MHServerEmu.DatabaseAccess.Models
         public int LevelBumpPerWave;
         public int RewardMode;
         public ulong RewardLootTableRef;
+
+        // Endless Challenge state — must ride the transfer too, or an
+        // in-progress Endless run silently demotes to a normal repeating
+        // wave run the instant it warps to its arena (see IsEndlessMode
+        // usage in Player.WaveDirector.cs's SnapshotWaveRunForTransfer).
+        public bool IsEndlessMode;
+        public int EndlessCycle;
+        public int EndlessPeakRank;
+        public string EndlessHeroName;
     }
 
     public sealed class WaveDefIntent

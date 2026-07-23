@@ -37,6 +37,13 @@ namespace MHServerEmu.Games.Entities
         // rank-5 nemesis boss — a rare "surprise boss" ambush even when you
         // have no active nemeses. At level 60 it wears+drops the BiS jackpot.
         private const double RogueEncounterSurpriseRank5Chance = 0.08;
+        // Gates only the AUTOMATIC roll (OnRogueEncounterCheck) — a
+        // level 1-19 player shouldn't get blindsided by an unscheduled
+        // 1-3 hero-tier ambush they didn't ask for. Manual triggers
+        // (TriggerRogueEncounterNow, the app's "test now" button) are
+        // exempt on purpose: a player who deliberately opts into an early
+        // fight should still be able to.
+        private const int RogueEncounterMinLevel = 20;
 
         private bool _rogueEncounterEnabled;
         private long _rogueEncounterLastMs;
@@ -83,6 +90,10 @@ namespace MHServerEmu.Games.Entities
 
                 Avatar avatar = CurrentAvatar;
                 if (avatar == null || avatar.IsInWorld == false || avatar.IsDead) return;
+
+                // Level gate. Silent — same as the cooldown, the next
+                // scheduled check will just roll again once eligible.
+                if (avatar.CharacterLevel < RogueEncounterMinLevel) return;
 
                 // Cooldown gate. Silent — the next scheduled check will roll again.
                 long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;

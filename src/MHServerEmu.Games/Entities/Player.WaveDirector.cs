@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Core.Memory;
@@ -10,6 +11,7 @@ using MHServerEmu.Games.Events.Templates;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Loot;
+using MHServerEmu.Games.UI.Widgets;
 
 namespace MHServerEmu.Games.Entities
 {
@@ -66,6 +68,49 @@ namespace MHServerEmu.Games.Entities
         private WaveRewardMode _waveRewardMode = WaveRewardMode.None;
         private PrototypeId _waveRewardLootTableRef = PrototypeId.Invalid;
         private bool _waveHistoryLogged;
+
+        // Endless Challenge (2026-07-22) — a thin layer on top of the manual
+        // wave engine above: a single WaveDef that loops forever (_waveLoop
+        // stays true), with a SEPARATE escalation counter that keeps climbing
+        // even though _waveIndex itself resets to 0 every loop. Ends on the
+        // real avatar's death (wipe) or an explicit Extract call (safe bail),
+        // committing waves-survived to the "EndlessChallenge" Leaderboard kind.
+        private bool _isEndlessMode;
+        private int _endlessCycle;
+        private int _endlessPeakRank;
+        private string _endlessHeroName;
+
+        /// <summary>
+        /// True while an Endless Challenge run is active. Used by
+        /// Avatar.PhantomHero.cs's kill-loot path to suppress per-kill gear
+        /// drops from enemy phantoms in this mode — the only reward is the
+        /// chest SpawnEndlessChest() drops every EndlessChestEveryNWaves.
+        /// </summary>
+        internal bool IsEndlessChallengeActive => _isEndlessMode;
+        // Every N cleared waves, enemy rank climbs by 1 (capped at 5) — the
+        // same rank->HP/damage curves the manual Rank field already uses
+        // (NemesisHealthMultForRank/NemesisDmgBoostForRank in Avatar.PhantomHero.cs),
+        // just driven by a synthetic "effective rank" instead of a fixed value.
+        private const int EndlessRankBumpEveryNWaves = 3;
+
+        // Endless Challenge has its own fixed reward/pacing cadence instead
+        // of the manual run's configurable reward mode + intermission slider:
+        // 5s between ordinary waves, and every EndlessChestEveryNWaves
+        // cleared waves a reward chest spawns with a longer 15s intermission
+        // so there's actually time to walk over and loot it.
+        private const int EndlessNormalIntermissionMs = 5_000;
+        private const int EndlessChestIntermissionMs = 15_000;
+        private const int EndlessChestEveryNWaves = 5;
+        private const string EndlessChestProtoPath = "Entity/Props/Chests/ShieldCrateBlue.prototype";
+        // Every 4th chest (wave 20, 40, 60, ...) is a loot-splosion: far more
+        // rolls, and the rarity floor is bumped one band ahead of the smooth
+        // curve (see GetEndlessChestAllowedRarities's bumpOneBand param).
+        private const int EndlessLootsplosionEveryNWaves = 20;
+        private const int EndlessChestBaseRolls = 3;
+        private const int EndlessChestRollsPerWaves = 10; // +1 roll every this many waves survived
+        private const int EndlessChestMaxRolls = 12;
+        private const int EndlessLootsplosionRolls = 20;
+
         private const long ArenaWarpTimeoutMs = 90_000; // region gen + client load screen
         // How long to let the region's own population finish spawning before
         // we sweep it. Danger Room / scenario rooms trickle their console
@@ -113,6 +158,10 @@ namespace MHServerEmu.Games.Entities
                 LevelBumpPerWave = _waveLevelBumpPerWave,
                 RewardMode = (int)_waveRewardMode,
                 RewardLootTableRef = (ulong)_waveRewardLootTableRef,
+                IsEndlessMode = _isEndlessMode,
+                EndlessCycle = _endlessCycle,
+                EndlessPeakRank = _endlessPeakRank,
+                EndlessHeroName = _endlessHeroName,
             };
             foreach (WaveDef wave in _waveDefs)
             {
@@ -135,7 +184,12 @@ namespace MHServerEmu.Games.Entities
 
             // This Game instance is going away — clear local state so
             // nothing tries to keep ticking against a Player that's about
-            // to be destroyed.
+            // to be destroyed. Already snapshotted Endless state above, so
+            // clear _isEndlessMode BEFORE stopping: StopWaveRun's safety net
+            // (for a genuinely external stop) would otherwise treat this
+            // transfer-only teardown as a real Extract and bank a bogus
+            // "0 waves survived" leaderboard entry.
+            _isEndlessMode = false;
             StopWaveRun(cleanup: false);
             WaveLogger.Info($"[WaveDirector] {GetName()}: snapshotted pending run ({intent.Waves.Count} wave(s)) for cross-region transfer");
         }
@@ -180,6 +234,19 @@ namespace MHServerEmu.Games.Entities
             string result = StartWaveRun(waves, intent.IntermissionMs, intent.ArenaRegionRef, intent.ClearArena,
                 intent.Loop, intent.CountScalePerWave, intent.LevelBumpPerWave,
                 (WaveRewardMode)intent.RewardMode, intent.RewardLootTableRef, caller);
+
+            // Restore Endless Challenge state AFTER StartWaveRun — it calls
+            // StopWaveRun(cleanup: true) internally as its first step, which
+            // would misfire the "stopped externally" safety net if these
+            // were already set beforehand.
+            if (intent.IsEndlessMode)
+            {
+                _isEndlessMode = true;
+                _endlessCycle = intent.EndlessCycle;
+                _endlessPeakRank = intent.EndlessPeakRank;
+                _endlessHeroName = intent.EndlessHeroName;
+            }
+
             WaveLogger.Info($"[WaveDirector] {GetName()}: resumed run after cross-region transfer: {result}");
         }
 
@@ -247,13 +314,70 @@ namespace MHServerEmu.Games.Entities
         }
 
         /// <summary>
+        /// Start an Endless Challenge run: a single wave entry that repeats
+        /// forever, escalating rank (every EndlessRankBumpEveryNWaves clears,
+        /// capped at 5) and optionally count/level via the same scaling knobs
+        /// manual runs already use. Ends on the real avatar's death (wipe) or
+        /// an explicit ExtractEndlessChallenge call (safe bail) — either way,
+        /// waves survived commits to the "EndlessChallenge" Leaderboard kind.
+        /// </summary>
+        public string StartEndlessChallenge(WaveEntryDef baseEntry, int intermissionMs, ulong arenaRegionRef, bool clearArena,
+            float countScalePerWave, int levelBumpPerWave, ulong rewardLootTableRef)
+        {
+            Avatar avatar = CurrentAvatar;
+            if (avatar == null || avatar.IsInWorld == false) return "no avatar in world";
+            if (baseEntry == null) return "no wave entry defined";
+
+            _isEndlessMode = true;
+            _endlessCycle = 0;
+            _endlessPeakRank = baseEntry.Rank;
+            _endlessHeroName = GetFriendlyHeroName(avatar);
+
+            var wave = new WaveDef();
+            wave.Entries.Add(baseEntry);
+
+            // intermissionMs is ignored — Endless Challenge always runs on
+            // its own fixed 5s/15s cadence (see EndlessNormalIntermissionMs).
+            // rewardMode is None: the generic per-wave/on-complete reward
+            // system doesn't apply here either — rewards come from the
+            // chest AdvanceAfterWaveCleared spawns every EndlessChestEveryNWaves
+            // (SpawnEndlessChest), still backed by rewardLootTableRef.
+            return StartWaveRun(new List<WaveDef> { wave }, EndlessNormalIntermissionMs, arenaRegionRef, clearArena,
+                loop: true, countScalePerWave, levelBumpPerWave, WaveRewardMode.None, rewardLootTableRef);
+        }
+
+        /// <summary>Bail out of an active Endless Challenge run safely, banking the current wave count to the leaderboard.</summary>
+        public string ExtractEndlessChallenge()
+        {
+            if (_isEndlessMode == false) return "no Endless Challenge run active";
+            int wavesSurvived = _endlessCycle;
+            EndEndlessChallenge(died: false);
+            return $"Extracted — {wavesSurvived} wave(s) survived.";
+        }
+
+        /// <summary>Commit the run to the leaderboard and tear it down. died=false is an explicit Extract; died=true is a wipe.</summary>
+        private void EndEndlessChallenge(bool died)
+        {
+            string heroName = _endlessHeroName ?? "Unknown";
+            int wavesSurvived = _endlessCycle;
+            CommitEndlessChallengeToLeaderboard(heroName, wavesSurvived, completed: !died);
+            WaveLogger.Info($"[WaveDirector] {GetName()}: Endless Challenge ended ({(died ? "wiped" : "extracted")}) — {wavesSurvived} wave(s) survived, {_waveKills} kill(s), peak rank {_endlessPeakRank}");
+            ClearEndlessWaveWidget(CurrentAvatar);
+
+            // Clear BEFORE StopWaveRun so its own safety-net commit (for a
+            // manual Stop Run while endless is active) doesn't double-fire.
+            _isEndlessMode = false;
+            StopWaveRun(cleanup: true);
+        }
+
+        /// <summary>
         /// Sterilize the arena: destroy every non-player entity in the
         /// region so the room starts empty. Anything that could re-spawn
         /// the native encounter — spawner markers, transition consoles,
         /// mission agents, boss triggers — has to go, or the room's own
         /// content fires alongside our waves. Player Avatars and phantoms
-        /// (Avatar with IsPhantomHero or PhantomCreatorId set on owner)
-        /// are always preserved.
+        /// (Avatar with IsPhantomHero or PhantomCreatorId set on owner) are
+        /// always preserved, and so are active team-ups.
         /// </summary>
         private int ClearArena(Avatar avatar)
         {
@@ -273,6 +397,14 @@ namespace MHServerEmu.Games.Entities
 
                 // Never touch avatars: real players or friendly phantoms.
                 if (we is Avatar) continue;
+
+                // Never touch team-ups either — they're Agents, not Avatars,
+                // so without this check the sweep below (which treats Agents
+                // as fair game) destroyed the player's own active team-up the
+                // instant an arena warp cleared the room. They come back on
+                // their own 45s respawn timer, but that's a bug, not a
+                // feature — this stops them from ever being touched.
+                if (we is Agent agentCheck && agentCheck.IsTeamUpAgent) continue;
 
                 // Never touch our own wave spawns.
                 if (_waveAliveIds.Contains(we.Id)) continue;
@@ -308,6 +440,19 @@ namespace MHServerEmu.Games.Entities
         public string StopWaveRun(bool cleanup)
         {
             if (_waveState == WaveState.Idle && _waveDefs == null) return "no wave run active";
+
+            // Safety net: any OTHER path that stops an active Endless run
+            // (e.g. the ordinary "Stop Run" button, not ExtractEndlessChallenge)
+            // still counts as an extract — better to bank the score than
+            // silently lose it. EndEndlessChallenge itself clears
+            // _isEndlessMode before calling here, so this never double-fires
+            // for a real Extract/death.
+            if (_isEndlessMode)
+            {
+                CommitEndlessChallengeToLeaderboard(_endlessHeroName ?? "Unknown", _endlessCycle, completed: true);
+                WaveLogger.Info($"[WaveDirector] {GetName()}: Endless Challenge stopped externally — {_endlessCycle} wave(s) survived (counted as extracted)");
+                _isEndlessMode = false;
+            }
 
             // Log an incomplete-run history entry before we wipe the state
             // below — but only if a run was genuinely in flight (not already
@@ -397,6 +542,19 @@ namespace MHServerEmu.Games.Entities
                 }
             }
 
+            // Endless Challenge wipe check — only meaningful once the run is
+            // actually settled into Fighting/Intermission (avatar state
+            // during Warp/Settle is transient and not a real "died" signal).
+            if (_isEndlessMode && (_waveState == WaveState.Fighting || _waveState == WaveState.Intermission))
+            {
+                Avatar endlessAvatar = CurrentAvatar;
+                if (endlessAvatar != null && endlessAvatar.IsDead)
+                {
+                    EndEndlessChallenge(died: true);
+                    return; // no reschedule — run is over
+                }
+            }
+
             switch (_waveState)
             {
                 case WaveState.WarpingToArena:
@@ -468,20 +626,31 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         private void AdvanceAfterWaveCleared()
         {
-            if (_waveRewardMode == WaveRewardMode.EveryWave)
+            // Endless Challenge doesn't use the generic reward system at all
+            // (see StartEndlessChallenge) — its reward is the chest spawned
+            // below on the milestone check instead.
+            if (_isEndlessMode == false && _waveRewardMode == WaveRewardMode.EveryWave)
                 SpawnWaveReward();
 
             bool isLastWave = _waveIndex + 1 >= _waveDefs.Count;
+            bool chestWave = false;
             if (isLastWave && _waveLoop)
             {
                 _waveIndex = -1; // SpawnNextWave's own increment lands back on wave 0
                 isLastWave = false;
+                if (_isEndlessMode)
+                {
+                    _endlessCycle++;
+                    chestWave = _endlessCycle % EndlessChestEveryNWaves == 0;
+                    if (chestWave)
+                        SpawnEndlessChest();
+                }
             }
 
             if (isLastWave)
             {
                 _waveState = WaveState.Done;
-                if (_waveRewardMode == WaveRewardMode.OnComplete)
+                if (_isEndlessMode == false && _waveRewardMode == WaveRewardMode.OnComplete)
                     SpawnWaveReward();
                 if (_waveHistoryLogged == false)
                     LogWaveRunHistory(completed: true);
@@ -489,10 +658,77 @@ namespace MHServerEmu.Games.Entities
                 return;
             }
 
-            int nextIndex = _waveIndex + 1;
-            long intermissionMs = _waveDefs[nextIndex].IntermissionMsOverride ?? _waveIntermissionMs;
+            long intermissionMs;
+            if (_isEndlessMode)
+            {
+                intermissionMs = chestWave ? EndlessChestIntermissionMs : EndlessNormalIntermissionMs;
+            }
+            else
+            {
+                int nextIndex = _waveIndex + 1;
+                intermissionMs = _waveDefs[nextIndex].IntermissionMsOverride ?? _waveIntermissionMs;
+            }
             _waveState = WaveState.Intermission;
             _waveNextSpawnAtMs = WaveNowMs + intermissionMs;
+        }
+
+        /// <summary>
+        /// Endless Challenge's reward hook: spawn a real, interactable reward
+        /// chest (the same ShieldCrateBlue prop used for tiered reward crates
+        /// elsewhere, e.g. Danger Room) near the player every
+        /// EndlessChestEveryNWaves cleared waves, and drop the configured
+        /// reward loot table (if any) at the same time via the same
+        /// LootManager path SpawnWaveReward already uses — the physical chest
+        /// is the visual/flavor payoff, the loot table call is what
+        /// guarantees the player actually gets something even if the chest
+        /// prototype's own baked-in loot needs region-level wiring we don't
+        /// have here.
+        /// </summary>
+        private void SpawnEndlessChest()
+        {
+            Avatar avatar = CurrentAvatar;
+            if (avatar == null || avatar.IsInWorld == false) return;
+
+            try
+            {
+                PrototypeId chestRef = GameDatabase.GetPrototypeRefByName(EndlessChestProtoPath);
+                if (chestRef != PrototypeId.Invalid)
+                {
+                    var chestProto = chestRef.As<WorldEntityPrototype>();
+                    if (chestProto != null)
+                    {
+                        Vector3 pos;
+                        if (EntityHelper.GetSpawnPositionNearAvatar(avatar, avatar.Region, chestProto.Bounds, 250f, out pos) == false)
+                            pos = avatar.RegionLocation.Position + avatar.Forward * 150f;
+
+                        using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                        settings.EntityRef = chestRef;
+                        settings.Position = pos;
+                        settings.Orientation = avatar.RegionLocation.Orientation;
+                        settings.RegionId = avatar.Region.Id;
+                        Game.EntityManager.CreateEntity(settings);
+                    }
+                }
+                else
+                {
+                    WaveLogger.Warn($"[WaveDirector] {GetName()}: Endless chest prototype not found ({EndlessChestProtoPath}) — skipping visual chest, loot table still drops");
+                }
+            }
+            catch (Exception ex)
+            {
+                WaveLogger.Warn($"[WaveDirector] {GetName()}: Endless chest spawn failed: {ex.Message}");
+            }
+
+            bool lootsplosion = _endlessCycle % EndlessLootsplosionEveryNWaves == 0;
+            List<PrototypeId> allowedRarities = Avatar.GetEndlessChestAllowedRarities(_endlessCycle, bumpOneBand: lootsplosion);
+
+            int rolls = lootsplosion
+                ? EndlessLootsplosionRolls
+                : Math.Min(EndlessChestMaxRolls, EndlessChestBaseRolls + _endlessCycle / EndlessChestRollsPerWaves);
+
+            SpawnWaveReward(rolls, allowedRarities);
+            WaveLogger.Info($"[WaveDirector] {GetName()}: Endless Challenge chest wave — {_endlessCycle} wave(s) survived, " +
+                $"{rolls} loot roll(s){(lootsplosion ? " (LOOT-SPLOSION)" : "")}, rarity band: {string.Join(",", allowedRarities.Select(r => r.GetName()))}");
         }
 
         /// <summary>Pause or resume the tick's state-machine progress. Game thread only.</summary>
@@ -546,7 +782,16 @@ namespace MHServerEmu.Games.Entities
         }
 
         /// <summary>Drop the configured reward loot table at the player's position, if any.</summary>
-        private void SpawnWaveReward()
+        private void SpawnWaveReward() => SpawnWaveReward(1, null);
+
+        /// <summary>
+        /// Drop the configured reward loot table <paramref name="rolls"/>
+        /// times, optionally restricted to <paramref name="allowedRarities"/>
+        /// (empty/null = every rarity, the game's normal weighted spread).
+        /// Used by SpawnEndlessChest to scale both quantity and rarity floor
+        /// with wave count — see GetEndlessChestAllowedRarities.
+        /// </summary>
+        private void SpawnWaveReward(int rolls, List<PrototypeId> allowedRarities)
         {
             if (_waveRewardLootTableRef == PrototypeId.Invalid) return;
             Avatar avatar = CurrentAvatar;
@@ -556,7 +801,16 @@ namespace MHServerEmu.Games.Entities
             {
                 using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
                 inputSettings.Initialize(LootContext.Drop, this, avatar);
-                Game.LootManager.SpawnLootFromTable(_waveRewardLootTableRef, inputSettings, 1);
+
+                if (allowedRarities != null && allowedRarities.Count > 0)
+                {
+                    inputSettings.LootRollSettings.Rarities.Clear();
+                    foreach (PrototypeId r in allowedRarities)
+                        inputSettings.LootRollSettings.Rarities.Add(r);
+                }
+
+                for (int i = 0; i < Math.Max(1, rolls); i++)
+                    Game.LootManager.SpawnLootFromTable(_waveRewardLootTableRef, inputSettings, 1);
             }
             catch (Exception ex)
             {
@@ -583,14 +837,33 @@ namespace MHServerEmu.Games.Entities
             WaveDef wave = _waveDefs[_waveIndex];
             int spawned = 0;
 
+            // Endless mode drives scaling off _endlessCycle (keeps climbing
+            // every loop) instead of _waveIndex (resets to 0 every loop).
+            int scaleIndex = _isEndlessMode ? _endlessCycle : _waveIndex;
+
             foreach (WaveEntryDef entry in wave.Entries)
             {
                 // Difficulty scaling: both default to 0, so a run that never
                 // opts in behaves identically to before this feature existed.
-                int count = Math.Clamp((int)MathF.Round(entry.Count * (1f + _waveCountScalePerWave * _waveIndex)), 1, 30);
+                int count = Math.Clamp((int)MathF.Round(entry.Count * (1f + _waveCountScalePerWave * scaleIndex)), 1, 30);
                 int level = entry.Level;
                 if (entry.IsEnemyPhantom && level != 0 && _waveLevelBumpPerWave != 0)
-                    level = Math.Clamp(level + _waveLevelBumpPerWave * _waveIndex, 1, 60);
+                    level = Math.Clamp(level + _waveLevelBumpPerWave * scaleIndex, 1, 60);
+
+                int rank = entry.Rank;
+                if (_isEndlessMode && entry.IsEnemyPhantom)
+                {
+                    rank = Math.Clamp(entry.Rank + scaleIndex / EndlessRankBumpEveryNWaves, 0, 5);
+                    if (rank > _endlessPeakRank)
+                    {
+                        _endlessPeakRank = rank;
+                        // Same chat-broadcast call + locale string real HoloSim
+                        // uses for its "Threat Increased" difficulty-up message
+                        // (see TuningTable.BroadcastChange) — reused verbatim
+                        // here on every genuine rank escalation, not per-wave.
+                        Game.ChatManager.SendChatFromGameSystem(GameDatabase.PopulationGlobalsPrototype.MessageEnemiesGrowStronger, this);
+                    }
+                }
 
                 for (int i = 0; i < count; i++)
                 {
@@ -599,16 +872,22 @@ namespace MHServerEmu.Games.Entities
                     if (entry.IsEnemyPhantom)
                     {
                         string err;
-                        if (entry.Rank > 0)
+                        if (rank > 0)
                         {
                             PrototypeId heroRef = (PrototypeId)entry.HeroRef;
                             string heroName = heroRef != PrototypeId.Invalid ? LeafHeroName(heroRef) : "Phantom";
-                            string display = $"★{Math.Clamp(entry.Rank, 1, 5)} {heroName}";
-                            spawnedId = avatar.SpawnNemesisPhantomHero(heroRef, level, display, entry.Rank, out err);
+                            string display = $"★{Math.Clamp(rank, 1, 5)} {heroName}";
+                            spawnedId = avatar.SpawnNemesisPhantomHero(heroRef, level, display, rank, out err);
                         }
                         else
                         {
-                            spawnedId = avatar.SpawnEnemyPhantomHero((PrototypeId)entry.HeroRef, level, out err);
+                            // ambush: true — same wider 900-1600u spawn ring
+                            // SpawnNemesisPhantomHero already uses unconditionally
+                            // for ranked phantoms below. Without this, plain
+                            // (rank 0) phantoms used the farm-tool's close
+                            // 150-320u "spawn with you" radius, which reads as
+                            // spawning right on top of the player every wave.
+                            spawnedId = avatar.SpawnEnemyPhantomHero((PrototypeId)entry.HeroRef, level, out err, ambush: true);
                         }
                         if (spawnedId == 0)
                             WaveLogger.Warn($"[WaveDirector] enemy phantom spawn failed: {err}");
@@ -643,6 +922,71 @@ namespace MHServerEmu.Games.Entities
             _waveSpawnedTotal += spawned;
             _waveState = WaveState.Fighting;
             WaveLogger.Info($"[WaveDirector] {GetName()}: wave {_waveIndex + 1}/{_waveDefs.Count} spawned {spawned} combatant(s)");
+
+            if (_isEndlessMode)
+                UpdateEndlessWaveWidget(avatar);
+        }
+
+        // Cached once per process: any real UIWidgetGenericFractionPrototype
+        // the loaded client data ships. What the widget SHOWS is driven
+        // entirely by SetCount()/SetTimeRemaining() below — it's a generic
+        // fraction bar, not something with baked-in per-prototype text — so
+        // any instance works as a plain "N" counter for Endless Challenge's
+        // wave count, the same way HoloSim's MetaStateWaveInstance drives
+        // its own "Wave: N" widget via MetaGame.SetUIWidgetGenericFraction.
+        private static PrototypeId? s_endlessWaveWidgetRef;
+        private static bool s_endlessWaveWidgetSearched;
+
+        private static PrototypeId GetEndlessWaveWidgetRef()
+        {
+            if (s_endlessWaveWidgetSearched) return s_endlessWaveWidgetRef ?? PrototypeId.Invalid;
+            s_endlessWaveWidgetSearched = true;
+            foreach (PrototypeId protoRef in DataDirectory.Instance
+                .IteratePrototypesInHierarchy<UIWidgetGenericFractionPrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
+            {
+                s_endlessWaveWidgetRef = protoRef;
+                break;
+            }
+            return s_endlessWaveWidgetRef ?? PrototypeId.Invalid;
+        }
+
+        /// <summary>
+        /// Drive a native HUD fraction widget with the current wave count —
+        /// the same widget system HoloSim's wave state uses
+        /// (MetaGame.SetUIWidgetGenericFraction), but reached directly:
+        /// MetaGame.UIDataProvider is just a passthrough to
+        /// Region.UIDataProvider, so no MetaGame instance is actually needed.
+        /// Experimental — untested live as of 2026-07-23; if the widget
+        /// shows unexpected text/icon from whatever prototype instance
+        /// GetEndlessWaveWidgetRef happened to find, that's the tradeoff of
+        /// reusing arbitrary existing game data instead of authoring our own.
+        /// </summary>
+        private void UpdateEndlessWaveWidget(Avatar avatar)
+        {
+            try
+            {
+                PrototypeId widgetRef = GetEndlessWaveWidgetRef();
+                if (widgetRef == PrototypeId.Invalid) return;
+
+                var widget = avatar.Region?.UIDataProvider?.GetWidget<UIWidgetGenericFraction>(widgetRef);
+                widget?.SetCount(_endlessCycle, _endlessCycle + 1);
+            }
+            catch (Exception ex)
+            {
+                WaveLogger.Warn($"[WaveDirector] {GetName()}: Endless wave widget update failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>Tear down the wave-count widget when an Endless Challenge run ends.</summary>
+        private void ClearEndlessWaveWidget(Avatar avatar)
+        {
+            try
+            {
+                PrototypeId widgetRef = GetEndlessWaveWidgetRef();
+                if (widgetRef == PrototypeId.Invalid) return;
+                avatar?.Region?.UIDataProvider?.DeleteWidget(widgetRef);
+            }
+            catch { /* best effort */ }
         }
 
         /// <summary>Leaf hero name for a nemesis display name — "Powers/Player/Thor/Thor.prototype" -> "Thor".</summary>
@@ -690,6 +1034,37 @@ namespace MHServerEmu.Games.Entities
                 IntermissionRemainingMs = _waveState == WaveState.Intermission ? Math.Max(0, _waveNextSpawnAtMs - WaveNowMs) : 0,
                 Paused = _wavePaused,
                 Loop = _waveLoop,
+            };
+        }
+
+        public sealed class EndlessStatusSnapshot
+        {
+            public bool Active { get; set; }
+            public string State { get; set; }
+            public int WavesSurvived { get; set; }
+            public int Kills { get; set; }
+            public int Alive { get; set; }
+            public int PeakRank { get; set; }
+            public long RunSeconds { get; set; }
+            public long IntermissionRemainingMs { get; set; }
+            public bool Paused { get; set; }
+        }
+
+        /// <summary>Game-thread status snapshot for the Endless Challenge web endpoint.</summary>
+        public EndlessStatusSnapshot GetEndlessStatusForWeb()
+        {
+            bool active = _isEndlessMode && _waveDefs != null && _waveState != WaveState.Idle && _waveState != WaveState.Done;
+            return new EndlessStatusSnapshot
+            {
+                Active = active,
+                State = _isEndlessMode ? _waveState.ToString() : "Idle",
+                WavesSurvived = _endlessCycle,
+                Kills = _waveKills,
+                Alive = _waveAliveIds.Count,
+                PeakRank = _endlessPeakRank,
+                RunSeconds = active ? (WaveNowMs - _waveRunStartMs) / 1000 : 0,
+                IntermissionRemainingMs = active && _waveState == WaveState.Intermission ? Math.Max(0, _waveNextSpawnAtMs - WaveNowMs) : 0,
+                Paused = _wavePaused,
             };
         }
 

@@ -27,7 +27,7 @@ namespace MHServerEmu.Games.Entities
         // so without this the app (whose DTO expects a string) fails to
         // deserialize a raw numeric enum value.
         [JsonConverter(typeof(JsonStringEnumConverter))]
-        public enum LeaderboardKind { DpsParse, TerminalRun }
+        public enum LeaderboardKind { DpsParse, TerminalRun, EndlessChallenge }
 
         public sealed class LeaderboardEntry
         {
@@ -37,10 +37,12 @@ namespace MHServerEmu.Games.Entities
             // Terminal runs only; null for DPS parses.
             public string RegionName { get; set; }
             public string DifficultyTier { get; set; }
-            // DpsParse: damage/sec (higher is better). TerminalRun: elapsed ms (lower is better).
+            // DpsParse: damage/sec (higher is better). TerminalRun: elapsed ms
+            // (lower is better). EndlessChallenge: waves survived (higher is better).
             public double Value { get; set; }
             public long TimestampMs { get; set; }
             // TerminalRun only: true = boss actually killed, false = left/died before finishing.
+            // EndlessChallenge: true = extracted safely, false = squad wiped.
             // Always true for DpsParse (there's no "aborted" concept there).
             public bool Completed { get; set; } = true;
             // Computed fresh on every GetLeaderboardForWeb call, not a stored
@@ -126,10 +128,14 @@ namespace MHServerEmu.Games.Entities
         {
             var sameKind = all.Where(x => x.Kind == e.Kind)
                 .OrderByDescending(x => x.Kind == LeaderboardKind.TerminalRun ? (x.Completed ? 1 : 0) : 1)
-                .ThenBy(x => x.Kind == LeaderboardKind.TerminalRun ? x.Value : -x.Value)
+                .ThenBy(x => LowerIsBetter(x.Kind) ? x.Value : -x.Value)
                 .ToList();
             return sameKind.IndexOf(e);
         }
+
+        // TerminalRun: elapsed time, lower (faster) is better. Everything
+        // else (DpsParse, EndlessChallenge) is higher-is-better.
+        private static bool LowerIsBetter(LeaderboardKind kind) => kind == LeaderboardKind.TerminalRun;
 
         /// <summary>Record a saved DPS parse. Called explicitly by the app ("Save to Leaderboard"), not automatically on every reset.</summary>
         public string CommitDpsToLeaderboard(string heroName, double dpsValue)
@@ -142,9 +148,28 @@ namespace MHServerEmu.Games.Entities
                 Kind = LeaderboardKind.DpsParse,
                 HeroName = heroName,
                 Value = dpsValue,
-                TimestampMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond,
+                // Game.CurrentTime is the simulated per-Game-instance clock
+                // (starts at ~1ms, not wall time) — using it here made every
+                // leaderboard entry's "when" column show a bogus date near
+                // the Unix epoch instead of the real save time. DateTimeOffset
+                // is real system wall-clock time, which is what the app's
+                // WhenText display (LeaderboardPage.xaml.cs) actually expects.
+                TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             });
             return $"Saved {heroName}: {dpsValue:N0} DPS.";
+        }
+
+        /// <summary>Record an Endless Challenge run — Value is waves survived. Completed = extracted safely, false = squad wiped.</summary>
+        internal void CommitEndlessChallengeToLeaderboard(string heroName, int wavesSurvived, bool completed)
+        {
+            AppendLeaderboardEntry(new LeaderboardEntry
+            {
+                Kind = LeaderboardKind.EndlessChallenge,
+                HeroName = heroName,
+                Value = wavesSurvived,
+                Completed = completed,
+                TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            });
         }
 
         /// <summary>Record a completed (boss killed) or aborted (left/died first) terminal run.</summary>
@@ -158,7 +183,7 @@ namespace MHServerEmu.Games.Entities
                 DifficultyTier = difficultyTier,
                 Value = elapsedMs,
                 Completed = completed,
-                TimestampMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond,
+                TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             });
         }
 
@@ -343,6 +368,10 @@ namespace MHServerEmu.Games.Entities
                     if (a.Completed != b.Completed) return a.Completed ? -1 : 1;
                     return a.Value.CompareTo(b.Value);
                 }
+                // DpsParse and EndlessChallenge: higher Value always wins —
+                // unlike TerminalRun, Completed (extracted vs. wiped) doesn't
+                // invalidate the metric. Surviving 50 waves before dying is a
+                // real, honest result — better than extracting safely at 10.
                 return b.Value.CompareTo(a.Value);
             });
 
@@ -372,11 +401,20 @@ namespace MHServerEmu.Games.Entities
                 .GroupBy(e => (e.HeroName, e.RegionName, e.DifficultyTier))
                 .ToDictionary(g => g.Key, g => g.Min(e => e.Value));
 
+            // Per-hero highest waves survived, regardless of Completed
+            // (extracted vs. wiped) — see the sort comment above for why.
+            var bestEndless = allEntries.Where(e => e.Kind == LeaderboardKind.EndlessChallenge)
+                .GroupBy(e => e.HeroName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Max(e => e.Value), StringComparer.OrdinalIgnoreCase);
+
             foreach (var e in entries)
             {
-                e.IsPersonalBest = e.Kind == LeaderboardKind.DpsParse
-                    ? bestDps.TryGetValue(e.HeroName, out double bestDpsValue) && e.Value >= bestDpsValue
-                    : e.Completed && bestTerminal.TryGetValue((e.HeroName, e.RegionName, e.DifficultyTier), out double bestMs) && e.Value <= bestMs;
+                e.IsPersonalBest = e.Kind switch
+                {
+                    LeaderboardKind.DpsParse => bestDps.TryGetValue(e.HeroName, out double bestDpsValue) && e.Value >= bestDpsValue,
+                    LeaderboardKind.EndlessChallenge => bestEndless.TryGetValue(e.HeroName, out double bestEndlessValue) && e.Value >= bestEndlessValue,
+                    _ => e.Completed && bestTerminal.TryGetValue((e.HeroName, e.RegionName, e.DifficultyTier), out double bestMs) && e.Value <= bestMs,
+                };
             }
         }
     }

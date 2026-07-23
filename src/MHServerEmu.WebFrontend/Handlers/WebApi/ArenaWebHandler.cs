@@ -493,4 +493,116 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             await context.SendJsonAsync(result);
         }
     }
+
+    /// <summary>
+    /// POST /webapi/arena/endless/start — { playerName, entry:{agentRef|heroRef,
+    /// enemyPhantom, count, level, rank}, intermissionMs, arenaRegionRef,
+    /// clearArena, countScalePerWave, levelBumpPerWave, rewardLootTableRef }.
+    /// One WaveEntryDef that repeats forever, escalating rank/count/level as
+    /// waves clear — see Player.WaveDirector.cs's StartEndlessChallenge.
+    /// </summary>
+    public class EndlessStartWebHandler : WebHandler
+    {
+        private static readonly Logger Logger = LogManager.CreateLogger();
+
+        protected override async Task Post(WebRequestContext context)
+        {
+            string body = await context.ReadUtf8StringAsync();
+
+            string playerName = null;
+            int intermissionMs = 5000;
+            ulong arenaRegionRef = 0;
+            bool clearArena = false;
+            float countScalePerWave = 0f;
+            int levelBumpPerWave = 0;
+            ulong rewardLootTableRef = 0;
+            Player.WaveEntryDef entry = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
+                if (root.TryGetProperty("intermissionMs", out var im)) intermissionMs = im.GetInt32();
+                if (root.TryGetProperty("arenaRegionRef", out var arr2)) arenaRegionRef = PhantomsWebUtil.ParseRef(arr2.GetString());
+                if (root.TryGetProperty("clearArena", out var ca)) clearArena = ca.GetBoolean();
+                if (root.TryGetProperty("countScalePerWave", out var csw)) countScalePerWave = csw.GetSingle();
+                if (root.TryGetProperty("levelBumpPerWave", out var lbw)) levelBumpPerWave = lbw.GetInt32();
+                if (root.TryGetProperty("rewardLootTableRef", out var rltr)) rewardLootTableRef = PhantomsWebUtil.ParseRef(rltr.GetString());
+                if (root.TryGetProperty("entry", out var el))
+                {
+                    entry = new Player.WaveEntryDef();
+                    if (el.TryGetProperty("agentRef", out var ar)) entry.AgentRef = PhantomsWebUtil.ParseRef(ar.GetString());
+                    if (el.TryGetProperty("heroRef", out var hr)) entry.HeroRef = PhantomsWebUtil.ParseRef(hr.GetString());
+                    if (el.TryGetProperty("enemyPhantom", out var ep)) entry.IsEnemyPhantom = ep.GetBoolean();
+                    if (el.TryGetProperty("count", out var cn)) entry.Count = cn.GetInt32();
+                    if (el.TryGetProperty("level", out var lv)) entry.Level = lv.GetInt32();
+                    if (el.TryGetProperty("rank", out var rk)) entry.Rank = rk.GetInt32();
+                }
+            }
+            catch (Exception ex)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = $"bad request: {ex.Message}" });
+                return;
+            }
+
+            if (entry == null || (entry.AgentRef == 0 && entry.IsEnemyPhantom == false))
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "no valid wave entry in request" });
+                return;
+            }
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, null, out string findError);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = findError ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player,
+                p => new { Ok = true, Message = p.StartEndlessChallenge(entry, intermissionMs, arenaRegionRef, clearArena,
+                    countScalePerWave, levelBumpPerWave, rewardLootTableRef) });
+
+            Logger.Info($"[Arena:Endless] start for {player.GetName()}");
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    /// <summary>POST /webapi/arena/endless/extract — { playerName }. Bail safely, banking the current wave count.</summary>
+    public class EndlessExtractWebHandler : WebHandler
+    {
+        protected override async Task Post(WebRequestContext context)
+        {
+            string body = await context.ReadUtf8StringAsync();
+            PhantomsWebUtil.ParseTarget(body, out string playerName, out string playerDbId);
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, playerDbId, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player,
+                p => new { Ok = true, Message = p.ExtractEndlessChallenge() });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    /// <summary>GET /webapi/arena/endless/status?player= — live Endless Challenge status.</summary>
+    public class EndlessStatusWebHandler : WebHandler
+    {
+        protected override async Task Get(WebRequestContext context)
+        {
+            Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player,
+                p => new { Ok = true, Status = p.GetEndlessStatusForWeb() });
+            await context.SendJsonAsync(result);
+        }
+    }
 }

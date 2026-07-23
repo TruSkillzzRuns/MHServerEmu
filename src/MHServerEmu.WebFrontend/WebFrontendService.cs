@@ -167,6 +167,9 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/arena/waves/skip",    new MHServerEmu.WebFrontend.Handlers.WebApi.WavesSkipWebHandler());
             _webService.RegisterHandler("/webapi/arena/waves/history", new MHServerEmu.WebFrontend.Handlers.WebApi.WavesHistoryWebHandler());
             _webService.RegisterHandler("/webapi/arena/waves/plans",   new MHServerEmu.WebFrontend.Handlers.WebApi.WavePlansWebHandler());
+            _webService.RegisterHandler("/webapi/arena/endless/start",   new MHServerEmu.WebFrontend.Handlers.WebApi.EndlessStartWebHandler());
+            _webService.RegisterHandler("/webapi/arena/endless/extract", new MHServerEmu.WebFrontend.Handlers.WebApi.EndlessExtractWebHandler());
+            _webService.RegisterHandler("/webapi/arena/endless/status",  new MHServerEmu.WebFrontend.Handlers.WebApi.EndlessStatusWebHandler());
 
             // OmegaDev2 enemy picker (Enemy Phantoms page roster).
             _webService.RegisterHandler("/webapi/enemies/byregion", new MHServerEmu.WebFrontend.Handlers.WebApi.EnemiesByRegionWebHandler());

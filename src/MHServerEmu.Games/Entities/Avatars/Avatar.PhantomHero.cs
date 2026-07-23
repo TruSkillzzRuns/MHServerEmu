@@ -435,7 +435,14 @@ namespace MHServerEmu.Games.Entities.Avatars
                             // spawn (level-band appropriate — cosmic at 60,
                             // rare at 30, etc). Same one-shot guard so we don't
                             // duplicate on subsequent corpse ticks.
-                            try { DropPhantomGear(foe, host); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] drop failed on {foe.Id:X}: {ex.Message}"); }
+                            //
+                            // Skipped entirely during an Endless Challenge run
+                            // — that mode's only reward is the chest spawned
+                            // every few waves, not per-kill gear drops.
+                            if (host.IsEndlessChallengeActive == false)
+                            {
+                                try { DropPhantomGear(foe, host); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] drop failed on {foe.Id:X}: {ex.Message}"); }
+                            }
                         }
                         else if (nowMs - deadSince >= EnemyPhantomCorpseMs)
                         {
@@ -3104,6 +3111,52 @@ namespace MHServerEmu.Games.Entities.Avatars
             else if (level <= 19) { AddTier(2); AddTier(3); }
             else if (level <= 30) AddTier(4);
             else if (level <= 50)
+            {
+                AddTier(4);
+                if (lootGlobals.RarityCosmic != PrototypeId.Invalid) allowed.Add(lootGlobals.RarityCosmic);
+            }
+            else
+            {
+                if (lootGlobals.RarityCosmic != PrototypeId.Invalid) allowed.Add(lootGlobals.RarityCosmic);
+                if (lootGlobals.RarityUnique != PrototypeId.Invalid) allowed.Add(lootGlobals.RarityUnique);
+            }
+
+            return allowed;
+        }
+
+        /// <summary>
+        /// Rarity band for an Endless Challenge reward chest, keyed by wave
+        /// count instead of character level (see Player.WaveDirector.cs's
+        /// SpawnEndlessChest). Reuses the same real, verified rarity-tier
+        /// ladder as GetPhantomGearAllowedRarities above (s_rarityByTier,
+        /// built from the actual RarityPrototype hierarchy + LootGlobals'
+        /// Cosmic/Unique anchors) but NARROWS the band as waves climb
+        /// instead of picking a level-appropriate band once — dropping the
+        /// low tiers out of the pool as it goes, so a higher wave count is a
+        /// strictly better chance at the top of the ladder, not just more
+        /// tiers competing for the same roll. bumpOneBand shifts the
+        /// breakpoints down by one step (used for the every-20-waves
+        /// loot-splosion so that milestone always lands one band ahead of
+        /// where the smooth curve would otherwise put it).
+        /// </summary>
+        internal static List<PrototypeId> GetEndlessChestAllowedRarities(int endlessCycle, bool bumpOneBand = false)
+        {
+            EnsureRarityTiers();
+            var lootGlobals = GameDatabase.LootGlobalsPrototype;
+            var allowed = new List<PrototypeId>(3);
+
+            void AddTier(int tier)
+            {
+                if (s_rarityByTier.TryGetValue(tier, out PrototypeId r) && r != PrototypeId.Invalid)
+                    allowed.Add(r);
+            }
+
+            int cycle = bumpOneBand ? endlessCycle + 15 : endlessCycle;
+
+            if (cycle < 10) { AddTier(1); AddTier(2); }
+            else if (cycle < 20) { AddTier(2); AddTier(3); }
+            else if (cycle < 30) { AddTier(3); AddTier(4); }
+            else if (cycle < 40)
             {
                 AddTier(4);
                 if (lootGlobals.RarityCosmic != PrototypeId.Invalid) allowed.Add(lootGlobals.RarityCosmic);
