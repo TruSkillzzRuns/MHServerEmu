@@ -820,7 +820,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // IsSimulated entity — so simply setting it back to the
                 // summon's own natural default triggers the same real
                 // unwind the engine already uses for legitimate rank swaps.
-                PrototypeId naturalRank = summoned.WorldEntityPrototype?.Rank ?? PrototypeId.Invalid;
+                PrototypeId naturalRank = summoned.WorldEntityPrototype?.Rank?.DataRef ?? PrototypeId.Invalid;
                 if (summoned.Properties[PropertyEnum.Rank] != naturalRank)
                     summoned.Properties[PropertyEnum.Rank] = naturalRank;
             }
@@ -2320,9 +2320,9 @@ namespace MHServerEmu.Games.Entities.Avatars
                 var wornItems = new List<Items.Item>();
                 foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
                 {
-                    InventoryPrototype invProto = assignment.Inventory.As<InventoryPrototype>();
+                    InventoryPrototype invProto = assignment.Inventory;
                     if (invProto != null && invProto.ConvenienceLabel == InventoryConvenienceLabel.Costume) continue;
-                    Inventory inv = phantom.GetInventoryByRef(assignment.Inventory);
+                    Inventory inv = phantom.GetInventoryByRef(assignment.Inventory.DataRef);
                     if (inv == null) continue;
                     foreach (var entry in inv)
                     {
@@ -2362,9 +2362,9 @@ namespace MHServerEmu.Games.Entities.Avatars
             int wornDropped = 0;
             foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
             {
-                InventoryPrototype invProto = assignment.Inventory.As<InventoryPrototype>();
+                InventoryPrototype invProto = assignment.Inventory;
                 if (invProto != null && invProto.ConvenienceLabel == InventoryConvenienceLabel.Costume) continue; // handled above
-                Inventory inv = phantom.GetInventoryByRef(assignment.Inventory);
+                Inventory inv = phantom.GetInventoryByRef(assignment.Inventory.DataRef);
                 if (inv == null) continue;
 
                 foreach (var entry in inv)
@@ -2411,10 +2411,10 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
             {
-                InventoryPrototype invProto = assignment.Inventory.As<InventoryPrototype>();
+                InventoryPrototype invProto = assignment.Inventory;
                 if (invProto == null || invProto.ConvenienceLabel != InventoryConvenienceLabel.Costume) continue;
 
-                Inventory inv = phantom.GetInventoryByRef(assignment.Inventory);
+                Inventory inv = phantom.GetInventoryByRef(assignment.Inventory.DataRef);
                 if (inv == null) return 0;
                 foreach (var entry in inv)
                 {
@@ -2798,12 +2798,12 @@ namespace MHServerEmu.Games.Entities.Avatars
             return false;
         }
 
-        private static bool HotspotPowersHitPhantom(PrototypeId[] powerRefs, Hotspot hotspot, Agent phantom)
+        private static bool HotspotPowersHitPhantom(PowerPrototype[] powerProtos, Hotspot hotspot, Agent phantom)
         {
-            if (powerRefs == null) return false;
-            for (int i = 0; i < powerRefs.Length; i++)
+            if (powerProtos == null) return false;
+            for (int i = 0; i < powerProtos.Length; i++)
             {
-                var powerProto = powerRefs[i].As<PowerPrototype>();
+                var powerProto = powerProtos[i];
                 if (powerProto == null) continue;
                 if (Power.IsValidTarget(powerProto, hotspot, hotspot.Alliance, phantom))
                     return true;
@@ -3420,7 +3420,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             {
                 if (assignment.UnlocksAtCharacterLevel > level) continue;
 
-                InventoryPrototype invProto = assignment.Inventory.As<InventoryPrototype>();
+                InventoryPrototype invProto = assignment.Inventory;
                 if (invProto == null) continue;
                 // The costume slot is driven by the phantom costume system —
                 // equipping a rolled costume item here would clobber it.
@@ -3446,7 +3446,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                                  uiSlot == EquipmentInvUISlot.Legendary  || uiSlot == EquipmentInvUISlot.UruForged;
                 if (isCoreGear == false && isSpecial == false) continue;
 
-                Inventory equipInventory = phantomAgent.GetInventoryByRef(assignment.Inventory);
+                Inventory equipInventory = phantomAgent.GetInventoryByRef(assignment.Inventory.DataRef);
                 if (equipInventory == null) continue;
 
                 // Stored ref on restore (consumed even if it fails, to keep
@@ -5021,7 +5021,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         {
             if (s_enemyAllianceResolved) return s_enemyAllianceRef;
 
-            AlliancePrototype playerAlliance = GameDatabase.GlobalsPrototype?.PlayerAlliancePrototype;
+            AlliancePrototype playerAlliance = GameDatabase.GlobalsPrototype?.PlayerAlliance;
             if (playerAlliance != null)
             {
                 foreach (PrototypeId allianceRef in DataDirectory.Instance

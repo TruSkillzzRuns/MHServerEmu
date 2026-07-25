@@ -107,9 +107,9 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     string leaf = ExtractLeaf(path);
                     string portrait = GameDatabase.GetAssetName(iconAssetId);
                     string rankName = null;
-                    if (proto.Rank != 0)
+                    if (proto.Rank != null)
                     {
-                        string rankPath = GameDatabase.GetPrototypeName(proto.Rank);
+                        string rankPath = GameDatabase.GetPrototypeName(proto.Rank.DataRef);
                         if (!string.IsNullOrEmpty(rankPath)) rankName = ExtractLeaf(rankPath);
                     }
 

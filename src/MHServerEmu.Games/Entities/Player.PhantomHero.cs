@@ -1086,9 +1086,9 @@ namespace MHServerEmu.Games.Entities
                 // in the first place).
                 foreach (var assignment in equipmentInventories)
                 {
-                    var invProto = assignment.Inventory.As<GameData.Prototypes.InventoryPrototype>();
+                    var invProto = assignment.Inventory;
                     if (invProto == null || invProto.ConvenienceLabel == Inventories.InventoryConvenienceLabel.Costume) continue;
-                    phantom.GetInventoryByRef(assignment.Inventory)?.DestroyContained();
+                    phantom.GetInventoryByRef(assignment.Inventory.DataRef)?.DestroyContained();
                 }
 
                 List<ulong> applied = Avatar.ApplyPhantomGear(phantomOwner, phantom, phantom.CharacterLevel, null, bisLoadout);
