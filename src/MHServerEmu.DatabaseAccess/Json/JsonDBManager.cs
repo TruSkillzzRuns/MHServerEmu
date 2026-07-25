@@ -89,6 +89,14 @@ namespace MHServerEmu.DatabaseAccess.Json
             return false;
         }
 
+        public bool TryGetPlayerUserLevel(ulong playerDbId, out AccountUserLevel userLevel)
+        {
+            userLevel = AccountUserLevel.User;
+            if (_account == null || (ulong)_account.Id != playerDbId) return false;
+            userLevel = _account.UserLevel;
+            return true;
+        }
+
         public bool TryGetLastLogoutTime(ulong playerDbId, out long lastLogoutTime)
         {
             lastLogoutTime = 0;

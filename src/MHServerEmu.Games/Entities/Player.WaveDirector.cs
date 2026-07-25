@@ -927,13 +927,28 @@ namespace MHServerEmu.Games.Entities
                 UpdateEndlessWaveWidget(avatar);
         }
 
-        // Cached once per process: any real UIWidgetGenericFractionPrototype
-        // the loaded client data ships. What the widget SHOWS is driven
-        // entirely by SetCount()/SetTimeRemaining() below — it's a generic
-        // fraction bar, not something with baked-in per-prototype text — so
-        // any instance works as a plain "N" counter for Endless Challenge's
-        // wave count, the same way HoloSim's MetaStateWaveInstance drives
-        // its own "Wave: N" widget via MetaGame.SetUIWidgetGenericFraction.
+        // Cached once per process: a UIWidgetGenericFractionPrototype the
+        // loaded client data ships. What the fraction NUMBERS show is driven
+        // entirely by SetCount()/SetTimeRemaining() below, but each instance
+        // also carries its own baked, unrenamable Descriptor label — blindly
+        // grabbing "the first one found" picked UI/MetaGame/MindlessTitan
+        // .prototype, whose native label is "Defeat Mindless Titan N/M"
+        // (confirmed live via /webapi/debug/uiwidgets — misleading even
+        // though the fraction itself tracked correctly).
+        //
+        // TimeRemainingNoText (one of only 5/245 instances with a blank
+        // Descriptor) was tried next and confirmed live to render as a
+        // completely empty widget — "no text" apparently means "no display
+        // at all" for this prototype, not just "no label", so it's unusable.
+        //
+        // UI/MetaGame/CurrentCountTotalCountOnly.prototype's own native
+        // Descriptor is literally just "$CurrentCount$/$TotalCount$" — bare
+        // numbers, no label text — confirmed via the same scan to be the
+        // only real match for "just show the fraction." The old "take the
+        // first one found" logic is kept only as a fallback in case this
+        // specific ref doesn't resolve on some client data version.
+        private const ulong PreferredGenericFractionWidgetRef = 0xA447BFC6DD2313EB; // UI/MetaGame/CurrentCountTotalCountOnly.prototype
+
         private static PrototypeId? s_endlessWaveWidgetRef;
         private static bool s_endlessWaveWidgetSearched;
 
@@ -941,6 +956,13 @@ namespace MHServerEmu.Games.Entities
         {
             if (s_endlessWaveWidgetSearched) return s_endlessWaveWidgetRef ?? PrototypeId.Invalid;
             s_endlessWaveWidgetSearched = true;
+
+            if (((PrototypeId)PreferredGenericFractionWidgetRef).As<UIWidgetGenericFractionPrototype>() != null)
+            {
+                s_endlessWaveWidgetRef = (PrototypeId)PreferredGenericFractionWidgetRef;
+                return s_endlessWaveWidgetRef.Value;
+            }
+
             foreach (PrototypeId protoRef in DataDirectory.Instance
                 .IteratePrototypesInHierarchy<UIWidgetGenericFractionPrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
             {

@@ -105,6 +105,21 @@ namespace MHServerEmu.DatabaseAccess.SQLite
             return string.IsNullOrWhiteSpace(playerName) == false;
         }
 
+        public bool TryGetPlayerUserLevel(ulong playerDbId, out AccountUserLevel userLevel)
+        {
+            using SQLiteConnection connection = GetConnection();
+
+            var account = connection.QueryFirstOrDefault<DBAccount>("SELECT UserLevel FROM Account WHERE Id = @Id", new { Id = (long)playerDbId });
+            if (account == null)
+            {
+                userLevel = AccountUserLevel.User;
+                return false;
+            }
+
+            userLevel = account.UserLevel;
+            return true;
+        }
+
         public bool GetPlayerNames(Dictionary<ulong, string> playerNames)
         {
             using SQLiteConnection connection = GetConnection();

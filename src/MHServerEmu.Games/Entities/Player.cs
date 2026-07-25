@@ -556,6 +556,7 @@ namespace MHServerEmu.Games.Entities
             Game?.GameEventScheduler?.CancelAllEvents(_pendingEvents);
             Game?.GameEventScheduler?.CancelAllEvents(_waveEvents);
             UnsubscribeTerminalRunTracking();
+            UnsubscribeTrialTracking();
 
             MissionManager.Deallocate();
             AchievementManager.Deallocate();
@@ -4415,6 +4416,8 @@ namespace MHServerEmu.Games.Entities
 
         public bool CanFormParty()
         {
+            if (IsTrialGauntletActive) return false; // Trial of the Impossible is solo-only
+
             Region region = GetRegion();
             if (!Verify.IsNotNull(region)) return false;
 

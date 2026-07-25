@@ -73,6 +73,20 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// </summary>
         public WaveRunIntent PendingWaveRun { get; set; }
 
+        /// <summary>
+        /// Trial of the Impossible — set right before TeleportToRegionFromWeb
+        /// warps the player to their randomly chosen arena. Cross-region
+        /// transfer destroys the Game instance the confirming Player object
+        /// lives on (same story as PendingWaveRun above): without this, the
+        /// warp succeeds but the "spawn the nemesis on arrival" intent was
+        /// left behind on the now-destroyed old Player object and never
+        /// fired. Snapshotted by Player.SnapshotTrialWarpForTransfer() at
+        /// BeginRegionTransfer, consumed by
+        /// Player.OnAvatarEnteredRegionForTrial() from the new Avatar's
+        /// OnEnteredWorld once it's actually standing in the arena.
+        /// </summary>
+        public bool PendingTrialWarp { get; set; }
+
         public MigrationData() { }
 
         public List<(ulong, ulong)> GetOrCreatePropertyList(ulong entityDbId)
@@ -109,6 +123,7 @@ namespace MHServerEmu.DatabaseAccess.Models
             PreferredPowers.Clear();
             CombatRangePrefs.Clear();
             PendingWaveRun = null;
+            PendingTrialWarp = false;
         }
     }
 
@@ -167,6 +182,9 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// just standing there for an easy revenge kill.
         /// </summary>
         public int EscapeCount;
+
+        /// <summary>Number of times this nemesis has been spared (SpareNemesis) instead of finished off normally.</summary>
+        public int MercyCount;
     }
 
     /// <summary>

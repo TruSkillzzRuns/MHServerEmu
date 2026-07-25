@@ -41,6 +41,11 @@ namespace MHServerEmu.DatabaseAccess
         public bool TryGetPlayerName(ulong playerDbId, out string playerName);
 
         /// <summary>
+        /// Queries the <see cref="AccountUserLevel"/> of the account with the specified id. Returns <see langword="true"/> if successful.
+        /// </summary>
+        public bool TryGetPlayerUserLevel(ulong playerDbId, out AccountUserLevel userLevel);
+
+        /// <summary>
         /// Queries the names of all registered players from the database and adds them to the provided <see cref="Dictionary{TKey, TValue}"/>.
         /// </summary>
         public bool GetPlayerNames(Dictionary<ulong, string> playerNames);

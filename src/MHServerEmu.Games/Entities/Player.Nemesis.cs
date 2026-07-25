@@ -27,6 +27,14 @@ namespace MHServerEmu.Games.Entities
         // after killing the player, applied multiplicatively at spawn.
         internal const float NemesisEscapeHealthBonusPerEscape = 0.02f;
 
+        // Grudge score (Kills - RevengeKills, floored at 0) — how far ahead
+        // a nemesis is in the rivalry right now. Stacks multiplicatively on
+        // top of the rank/escape curve, same pattern as the escape bonus
+        // above, so a nemesis who's beaten you more than you've beaten them
+        // comes back hitting harder without needing a whole new stat table.
+        internal const float NemesisGrudgeHealthBonusPerPoint = 0.03f;
+        internal const float NemesisGrudgeDmgBoostPerPoint = 0.02f;
+
         // Soft cap on roster size. Nemeses never expire on their own, so a
         // long-running account would otherwise accumulate an ever-growing
         // list. When a brand-new nemesis is registered past this count, the
@@ -56,6 +64,26 @@ namespace MHServerEmu.Games.Entities
         };
 
         private readonly List<NemesisEntry> _nemeses = new();
+
+        // Bounty Board: which nemesis (if any) is currently flagged as the
+        // active bounty target. Not persisted across region hops on purpose —
+        // it's a short-lived "hunt this one right now" flag the app sets,
+        // not part of the permanent roster record.
+        private ulong _bountyTargetHeroRef;
+        private ulong _bountyRewardLootTableRef;
+        private const int BountyRewardRolls = 5;
+
+        // Nemesis Family Tree — a chance that defeating an avatar nemesis
+        // queues up a team-up "avenger" for the NEXT Rogue Encounter's
+        // team-up cameo slot (see Player.RogueEncounter.cs), flavored as
+        // avenging the one you just took down. No real lore/family data
+        // exists anywhere in this codebase linking specific avatars to
+        // specific team-ups, so the "avenger" is a random team-up from the
+        // normal pool — the narrative link is purely in the display text,
+        // not a real data relationship.
+        internal const double NemesisAvengerChance = 0.35;
+        private ulong _pendingAvengerTeamUpRef;
+        private string _pendingAvengerFallenName;
         // Debounce: OnKilled can fire multiple times during the death
         // sequence — real-player auto-revive triggers OnKilled once when
         // HP hits 0, then again if lingering damage puts them back at 0
@@ -141,6 +169,149 @@ namespace MHServerEmu.Games.Entities
             entry.Defeated = true;
             entry.RevengeKills++;
             NemesisLogger.Info($"[Nemesis] {GetName()}: DEFEATED '{((PrototypeId)heroRef).GetName()}' — revenge #{entry.RevengeKills}, rank retained at {entry.Rank}");
+
+            // Nemesis Family Tree roll.
+            try
+            {
+                var rng = Game?.Random;
+                if (rng != null && rng.NextDouble() < NemesisAvengerChance)
+                {
+                    PrototypeId avengerRef = Avatar.GetAllPhantomTeamUpRefs() is { Count: > 0 } pool
+                        ? pool[rng.Next(0, pool.Count)].TeamUpRef
+                        : PrototypeId.Invalid;
+                    if (avengerRef != PrototypeId.Invalid)
+                    {
+                        _pendingAvengerTeamUpRef = (ulong)avengerRef;
+                        _pendingAvengerFallenName = ((PrototypeId)heroRef).GetName();
+                        NemesisLogger.Info($"[Nemesis] {GetName()}: an avenger for '{_pendingAvengerFallenName}' is queued for the next Rogue Encounter");
+                    }
+                }
+            }
+            catch (Exception ex) { NemesisLogger.Warn($"[Nemesis] avenger roll failed: {ex.Message}"); }
+
+            return true;
+        }
+
+        /// <summary>Consume the pending Family Tree avenger (if any) for the next Rogue Encounter team-up cameo slot.</summary>
+        internal bool TryConsumePendingAvenger(out ulong teamUpRef, out string fallenName)
+        {
+            teamUpRef = _pendingAvengerTeamUpRef;
+            fallenName = _pendingAvengerFallenName;
+            bool had = teamUpRef != 0;
+            _pendingAvengerTeamUpRef = 0;
+            _pendingAvengerFallenName = null;
+            return had;
+        }
+
+        /// <summary>
+        /// Net grudge score for a nemesis entry — how far ahead they are in
+        /// the rivalry (how many more times they've killed you than you've
+        /// killed them), floored at 0. Drives NemesisGrudgeHealthBonusPerPoint
+        /// /NemesisGrudgeDmgBoostPerPoint, Public Enemy #1 selection, and the
+        /// Bounty Board's default sort.
+        /// </summary>
+        public static int GrudgeScore(NemesisEntry entry)
+            => entry == null ? 0 : Math.Max(0, entry.Kills - entry.RevengeKills);
+
+        /// <summary>
+        /// "Public Enemy #1" — the active (non-Defeated) nemesis with the
+        /// highest grudge score right now, or null if there isn't one (empty
+        /// roster, or every active entry is tied at 0). Ties broken by most
+        /// recent kill so the most currently-threatening one wins.
+        /// </summary>
+        public NemesisEntry GetPublicEnemyNumberOne()
+        {
+            NemesisEntry best = null;
+            int bestScore = 0;
+            foreach (var n in _nemeses)
+            {
+                if (n.Defeated) continue;
+                int score = GrudgeScore(n);
+                if (score <= 0) continue;
+                if (best == null || score > bestScore || (score == bestScore && n.LastKillMs > best.LastKillMs))
+                {
+                    best = n;
+                    bestScore = score;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>Currently active Bounty Board target, or null if none is set / the target has left the roster.</summary>
+        public NemesisEntry GetBountyTarget()
+            => _bountyTargetHeroRef == 0 ? null : _nemeses.FirstOrDefault(n => n.HeroRef == _bountyTargetHeroRef);
+
+        /// <summary>Set the active Bounty Board target + the loot table its reward pays out from. Pass heroRef=0 to clear.</summary>
+        public string SetBountyTarget(ulong heroRef, ulong rewardLootTableRef = 0)
+        {
+            if (heroRef == 0)
+            {
+                _bountyTargetHeroRef = 0;
+                _bountyRewardLootTableRef = 0;
+                return "bounty cleared";
+            }
+            NemesisEntry entry = _nemeses.FirstOrDefault(n => n.HeroRef == heroRef);
+            if (entry == null) return "that nemesis isn't on your roster";
+            if (entry.Defeated) return "that nemesis is already defeated — pick an active one";
+            _bountyTargetHeroRef = heroRef;
+            _bountyRewardLootTableRef = rewardLootTableRef;
+            NemesisLogger.Info($"[Nemesis] {GetName()}: bounty set on '{((PrototypeId)heroRef).GetName()}'");
+            return $"bounty set on {((PrototypeId)heroRef).GetName()}";
+        }
+
+        /// <summary>
+        /// Called right after RetireNemesis when the nemesis just defeated
+        /// was the active bounty target — rolls the configured bounty
+        /// reward loot table several times and clears the bounty. No-op
+        /// (returns false) if there was no bounty on this hero, or no
+        /// reward loot table was configured for it.
+        /// </summary>
+        internal bool TryClaimBountyReward(ulong heroRef)
+        {
+            bool wasBountyTarget = _bountyTargetHeroRef != 0 && _bountyTargetHeroRef == heroRef;
+            if (wasBountyTarget == false) return false;
+
+            ulong rewardRef = _bountyRewardLootTableRef;
+            _bountyTargetHeroRef = 0;
+            _bountyRewardLootTableRef = 0;
+            if (rewardRef == 0) return true;
+
+            Avatar avatar = CurrentAvatar;
+            if (avatar == null || avatar.IsInWorld == false) return true;
+
+            try
+            {
+                using var inputSettings = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<Loot.LootInputSettings>();
+                inputSettings.Initialize(Loot.LootContext.Drop, this, avatar);
+                for (int i = 0; i < BountyRewardRolls; i++)
+                    Game.LootManager.SpawnLootFromTable((PrototypeId)rewardRef, inputSettings, 1);
+                NemesisLogger.Info($"[Nemesis] {GetName()}: bounty claimed on '{((PrototypeId)heroRef).GetName()}' — {BountyRewardRolls} reward roll(s)");
+            }
+            catch (Exception ex)
+            {
+                NemesisLogger.Warn($"[Nemesis] bounty reward drop failed: {ex.Message}");
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Spare a downed nemesis instead of finishing them off normally.
+        /// Unlike RetireNemesis (which keeps rank at its current value for
+        /// the historical record), sparing knocks rank down by 1 — mercy
+        /// costs them some of their edge instead of leaving it untouched —
+        /// and tracks a separate MercyCount so a Bounty Board/UI can show
+        /// "spared 3 times" distinctly from "defeated 3 times." Idempotent
+        /// same as RetireNemesis: a no-op if already Defeated.
+        /// </summary>
+        public bool SpareNemesis(ulong heroRef)
+        {
+            NemesisEntry entry = _nemeses.FirstOrDefault(n => n.HeroRef == heroRef);
+            if (entry == null) return false;
+            if (entry.Defeated) return false;
+            entry.Defeated = true;
+            entry.MercyCount++;
+            entry.Rank = Math.Max(1, entry.Rank - 1);
+            NemesisLogger.Info($"[Nemesis] {GetName()}: SPARED '{((PrototypeId)heroRef).GetName()}' — mercy #{entry.MercyCount}, rank knocked down to {entry.Rank}");
             return true;
         }
 

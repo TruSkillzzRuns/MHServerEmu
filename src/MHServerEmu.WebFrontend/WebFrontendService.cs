@@ -188,6 +188,9 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/leaderboard/commit-dps", new MHServerEmu.WebFrontend.Handlers.WebApi.LeaderboardCommitDpsWebHandler());
             _webService.RegisterHandler("/webapi/leaderboard/delete",     new MHServerEmu.WebFrontend.Handlers.WebApi.LeaderboardDeleteWebHandler());
             _webService.RegisterHandler("/webapi/leaderboard/clear",      new MHServerEmu.WebFrontend.Handlers.WebApi.LeaderboardClearWebHandler());
+            _webService.RegisterHandler("/webapi/leaderboard/trial-global", new MHServerEmu.WebFrontend.Handlers.WebApi.TrialLeaderboardGlobalWebHandler());
+            _webService.RegisterHandler("/webapi/leaderboard/trial-global/delete", new MHServerEmu.WebFrontend.Handlers.WebApi.TrialLeaderboardAdminDeleteWebHandler());
+            _webService.RegisterHandler("/webapi/leaderboard/trial-global/clear", new MHServerEmu.WebFrontend.Handlers.WebApi.TrialLeaderboardAdminClearWebHandler());
 
             // OmegaDev2 Account Manager helpers.
             _webService.RegisterHandler("/webapi/playeradmin/warp",  new MHServerEmu.WebFrontend.Handlers.WebApi.PlayerAdminWarpWebHandler());
@@ -198,6 +201,10 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/console/exec", new MHServerEmu.WebFrontend.Handlers.WebApi.ConsoleExecWebHandler());
             _webService.RegisterHandler("/webapi/logs/tail",    new MHServerEmu.WebFrontend.Handlers.WebApi.LogsTailWebHandler());
             _webService.RegisterHandler("/webapi/debug/logs",   new MHServerEmu.WebFrontend.Handlers.WebApi.DebugLogsWebHandler());
+            _webService.RegisterHandler("/webapi/debug/position",   new MHServerEmu.WebFrontend.Handlers.WebApi.PlayerPositionWebHandler());
+            _webService.RegisterHandler("/webapi/debug/dialogtext", new MHServerEmu.WebFrontend.Handlers.WebApi.DialogTextDebugWebHandler());
+            _webService.RegisterHandler("/webapi/debug/vanitytitle", new MHServerEmu.WebFrontend.Handlers.WebApi.VanityTitleDebugWebHandler());
+            _webService.RegisterHandler("/webapi/debug/uiwidgets",  new MHServerEmu.WebFrontend.Handlers.WebApi.UiWidgetScanDebugWebHandler());
 
             // OmegaDev2 God Mode.
             _webService.RegisterHandler("/webapi/playeradmin/godmode", new MHServerEmu.WebFrontend.Handlers.WebApi.GodModeWebHandler());

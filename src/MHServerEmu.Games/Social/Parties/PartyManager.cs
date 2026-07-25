@@ -50,6 +50,15 @@ namespace MHServerEmu.Games.Social.Parties
                     break;
 
                 case GroupingOperationType.eGOP_AcceptInvite:
+                    if (player.IsTrialGauntletActive)
+                    {
+                        SendOperationResultToClient(player, request, GroupingOperationResult.eGOPR_SystemError);
+                        return;
+                    }
+
+                    SendOperationRequestToPlayerManager(request);
+                    break;
+
                 case GroupingOperationType.eGOP_DeclineInvite:
                 case GroupingOperationType.eGOP_LeaveParty:
                     // No extra validation required here.

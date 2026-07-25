@@ -261,6 +261,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 var avatar = p.CurrentAvatar;
                 if (avatar == null || avatar.IsInWorld == false)
                     return new { Ok = false, Error = "player has no avatar in world", Spawned = 0, Failed = 0, FirstError = (string)null };
+                if (p.IsTrialGauntletActive)
+                    return new { Ok = false, Error = "Trial of the Impossible is solo-only — no phantom summons", Spawned = 0, Failed = 0, FirstError = (string)null };
 
                 int spawned = 0, failed = 0;
                 string firstError = null;
@@ -769,6 +771,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
             object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
             {
+                var bountyTarget = p.GetBountyTarget();
+                var publicEnemyOne = p.GetPublicEnemyNumberOne();
                 var list = new System.Collections.Generic.List<object>();
                 foreach (var n in p.Nemeses)
                 {
@@ -781,13 +785,23 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         n.Kills,
                         n.RevengeKills,
                         n.EscapeCount,
+                        n.MercyCount,
                         n.Defeated,
                         LastKillerName = n.LastKillerName ?? string.Empty,
                         Suffix = MHServerEmu.Games.Entities.Player.NemesisSuffixes[System.Math.Clamp(n.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)],
                         LastKillMs = n.LastKillMs,
+                        GrudgeScore = MHServerEmu.Games.Entities.Player.GrudgeScore(n),
+                        IsBountyTarget = bountyTarget != null && bountyTarget.HeroRef == n.HeroRef,
+                        IsPublicEnemyOne = publicEnemyOne != null && publicEnemyOne.HeroRef == n.HeroRef,
                     });
                 }
-                return new { Ok = true, Nemeses = list };
+                return new
+                {
+                    Ok = true,
+                    Nemeses = list,
+                    BountyTargetHeroRef = bountyTarget != null ? "0x" + bountyTarget.HeroRef.ToString("X") : null,
+                    PublicEnemyOneHeroRef = publicEnemyOne != null ? "0x" + publicEnemyOne.HeroRef.ToString("X") : null,
+                };
             });
             await context.SendJsonAsync(result);
         }
@@ -799,6 +813,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             string playerName = null;
             string action = null;
             string heroRefStr = null;
+            string rewardLootTableRefStr = null;
             try
             {
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
@@ -806,6 +821,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
                 if (root.TryGetProperty("action",     out var ac)) action = ac.GetString();
                 if (root.TryGetProperty("heroRef",    out var hr)) heroRefStr = hr.GetString();
+                if (root.TryGetProperty("rewardLootTableRef", out var rl)) rewardLootTableRefStr = rl.GetString();
             }
             catch (System.Exception ex)
             {
@@ -877,10 +893,33 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     string stars = new string('★', System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank));
                     string displayName = string.IsNullOrEmpty(suffix) ? $"{stars} {killerBase}" : $"{stars} {killerBase} {suffix}";
 
-                    ulong id = avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out string spawnErr, nemesis.EscapeCount);
+                    int grudgeScore = MHServerEmu.Games.Entities.Player.GrudgeScore(nemesis);
+                    ulong id = avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out string spawnErr, nemesis.EscapeCount, grudgeScore);
                     return (object)new { Ok = id != 0, Message = id != 0 ? $"{displayName} is coming for you" : spawnErr };
                 }
-                return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear|spawn)" };
+                if (string.Equals(action, "spare", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (PhantomsWebUtil.TryParseRef(heroRefStr, out ulong heroRef) == false)
+                        return (object)new { Ok = false, Error = "heroRef required for spare" };
+                    bool ok = p.SpareNemesis(heroRef);
+                    return (object)new { Ok = ok, Message = ok ? "nemesis spared" : "no matching active nemesis" };
+                }
+                if (string.Equals(action, "bounty-set", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (PhantomsWebUtil.TryParseRef(heroRefStr, out ulong heroRef) == false)
+                        return (object)new { Ok = false, Error = "heroRef required for bounty-set" };
+                    ulong rewardRef = 0;
+                    if (string.IsNullOrWhiteSpace(rewardLootTableRefStr) == false)
+                        rewardRef = (ulong)PhantomsWebUtil.ParseRef(rewardLootTableRefStr);
+                    string msg = p.SetBountyTarget(heroRef, rewardRef);
+                    return (object)new { Ok = true, Message = msg };
+                }
+                if (string.Equals(action, "bounty-clear", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    string msg = p.SetBountyTarget(0);
+                    return (object)new { Ok = true, Message = msg };
+                }
+                return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear|spawn|spare|bounty-set|bounty-clear)" };
             });
             await context.SendJsonAsync(result);
         }

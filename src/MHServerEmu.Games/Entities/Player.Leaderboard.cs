@@ -27,7 +27,7 @@ namespace MHServerEmu.Games.Entities
         // so without this the app (whose DTO expects a string) fails to
         // deserialize a raw numeric enum value.
         [JsonConverter(typeof(JsonStringEnumConverter))]
-        public enum LeaderboardKind { DpsParse, TerminalRun, EndlessChallenge }
+        public enum LeaderboardKind { DpsParse, TerminalRun, EndlessChallenge, TrialOfImpossible }
 
         public sealed class LeaderboardEntry
         {
@@ -45,6 +45,18 @@ namespace MHServerEmu.Games.Entities
             // EndlessChallenge: true = extracted safely, false = squad wiped.
             // Always true for DpsParse (there's no "aborted" concept there).
             public bool Completed { get; set; } = true;
+            // TrialOfImpossible only: this run's own phantom kill count and
+            // own-death count (0-3, see Player.TrialOfImpossible.cs's
+            // 2-respawn/3rd-death-ends-it rule). Per-run stats, not lifetime
+            // totals — 0 for every other Kind.
+            public int NemesisKills { get; set; }
+            public int Deaths { get; set; }
+            // TrialOfImpossible only, and only when Completed == false — WHY
+            // the run didn't finish: "Defeated" (hit the 3-death limit and
+            // got sent back to Avengers Tower) vs "Aborted" (left the arena
+            // — warped/quit — before that, still alive). Null for every
+            // other Kind and for completed runs.
+            public string FailReason { get; set; }
             // Computed fresh on every GetLeaderboardForWeb call, not a stored
             // fact — whether this is currently the best entry in its group
             // (DpsParse: per HeroName; TerminalRun: per HeroName+Region+Tier,
@@ -127,15 +139,19 @@ namespace MHServerEmu.Games.Entities
         private static double RankWithinKind(LeaderboardEntry e, List<LeaderboardEntry> all)
         {
             var sameKind = all.Where(x => x.Kind == e.Kind)
-                .OrderByDescending(x => x.Kind == LeaderboardKind.TerminalRun ? (x.Completed ? 1 : 0) : 1)
+                .OrderByDescending(x => IsCompletionGated(x.Kind) ? (x.Completed ? 1 : 0) : 1)
                 .ThenBy(x => LowerIsBetter(x.Kind) ? x.Value : -x.Value)
                 .ToList();
             return sameKind.IndexOf(e);
         }
 
-        // TerminalRun: elapsed time, lower (faster) is better. Everything
-        // else (DpsParse, EndlessChallenge) is higher-is-better.
-        private static bool LowerIsBetter(LeaderboardKind kind) => kind == LeaderboardKind.TerminalRun;
+        // TerminalRun and TrialOfImpossible: an aborted attempt's short
+        // elapsed time must never outrank a real clear.
+        private static bool IsCompletionGated(LeaderboardKind kind) => kind == LeaderboardKind.TerminalRun || kind == LeaderboardKind.TrialOfImpossible;
+
+        // TerminalRun/TrialOfImpossible: elapsed time, lower (faster) is
+        // better. Everything else (DpsParse, EndlessChallenge) is higher-is-better.
+        private static bool LowerIsBetter(LeaderboardKind kind) => kind == LeaderboardKind.TerminalRun || kind == LeaderboardKind.TrialOfImpossible;
 
         /// <summary>Record a saved DPS parse. Called explicitly by the app ("Save to Leaderboard"), not automatically on every reset.</summary>
         public string CommitDpsToLeaderboard(string heroName, double dpsValue)
@@ -170,6 +186,62 @@ namespace MHServerEmu.Games.Entities
                 Completed = completed,
                 TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             });
+        }
+
+        /// <summary>Record a Trial of the Impossible attempt — Value is elapsed ms (lower is better), Completed = the nemesis was actually killed. failReason ("Defeated"/"Aborted") is only meaningful when completed is false.</summary>
+        internal void CommitTrialToLeaderboard(string heroName, long elapsedMs, bool completed, int nemesisKills, int deaths, string failReason = null)
+        {
+            AppendLeaderboardEntry(new LeaderboardEntry
+            {
+                Kind = LeaderboardKind.TrialOfImpossible,
+                HeroName = heroName,
+                Value = elapsedMs,
+                Completed = completed,
+                NemesisKills = nemesisKills,
+                Deaths = deaths,
+                FailReason = completed ? null : (failReason ?? "Aborted"),
+                TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            });
+        }
+
+        /// <summary>
+        /// Loads one account's leaderboard file directly by raw DatabaseUniqueId,
+        /// without needing a live Player instance for that account — used by
+        /// the cross-account "everyone's Trial of the Impossible runs" web
+        /// endpoint, which has to read offline accounts' saved data too.
+        /// </summary>
+        public static List<LeaderboardEntry> LoadLeaderboardFileForAccount(ulong accountId)
+        {
+            try
+            {
+                string path = System.IO.Path.Combine(MHServerEmu.Core.Helpers.FileHelper.DataDirectory, "Leaderboard", $"0x{accountId:X}.json");
+                if (System.IO.File.Exists(path) == false) return new();
+                var loaded = System.Text.Json.JsonSerializer.Deserialize<List<LeaderboardEntry>>(System.IO.File.ReadAllText(path));
+                return loaded ?? new();
+            }
+            catch (Exception ex)
+            {
+                LeaderboardLogger.Warn($"[Leaderboard] cross-account load failed for 0x{accountId:X}: {ex.Message}");
+                return new();
+            }
+        }
+
+        /// <summary>Counterpart to LoadLeaderboardFileForAccount — used by the admin-only cross-account delete/reset endpoints to write back an account's file directly, without needing that account's Player to be online.</summary>
+        public static bool SaveLeaderboardFileForAccount(ulong accountId, List<LeaderboardEntry> entries)
+        {
+            try
+            {
+                string path = System.IO.Path.Combine(MHServerEmu.Core.Helpers.FileHelper.DataDirectory, "Leaderboard", $"0x{accountId:X}.json");
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+                System.IO.File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(entries,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LeaderboardLogger.Warn($"[Leaderboard] cross-account save failed for 0x{accountId:X}: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>Record a completed (boss killed) or aborted (left/died first) terminal run.</summary>
@@ -361,7 +433,7 @@ namespace MHServerEmu.Games.Entities
             entries.Sort((a, b) =>
             {
                 if (a.Kind != b.Kind) return a.Kind.CompareTo(b.Kind);
-                if (a.Kind == LeaderboardKind.TerminalRun)
+                if (a.Kind == LeaderboardKind.TerminalRun || a.Kind == LeaderboardKind.TrialOfImpossible)
                 {
                     // Completed runs always rank above aborted ones — a short
                     // aborted run must never look like a fast clear.
@@ -407,12 +479,20 @@ namespace MHServerEmu.Games.Entities
                 .GroupBy(e => e.HeroName, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.Max(e => e.Value), StringComparer.OrdinalIgnoreCase);
 
+            // Per-hero fastest completed Trial of the Impossible clear — same
+            // completed-only gating as TerminalRun, so an aborted attempt can
+            // never "win" a personal best.
+            var bestTrial = allEntries.Where(e => e.Kind == LeaderboardKind.TrialOfImpossible && e.Completed)
+                .GroupBy(e => e.HeroName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Min(e => e.Value), StringComparer.OrdinalIgnoreCase);
+
             foreach (var e in entries)
             {
                 e.IsPersonalBest = e.Kind switch
                 {
                     LeaderboardKind.DpsParse => bestDps.TryGetValue(e.HeroName, out double bestDpsValue) && e.Value >= bestDpsValue,
                     LeaderboardKind.EndlessChallenge => bestEndless.TryGetValue(e.HeroName, out double bestEndlessValue) && e.Value >= bestEndlessValue,
+                    LeaderboardKind.TrialOfImpossible => e.Completed && bestTrial.TryGetValue(e.HeroName, out double bestTrialValue) && e.Value <= bestTrialValue,
                     _ => e.Completed && bestTerminal.TryGetValue((e.HeroName, e.RegionName, e.DifficultyTier), out double bestMs) && e.Value <= bestMs,
                 };
             }

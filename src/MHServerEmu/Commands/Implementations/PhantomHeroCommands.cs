@@ -27,6 +27,7 @@ namespace MHServerEmu.Commands.Implementations
             var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom spawn.");
             var avatar = pc.Player?.CurrentAvatar;
             if (avatar == null) return "No avatar in world.";
+            if (pc.Player.IsTrialGauntletActive) return "Trial of the Impossible is solo-only — no phantom summons.";
 
             // 0 = "match caller's CharacterLevel" (handled inside
             // SpawnPhantomHeroCore). The tick loop then keeps them in sync

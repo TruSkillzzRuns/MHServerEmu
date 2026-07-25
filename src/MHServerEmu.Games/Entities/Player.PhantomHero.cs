@@ -847,6 +847,8 @@ namespace MHServerEmu.Games.Entities
         {
             if (caller == null || caller.IsInWorld == false)
                 return "No avatar in world.";
+            if (IsTrialGauntletActive)
+                return "Trial of the Impossible is solo-only — no phantom summons.";
 
             var squads = LoadPhantomSquadFile();
             if (squads.TryGetValue(squadName, out List<PhantomSquadMember> members) == false || members == null || members.Count == 0)

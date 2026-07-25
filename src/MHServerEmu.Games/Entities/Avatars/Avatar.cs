@@ -431,6 +431,12 @@ namespace MHServerEmu.Games.Entities.Avatars
             // mob deaths, and any death not caused by an enemy phantom.
             TryRegisterNemesisKill(killer, directKiller);
 
+            // Trial of the Impossible — count the real player's own deaths
+            // (ignore phantom deaths, e.g. a defeated nemesis). No-ops unless
+            // the player is actually in a trial run.
+            if (IsPhantomHero == false)
+                GetOwnerOfType<Player>()?.OnTrialOwnDeath();
+
             // Deplete resources if needed
             foreach (PrimaryResourceManaBehaviorPrototype primaryManaBehaviorProto in GetPrimaryResourceManaBehaviors())
             {
@@ -528,7 +534,16 @@ namespace MHServerEmu.Games.Entities.Avatars
             Player owner = GetOwnerOfType<Player>();
             if (!Verify.IsNotNull(owner)) return false;
 
-            if (region.MetaGames.Count > 0) 
+            // Trial of the Impossible — 2 respawns allowed; the 3rd death
+            // ends the run and bounces the player back to Avengers Tower
+            // instead of the normal checkpoint/corpse release.
+            if (owner.IsTrialGauntletActive && owner.IsTrialDeathLimitReached)
+            {
+                owner.EndTrialRunFromDeathLimit(this);
+                return true;
+            }
+
+            if (region.MetaGames.Count > 0)
             {
                 var player = GetOwnerOfType<Player>();
                 var manager = Game.EntityManager;
@@ -5199,6 +5214,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         {
             if (Game.GameOptions.TeamUpSystemEnabled == false) return;
             if (IsInWorld == false) return;
+            if (GetOwnerOfType<Player>()?.IsTrialGauntletActive == true) return; // Trial of the Impossible is solo-only
 
             Agent teamUpAgent = CurrentTeamUpAgent;
             if (teamUpAgent == null || teamUpAgent.IsLiveTuningEnabled == false) return;
@@ -6991,6 +7007,7 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             player.UpdateScoringEventContext();
             player.OnAvatarEnteredRegion(region, this);
+            try { player.OnAvatarEnteredRegionForTrial(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[TrialOfImpossible] OnAvatarEnteredRegionForTrial threw: {ex.Message}"); }
 
             var teamUpAgent = CurrentTeamUpAgent;
             if (teamUpAgent != null)
