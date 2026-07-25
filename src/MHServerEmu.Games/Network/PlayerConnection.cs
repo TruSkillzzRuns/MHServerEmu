@@ -386,6 +386,13 @@ namespace MHServerEmu.Games.Network
             try { Player.SnapshotWaveRunForTransfer(); }
             catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotWaveRunForTransfer threw: {ex.Message}"); }
 
+            // Same idea for a confirmed Trial of the Impossible warp still in
+            // flight — see Player.TrialOfImpossible.cs's
+            // SnapshotTrialWarpForTransfer for why this was needed (the warp
+            // succeeded but the nemesis never spawned on arrival).
+            try { Player.SnapshotTrialWarpForTransfer(); }
+            catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotTrialWarpForTransfer threw: {ex.Message}"); }
+
             Player.CurrentAvatar.ExitWorld();
 
             // We are likely to be on our way to another game instance, so don't save player data just yet.
