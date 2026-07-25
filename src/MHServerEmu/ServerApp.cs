@@ -136,6 +136,22 @@ namespace MHServerEmu
                 if (_state != State.Running)
                     break;
 
+                // Console.ReadLine() returns null instantly (instead of blocking)
+                // when stdin isn't a real interactive console -- e.g. the process
+                // was launched with its input redirected/closed rather than
+                // attached to a terminal. Without this check that turns into an
+                // unthrottled infinite loop: null input -> "Unknown command" ->
+                // ReadLine() returns null again immediately -> repeat, spamming
+                // the log as fast as it can write until the process runs out of
+                // resources. A real console's ReadLine() blocks until Enter is
+                // pressed and never returns null under normal use, so this only
+                // ever triggers for a genuinely closed/non-interactive stdin.
+                if (input == null)
+                {
+                    Logger.Warn("Console input stream closed (no interactive console attached) -- stopping console command processing.");
+                    break;
+                }
+
                 CommandManager.Instance.TryParse(input);
             }
 
