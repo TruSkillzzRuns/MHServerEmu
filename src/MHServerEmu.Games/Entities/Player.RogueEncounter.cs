@@ -102,6 +102,15 @@ namespace MHServerEmu.Games.Entities
                 // Hub check — never ambush in towns / social spaces.
                 if (IsHubRegion(avatar.Region)) return;
 
+                // Trial of the Impossible is a controlled solo gauntlet —
+                // never let a random ambush drop into it. The "no enemy
+                // phantoms out" guard below usually covers this since
+                // Trial's own phantoms count toward EnemyPhantomCount too,
+                // but it briefly hits 0 during the breather between stages
+                // (and right on arena entry before stage 1 spawns), which
+                // is exactly the gap a scheduled check can land in.
+                if (IsTrialGauntletActive) return;
+
                 // Don't stack encounters if the player already has enemy
                 // phantoms out (from a previous encounter still in progress
                 // or a manual spawn from the app).
@@ -129,6 +138,7 @@ namespace MHServerEmu.Games.Entities
             Avatar avatar = CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false) return "not in world";
             if (IsHubRegion(avatar.Region)) return "cannot trigger in a hub";
+            if (IsTrialGauntletActive) return "cannot trigger during an active Trial of the Impossible run";
 
             long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
             TriggerRogueEncounter(avatar, Game.Random);
