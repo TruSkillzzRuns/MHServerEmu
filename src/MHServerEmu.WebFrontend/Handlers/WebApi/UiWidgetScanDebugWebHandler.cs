@@ -32,6 +32,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     ? locale?.GetLocaleString(proto.Descriptor)
                     : null;
 
+                bool iconsBlank = (long)proto.IconComplete == 0 && (long)proto.IconIncomplete == 0;
+
                 results.Add(new
                 {
                     ProtoRef = $"0x{(ulong)protoRef:X16}",
@@ -39,6 +41,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     DescriptorId = (long)proto.Descriptor,
                     DescriptorText = descriptorText,
                     IsBlankOrInvalid = proto.Descriptor == LocaleStringId.Invalid || string.IsNullOrWhiteSpace(descriptorText),
+                    IconsBlank = iconsBlank,
                 });
             }
 

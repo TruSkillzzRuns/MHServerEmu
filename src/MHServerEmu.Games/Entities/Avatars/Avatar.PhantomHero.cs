@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using MHServerEmu.Core.Collisions;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.Core.Memory;
@@ -18,6 +19,7 @@ using MHServerEmu.Games.Loot;
 using MHServerEmu.Games.Navi;
 using MHServerEmu.Games.Network;
 using MHServerEmu.Games.Powers;
+using MHServerEmu.Games.Powers.Conditions;
 using MHServerEmu.Games.Properties;
 using MHServerEmu.Games.Regions;
 
@@ -702,24 +704,58 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// </summary>
         private void PhantomSharedMaintenance(Agent phantom, Vector3 callerPos, MHServerEmu.Core.System.Random.GRandom rng)
         {
-            // Stuck-power watchdog: a channeled power (or channel-style
-            // ultimate) never ends for a phantom — no client exists to
-            // release the button — and while ActivePowerRef is set,
-            // every attack and revive returns PowerInProgress. Force-end
-            // any power that's been active for 10 consecutive ticks (5s).
+            // Stuck-power watchdog: root-caused 2026-07-26 via code tracing
+            // (not guessed) — a power with ActiveUntilCancelled == true (or
+            // the hold/release SecondaryActivateOnReleasePrototype pattern)
+            // only ever ends via an explicit release, which for a real
+            // player is the NetMessageTryCancelPower packet
+            // (PlayerConnection.cs's OnTryCancelPower) sent when the client
+            // releases the button. The AI stack's only equivalent
+            // (Behavior/StaticAI/UsePower.cs's End()) calls EndPower solely
+            // on a behavior-tree Interrupted transition — which never fires
+            // if the AI profile just keeps re-selecting the same UsePower
+            // action because, from its perspective, the power is still
+            // validly "Running". So for THIS class of power, a phantom can
+            // NEVER end it on its own — waiting several seconds hoping it
+            // resolves is pointless. Detect ActiveUntilCancelled up front and
+            // end it almost immediately (1 tick) instead of waiting the full
+            // reactive PhantomStuckPowerTicks window used for genuinely
+            // transient stalls.
             PrototypeId activePowerRef = phantom.ActivePowerRef;
             if (activePowerRef != PrototypeId.Invalid)
             {
+                bool cannotSelfEnd = activePowerRef.As<PowerPrototype>()?.ActiveUntilCancelled == true;
+                int stuckThreshold = cannotSelfEnd ? 1 : PhantomStuckPowerTicks;
+
                 if (s_phantomActivePowerTrack.TryGetValue(phantom.Id, out var powerTrack) && powerTrack.powerRef == activePowerRef)
                 {
                     int ticks = powerTrack.ticks + 1;
-                    if (ticks >= PhantomStuckPowerTicks)
+                    if (ticks >= stuckThreshold)
                     {
                         try
                         {
                             Power stuckPower = phantom.PowerCollection?.GetPower(activePowerRef);
                             stuckPower?.EndPower(EndPowerFlags.ExplicitCancel | EndPowerFlags.Force);
-                            PhantomLogger.Info($"[PhantomHero:Watchdog] force-ended stuck power {activePowerRef.GetName()} on {phantom.Id:X} after {ticks * 500}ms");
+                            PhantomLogger.Info($"[PhantomHero:Watchdog] force-ended stuck power {activePowerRef.GetName()} on {phantom.Id:X} after {ticks * 500}ms" +
+                                (cannotSelfEnd ? " (ActiveUntilCancelled — can never self-end via AI)" : ""));
+
+                            // For the ActiveUntilCancelled case specifically,
+                            // don't wait on the separate multi-second
+                            // stuck-invulnerable watchdog below — this power
+                            // IS the confirmed source of the self-buff, so
+                            // clear it in the same tick EndPower runs instead
+                            // of leaving the phantom untargetable for several
+                            // more seconds. Deliberately-invincible phantoms
+                            // are still exempt (same rule as the watchdog
+                            // below).
+                            if (cannotSelfEnd && s_phantomDeliberatelyInvincible.Contains(phantom.Id) == false)
+                            {
+                                phantom.Properties[PropertyEnum.Invulnerable] = false;
+                                phantom.Properties[PropertyEnum.Untargetable] = false;
+                                phantom.Properties[PropertyEnum.Unaffectable] = false;
+                                phantom.Properties[PropertyEnum.TutorialInvulnerable] = false;
+                                s_phantomInvulnerableTrack.Remove(phantom.Id);
+                            }
                         }
                         catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Watchdog] EndPower failed on {phantom.Id:X}: {ex.Message}"); }
                         s_phantomActivePowerTrack.Remove(phantom.Id);
@@ -741,12 +777,25 @@ namespace MHServerEmu.Games.Entities.Avatars
             // (opt-in god mode) only ever get Invulnerable set on purpose,
             // never the other two, so gating on "any of the three" plus the
             // exemption still leaves their permanent Invulnerable alone.
+            //
+            // TutorialInvulnerable added (2026-07-25): a real player-facing
+            // player-untargetable bug was reported for a phantom that
+            // wouldn't clear via this watchdog. Entity.IsUnaffectable is
+            // actually `Unaffectable || TutorialInvulnerable` (Entity.cs) —
+            // this watchdog was only checking the former, so a phantom that
+            // somehow picked up TutorialInvulnerable (the flag the game's
+            // native HUD-tutorial mission actions use) would stay
+            // permanently untargetable/unaffectable with no way to recover.
+            // Not confirmed to be exactly how it got set, but closing the
+            // gap is safe regardless — a phantom should never stay stuck.
             bool invulnStuck = phantom.Properties[PropertyEnum.Invulnerable]
                 || phantom.Properties[PropertyEnum.Untargetable]
-                || phantom.Properties[PropertyEnum.Unaffectable];
+                || phantom.Properties[PropertyEnum.Unaffectable]
+                || phantom.Properties[PropertyEnum.TutorialInvulnerable];
             bool exemptDeliberate = s_phantomDeliberatelyInvincible.Contains(phantom.Id)
                 && phantom.Properties[PropertyEnum.Untargetable] == false
-                && phantom.Properties[PropertyEnum.Unaffectable] == false;
+                && phantom.Properties[PropertyEnum.Unaffectable] == false
+                && phantom.Properties[PropertyEnum.TutorialInvulnerable] == false;
 
             if (invulnStuck && exemptDeliberate == false)
             {
@@ -755,15 +804,59 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     try
                     {
+                        // Confirmed live 2026-07-26 (Silver Surfer) — clearing
+                        // just the Properties wasn't enough for every case:
+                        // some phantoms re-entered this exact stuck state
+                        // within ~3s of being cleared, cycling continuously,
+                        // with NO corresponding stuck-ActivePowerRef ever
+                        // logged. That rules out the She-Hulk-style
+                        // ActiveUntilCancelled case entirely — root-caused via
+                        // code trace to a Condition (not a power) granting
+                        // these properties: for a real player the condition's
+                        // own duration/completion event clears it, but a
+                        // phantom never sends whatever release signal that
+                        // depends on, so the Condition just sits there and
+                        // keeps the properties re-applied even after we zero
+                        // them directly. Explicitly remove any condition that
+                        // grants these properties instead of just zeroing the
+                        // properties — and log its CreatorPowerPrototypeRef so
+                        // a specific hero's power can be identified if this
+                        // fires again.
+                        var stuckConditionRefs = new List<PrototypeId>();
+                        if (phantom.ConditionCollection != null)
+                        {
+                            var toRemove = new List<ulong>();
+                            foreach (Condition condition in phantom.ConditionCollection)
+                            {
+                                if (condition.Properties[PropertyEnum.Invulnerable]
+                                    || condition.Properties[PropertyEnum.Untargetable]
+                                    || condition.Properties[PropertyEnum.Unaffectable]
+                                    || condition.Properties[PropertyEnum.TutorialInvulnerable])
+                                {
+                                    toRemove.Add(condition.Id);
+                                    stuckConditionRefs.Add(condition.CreatorPowerPrototypeRef != PrototypeId.Invalid
+                                        ? condition.CreatorPowerPrototypeRef
+                                        : condition.ConditionPrototypeRef);
+                                }
+                            }
+                            foreach (ulong conditionId in toRemove)
+                                phantom.ConditionCollection.RemoveCondition(conditionId);
+                        }
+
                         phantom.Properties[PropertyEnum.Invulnerable] = false;
                         phantom.Properties[PropertyEnum.Untargetable] = false;
                         phantom.Properties[PropertyEnum.Unaffectable] = false;
+                        phantom.Properties[PropertyEnum.TutorialInvulnerable] = false;
                         if (phantom.ActivePowerRef != PrototypeId.Invalid)
                         {
                             Power stuckInvulnPower = phantom.PowerCollection?.GetPower(phantom.ActivePowerRef);
                             stuckInvulnPower?.EndPower(EndPowerFlags.ExplicitCancel | EndPowerFlags.Force);
                         }
-                        PhantomLogger.Info($"[PhantomHero:Watchdog] force-cleared stuck Invulnerable/Untargetable/Unaffectable on {phantom.Id:X} after {invulnTicks * 500}ms (likely a self-revive proc that never released)");
+
+                        string sourcesStr = stuckConditionRefs.Count > 0
+                            ? $" (source condition(s): {string.Join(", ", stuckConditionRefs.Select(r => r.GetName()))})"
+                            : "";
+                        PhantomLogger.Info($"[PhantomHero:Watchdog] force-cleared stuck Invulnerable/Untargetable/Unaffectable/TutorialInvulnerable on {phantom.Id:X} after {invulnTicks * 500}ms (likely a self-revive proc that never released){sourcesStr}");
                     }
                     catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Watchdog] Invulnerable/Untargetable clear failed on {phantom.Id:X}: {ex.Message}"); }
                     s_phantomInvulnerableTrack.Remove(phantom.Id);
@@ -4077,6 +4170,20 @@ namespace MHServerEmu.Games.Entities.Avatars
                 PrototypeId readyUltimate = PrototypeId.Invalid;
                 PrototypeId readyPreferred = PrototypeId.Invalid;
 
+                // Fallback for the "every candidate is blacklisted at once"
+                // case (small kit, several powers hit RestrictiveCondition/
+                // WeaponMissing around the same time) — without this, the
+                // phantom returns OutOfPosition and does nothing every tick
+                // until the longest blacklist entry (up to
+                // PhantomPowerBlacklistMs = 10 minutes) expires, which reads
+                // as "stands still for a long time, then randomly attacks"
+                // (confirmed live 2026-07-25). Tracks whichever blacklisted-
+                // but-otherwise-in-range/off-cooldown power comes off its
+                // bench soonest, so it can be used instead of full idling if
+                // nothing else is available this tick.
+                PrototypeId fallbackBlacklistedPower = PrototypeId.Invalid;
+                long fallbackBlacklistedExpiresAt = long.MaxValue;
+
                 foreach (var kvp in phantom.PowerCollection)
                 {
                     PowerCollectionRecord rec = kvp.Value;
@@ -4153,7 +4260,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                     // won't start working by themselves, and their big
                     // cooldown weights would otherwise get them picked
                     // every single tick.
-                    if (IsPhantomPowerBlacklisted(phantom.Id, rec.PowerPrototypeRef, nowMs)) continue;
+                    if (s_phantomPowerBlacklist.TryGetValue((phantom.Id, rec.PowerPrototypeRef), out long blacklistExpiresAt) && nowMs < blacklistExpiresAt)
+                    {
+                        if (blacklistExpiresAt < fallbackBlacklistedExpiresAt)
+                        {
+                            fallbackBlacklistedExpiresAt = blacklistExpiresAt;
+                            fallbackBlacklistedPower = rec.PowerPrototypeRef;
+                        }
+                        continue;
+                    }
 
                     // Ultimates fire on any target, but at most once per
                     // 20 minutes per phantom (on top of whatever cooldown
@@ -4206,7 +4321,19 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
 
                 if (candidates.Count == 0 && readyUltimate == PrototypeId.Invalid)
-                    return PowerUseResult.OutOfPosition;
+                {
+                    // Nothing legitimately usable — but if the ONLY reason is
+                    // that every in-range/off-cooldown power is benched, try
+                    // the one closest to coming off its bench rather than
+                    // freezing for the rest of the blacklist window. Worst
+                    // case it fails again and re-blacklists normally; best
+                    // case whatever condition benched it (RestrictiveCondition
+                    // clearing, etc.) has already resolved.
+                    if (fallbackBlacklistedPower == PrototypeId.Invalid)
+                        return PowerUseResult.OutOfPosition;
+
+                    candidates.Add((fallbackBlacklistedPower, 0f, 0));
+                }
 
                 PrototypeId chosenPower;
                 bool chosenIsUltimate = readyUltimate != PrototypeId.Invalid;
@@ -5017,6 +5144,21 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static PrototypeId s_enemyAllianceRef = PrototypeId.Invalid;
         private static bool s_enemyAllianceResolved;
 
+        /// <summary>
+        /// Public entry point for non-phantom enemy spawns (curated bosses,
+        /// regular wave mobs) that need to share the exact same enemy
+        /// alliance phantom heroes use — see Player.WaveDirector.cs's
+        /// SpawnCuratedBoss and SpawnNextWave for why: without this, a boss
+        /// or wave mob keeps its own native AgentPrototype alliance, which
+        /// can be (and was, confirmed live 2026-07-26) genuinely mutually
+        /// hostile with the phantom-hero alliance per the real game's own
+        /// alliance table — two different "enemy" NPCs then fight each
+        /// other. Alliances are auto-friendly to themselves, so putting all
+        /// three enemy categories on this same override alliance makes them
+        /// mutually friendly while all three stay hostile to the player.
+        /// </summary>
+        public static PrototypeId GetEnemyPhantomAllianceRef() => ResolveHostileAllianceRef();
+
         private static PrototypeId ResolveHostileAllianceRef()
         {
             if (s_enemyAllianceResolved) return s_enemyAllianceRef;
@@ -5260,12 +5402,17 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
                 // On the last attempt, fall back to the best walkable spot
                 // found (even if it clipped spacing). If NOTHING in the
-                // whole ring came back walkable, do NOT fall back to the
-                // caller's own exact position — confirmed live: this landed
-                // a nemesis directly on top of the player. Pick a fresh
-                // random-angle point at minRadius instead; it may still be
-                // off-navmesh in this rare case, but never literally on the
-                // player.
+                // whole ring came back walkable — confirmed live 2026-07-25:
+                // in a small enclosed scenario room (a repurposed Danger
+                // Room arena, far smaller than the 1200-2000u ambush ring
+                // this loop assumes), EVERY one of the 8 attempts lands
+                // outside the room, off-navmesh — shrink the radius
+                // progressively and keep checking the navmesh instead of
+                // blindly accepting an unchecked point. Only falls back to
+                // an unchecked point in the genuinely degenerate case where
+                // nothing is walkable anywhere down to a close-in radius
+                // either (old behavior, kept as the last resort — still
+                // never literally on top of the player).
                 if (attempt == 7)
                 {
                     if (foundWalkableCandidate)
@@ -5274,8 +5421,29 @@ namespace MHServerEmu.Games.Entities.Avatars
                     }
                     else
                     {
-                        float fallbackAng = (float)(rng.NextDouble() * Math.PI * 2.0);
-                        candidate = origin + new Vector3((float)Math.Cos(fallbackAng) * minRadius, (float)Math.Sin(fallbackAng) * minRadius, 0f);
+                        bool shrunkCandidateFound = false;
+                        for (float shrinkRadius = minRadius * 0.5f; shrinkRadius >= 100f; shrinkRadius *= 0.5f)
+                        {
+                            for (int shrinkAttempt = 0; shrinkAttempt < 4; shrinkAttempt++)
+                            {
+                                float shrinkAng = (float)(rng.NextDouble() * Math.PI * 2.0);
+                                Vector3 shrinkCandidate = origin + new Vector3((float)Math.Cos(shrinkAng) * shrinkRadius, (float)Math.Sin(shrinkAng) * shrinkRadius, 0f);
+                                Vector3 shrinkFloored = RegionLocation.ProjectToFloor(region, shrinkCandidate);
+                                if (region.NaviMesh.Contains(shrinkFloored, navRadius, walkCheck))
+                                {
+                                    candidate = shrinkFloored;
+                                    shrunkCandidateFound = true;
+                                    break;
+                                }
+                            }
+                            if (shrunkCandidateFound) break;
+                        }
+
+                        if (shrunkCandidateFound == false)
+                        {
+                            float fallbackAng = (float)(rng.NextDouble() * Math.PI * 2.0);
+                            candidate = origin + new Vector3((float)Math.Cos(fallbackAng) * minRadius, (float)Math.Sin(fallbackAng) * minRadius, 0f);
+                        }
                     }
                 }
             }
@@ -5341,11 +5509,11 @@ namespace MHServerEmu.Games.Entities.Avatars
                         bool interested = aoi.InterestedInEntity(phantomAvatar.Id, AOINetworkPolicyValues.AOIChannelProximity);
                         if (!interested)
                         {
-                            PhantomLogger.Info($"[PhantomHero:PowerSync] SKIP {realPlayer.GetName()} — not interested in phantom {phantomAvatar.Id:X} (proximity=false). collectionSize={collectionSize}");
+                            PhantomLogger.Trace($"[PhantomHero:PowerSync] SKIP {realPlayer.GetName()} — not interested in phantom {phantomAvatar.Id:X} (proximity=false). collectionSize={collectionSize}");
                             continue;
                         }
                         bool sent = phantomAvatar.PowerCollection.SendEntireCollection(realPlayer);
-                        PhantomLogger.Info($"[PhantomHero:PowerSync] {realPlayer.GetName()} ← phantom {phantomAvatar.Id:X} collection ({collectionSize} powers) sent={sent}");
+                        PhantomLogger.Trace($"[PhantomHero:PowerSync] {realPlayer.GetName()} ← phantom {phantomAvatar.Id:X} collection ({collectionSize} powers) sent={sent}");
                     }
                 }
                 else
@@ -5358,13 +5526,13 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     if (realPlayer.PlayerConnection == null) continue;
                     var aoi = realPlayer.AOI;
-                    if (aoi == null) { PhantomLogger.Info($"[PhantomHero:AOI] real={realPlayer} AOI=null"); continue; }
+                    if (aoi == null) { PhantomLogger.Trace($"[PhantomHero:AOI] real={realPlayer} AOI=null"); continue; }
                     bool avatarInterested = aoi.InterestedInEntity(phantomAvatar.Id);
                     bool playerInterested = aoi.InterestedInEntity(phantomPlayer.Id);
                     Vector3 phantomPos = phantomAvatar.RegionLocation.Position;
                     Vector3 realPos = realPlayer.CurrentAvatar?.RegionLocation.Position ?? Vector3.Zero;
                     float dist = Vector3.Distance2D(phantomPos, realPos);
-                    PhantomLogger.Info($"[PhantomHero:AOI] real={realPlayer.GetName()} sameRegion={realPlayer.GetRegion() == region} avatarInterested={avatarInterested} playerInterested={playerInterested} dist={dist:F0} phantomPos={phantomPos.ToStringNames()} realPos={realPos.ToStringNames()} inWorld={phantomAvatar.IsInWorld} cell={phantomAvatar.Cell?.Id.ToString() ?? "null"}");
+                    PhantomLogger.Trace($"[PhantomHero:AOI] real={realPlayer.GetName()} sameRegion={realPlayer.GetRegion() == region} avatarInterested={avatarInterested} playerInterested={playerInterested} dist={dist:F0} phantomPos={phantomPos.ToStringNames()} realPos={realPos.ToStringNames()} inWorld={phantomAvatar.IsInWorld} cell={phantomAvatar.Cell?.Id.ToString() ?? "null"}");
                 }
             }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] AOI broadcast failed: {ex.Message}"); }
@@ -5376,6 +5544,18 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // loop target players/friendly phantoms, mobs ignore them,
                 // and players able to damage them.
                 phantomAvatar.Properties[PropertyEnum.AllianceOverride] = ResolveHostileAllianceRef();
+
+                // Enemy phantoms already have their own custom gear-drop
+                // suppression gated on IsEndlessChallengeActive (see the
+                // DropPhantomGear-style check elsewhere in this file) — that
+                // covers OUR bespoke drop logic, but not the entity's native
+                // WorldEntity.AwardKillLoot/AwardHitLoot paths, which key off
+                // the PropertyEnum.NoLootDrop Property instead. Set it too so
+                // both mechanisms are actually suppressed during an Endless
+                // run, not just our own custom one.
+                Player realHost = GetOwnerOfType<Player>();
+                if (realHost != null && realHost.IsEndlessChallengeActive)
+                    phantomAvatar.Properties[PropertyEnum.NoLootDrop] = true;
 
                 // Nemesis rank now maps directly to a TOTAL HealthMaxMult
                 // (not a factor on top of the enemy base) — see the

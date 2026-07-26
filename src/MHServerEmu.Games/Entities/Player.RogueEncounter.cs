@@ -37,6 +37,12 @@ namespace MHServerEmu.Games.Entities
         // rank-5 nemesis boss — a rare "surprise boss" ambush even when you
         // have no active nemeses. At level 60 it wears+drops the BiS jackpot.
         private const double RogueEncounterSurpriseRank5Chance = 0.08;
+        // Per-slot chance a NON-roster slot ambushes as a REAL curated boss
+        // (Doctor Doom, Kraven, etc. — CuratedBossRoster) instead of a
+        // phantom hero. Checked BEFORE RogueEncounterSurpriseRank5Chance.
+        // If it kills the player, it joins the Nemesis Roster as a
+        // boss-type entry automatically (Avatar.Nemesis.cs).
+        private const double RogueEncounterRealBossChance = 0.10;
         // Gates only the AUTOMATIC roll (OnRogueEncounterCheck) — a
         // level 1-19 player shouldn't get blindsided by an unscheduled
         // 1-3 hero-tier ambush they didn't ask for. Manual triggers
@@ -189,11 +195,44 @@ namespace MHServerEmu.Games.Entities
                     string displayName = string.IsNullOrEmpty(suffix)
                         ? $"{stars} {killerBase}"
                         : $"{stars} {killerBase} {suffix}";
-                    id = avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out err, nemesis.EscapeCount);
+
+                    // Boss nemeses (NemesisEntry.IsBoss) can't go through
+                    // SpawnNemesisPhantomHero — it hard-requires an
+                    // AvatarPrototype and a real boss ref fails immediately.
+                    // Use the plain-Agent boss spawn path instead, with the
+                    // boss-specific (lighter) rank buff curve.
+                    id = nemesis.IsBoss
+                        ? SpawnCuratedBoss(avatar, (PrototypeId)nemesis.HeroRef, out err,
+                            BossNemesisExtraHealthMultForRank(nemesis.Rank), BossNemesisExtraDamageMultForRank(nemesis.Rank))
+                        : avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out err, nemesis.EscapeCount);
                     if (id != 0)
                     {
                         nemesisSpawnedCount++;
                         firstNemesisName ??= displayName;
+                    }
+                }
+                else if (rng.NextDouble() < RogueEncounterRealBossChance)
+                {
+                    // Real boss ambush — not from the roster (yet). If this
+                    // one kills the player, Avatar.Nemesis.cs's updated
+                    // killer check picks it up automatically and it joins
+                    // the Nemesis Roster as a boss-type entry for next time.
+                    var bossPool = GetEndlessBossPool();
+                    if (bossPool.Count > 0)
+                    {
+                        PrototypeId bossRef = bossPool[rng.Next(bossPool.Count)];
+                        string bossDisplayName = LeafHeroName(bossRef);
+                        id = SpawnCuratedBoss(avatar, bossRef, out err);
+                        if (id != 0)
+                        {
+                            nemesisSpawnedCount++;
+                            firstNemesisName ??= bossDisplayName;
+                        }
+                    }
+                    else
+                    {
+                        id = 0;
+                        err = "boss pool empty";
                     }
                 }
                 else if (rng.NextDouble() < RogueEncounterSurpriseRank5Chance)
@@ -312,6 +351,14 @@ namespace MHServerEmu.Games.Entities
         private static bool IsHubRegion(Regions.Region region)
         {
             if (region == null) return true;
+
+            // Danger Room hub — explicit, not data-driven. Same NPC-standing-
+            // around social space as any other hub even if its RegionPrototype
+            // isn't tagged RegionBehavior.Town; excluded outright so rogue/
+            // nemesis ambushes never drop on top of Coulson or the Endless
+            // Wave terminal (see Player.DangerRoomEndlessTerminal.cs).
+            if (region.PrototypeDataRef == (PrototypeId)DrEndlessHubRegionRef) return true;
+
             var proto = region.PrototypeDataRef.As<RegionPrototype>();
             if (proto == null) return true;
             return proto.Behavior == RegionBehavior.Town;

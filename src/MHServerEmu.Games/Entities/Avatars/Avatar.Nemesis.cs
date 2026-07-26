@@ -23,6 +23,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (killerAgent == null) return;
 
             var entry = victimPlayer.RegisterNemesisKill(killerAgent);
+            if (entry != null) entry.IsBoss = Player.IsCuratedBossRef(killerAgent.PrototypeDataRef);
 
             // Rank 4/5 escape: instead of the nemesis just standing there
             // for an easy revenge kill once the player revives, they vanish
@@ -53,27 +54,36 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         /// <summary>
         /// Walk the killer / directKiller chain and return the first Agent
-        /// that is an ENEMY phantom — Avatar phantom OR team-up phantom.
-        /// Returns null if the kill was mob-driven or caused by a friendly
-        /// phantom.
+        /// that's a valid nemesis source — an ENEMY phantom (Avatar phantom
+        /// OR team-up phantom) OR a real curated boss (Doctor Doom, Kraven,
+        /// etc. — CuratedBossRoster, added 2026-07-26). Returns null if the
+        /// kill was mob-driven or caused by a friendly phantom.
         /// </summary>
         private static Agent ResolveNemesisKillerAgent(WorldEntity killer, WorldEntity directKiller)
         {
-            if (IsEnemyPhantomKiller(killer) is Agent a) return a;
-            if (IsEnemyPhantomKiller(directKiller) is Agent b) return b;
+            if (IsValidNemesisKiller(killer) is Agent a) return a;
+            if (IsValidNemesisKiller(directKiller) is Agent b) return b;
             return null;
         }
 
-        private static Agent IsEnemyPhantomKiller(WorldEntity we)
+        private static Agent IsValidNemesisKiller(WorldEntity we)
         {
             if (we is not Agent ag) return null;
-            if (ag.IsPhantomHero == false) return null;
-            Player owner = ag.GetOwnerOfType<Player>();
-            if (owner == null) return null;
-            // Friendly phantoms carry PhantomCreatorId pointing at the human
-            // that spawned them; enemy phantoms deliberately leave it 0.
-            if (owner.PhantomCreatorId != 0) return null;
-            return ag;
+
+            if (ag.IsPhantomHero)
+            {
+                Player owner = ag.GetOwnerOfType<Player>();
+                if (owner == null) return null;
+                // Friendly phantoms carry PhantomCreatorId pointing at the human
+                // that spawned them; enemy phantoms deliberately leave it 0.
+                if (owner.PhantomCreatorId != 0) return null;
+                return ag;
+            }
+
+            // Not a phantom — only a curated real boss counts (a plain mob
+            // shouldn't become a nemesis).
+            if (Player.IsCuratedBossRef(ag.PrototypeDataRef)) return ag;
+            return null;
         }
     }
 }

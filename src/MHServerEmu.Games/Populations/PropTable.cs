@@ -71,14 +71,14 @@ namespace MHServerEmu.Games.Populations
         {
             if (propSetRef == 0)
             {
-                Console.WriteLine("Area contains an empty PropSet List entry.");
+                Logger.Warn("Area contains an empty PropSet List entry.");
                 return null;
             }
 
             PrototypeId proto = GameDatabase.GetDataRefByAsset(propSetRef);
             if (proto == 0)
             {
-                Console.WriteLine("Area contains a PropSet Asset that does not match any files in the resource folder.");
+                Logger.Warn("Area contains a PropSet Asset that does not match any files in the resource folder.");
                 return null;
             }
 
@@ -89,7 +89,7 @@ namespace MHServerEmu.Games.Populations
         {
             if (packageName == "" || string.IsNullOrEmpty(nameId))
             {
-                Console.WriteLine("Invalid package name or nameId.");
+                Logger.Warn("Invalid package name or nameId.");
                 return null;
             }
 
@@ -97,14 +97,14 @@ namespace MHServerEmu.Games.Populations
             PropPackagePrototype packageProto = GameDatabase.GetPrototype<PropPackagePrototype>(packageRef);
             if (packageProto == null)
             {
-                Console.WriteLine($"Unable to find Prop Package with Resource Guid {packageName}");
+                Logger.Warn($"Unable to find Prop Package with Resource Guid {packageName}");
                 return null;
             }
 
             ProceduralPropGroupPrototype propGroupProto = packageProto.GetPropGroupFromName(nameId);
             if (propGroupProto == null)
             {
-                Console.WriteLine($"Unable to find Prop in Package {packageName} of Name {nameId}");
+                Logger.Warn($"Unable to find Prop in Package {packageName} of Name {nameId}");
             }
 
             return propGroupProto;

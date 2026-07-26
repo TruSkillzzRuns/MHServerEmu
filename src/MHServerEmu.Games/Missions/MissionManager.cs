@@ -677,6 +677,43 @@ namespace MHServerEmu.Games.Missions
             return (Owner != null) && Owner is Region;
         }
 
+        /// <summary>
+        /// Suspend every mission currently tracked by this manager —
+        /// Mission.SetSuspendedState(true) unregisters its event hooks so its
+        /// own scripted logic (kismet/dialogue/timed callbacks) stops
+        /// ticking. Intended for one-shot private region instances being
+        /// repurposed for custom content (e.g. a Danger Room scenario room
+        /// reused as a plain arena), not for shared/persistent regions —
+        /// this never re-suspends missions created after the call, and
+        /// nothing restores them automatically.
+        /// </summary>
+        public int SuspendAllMissions()
+        {
+            int count = 0;
+            foreach (var mission in _missionDict.Values)
+            {
+                if (mission == null || mission.IsSuspended) continue;
+
+                // Mission.SetState() silently no-ops its client update once a
+                // mission is already suspended (see Mission.cs:622-626 — it
+                // takes an early-return branch that skips SendToParticipants
+                // entirely). So for a mission actually driving the player's
+                // HUD "Mission Tracker" banner (State == Active), flip it to
+                // Inactive FIRST — while SetState still fires its normal
+                // OnUnsetState + SendToParticipants(MissionUpdateFlags.State)
+                // path — THEN suspend. Suspending alone only sends a
+                // SuspendedState flag, which the client's tracker doesn't
+                // treat as "stop showing this" (confirmed live 2026-07-25:
+                // the native tutorial mission's objective banner stayed
+                // visible for the whole Endless Wave run after suspend-only).
+                if (mission.State == MissionState.Active)
+                    mission.SetState(MissionState.Inactive);
+
+                if (mission.SetSuspendedState(true)) count++;
+            }
+            return count;
+        }
+
         public bool InitializeForRegion(Region region)
         {
             if (region == null)  return false;
@@ -1233,7 +1270,7 @@ namespace MHServerEmu.Games.Missions
             MissionManager missionManager = FindMissionManagerForMission(player, player.GetRegion(), missionRef);
             if (missionManager == null)
             {
-                Console.WriteLine($"Couldn't find appropriate mission manager on player {player} for mission [{GameDatabase.GetPrototypeName(missionRef)}].");
+                Logger.Warn($"Couldn't find appropriate mission manager on player {player} for mission [{GameDatabase.GetPrototypeName(missionRef)}].");
                 return null;
             }
             return missionManager.FindMissionByDataRef(missionRef);

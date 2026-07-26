@@ -30,7 +30,15 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
             Type iterateType = baseType.Equals("MetaState", StringComparison.OrdinalIgnoreCase)
                 ? typeof(MetaStatePrototype)
-                : typeof(MetaGamePrototype);
+                : baseType.Equals("Agent", StringComparison.OrdinalIgnoreCase)
+                    ? typeof(AgentPrototype)
+                    : baseType.Equals("WorldEntity", StringComparison.OrdinalIgnoreCase)
+                        ? typeof(WorldEntityPrototype)
+                        : baseType.Equals("UIWidgetMissionText", StringComparison.OrdinalIgnoreCase)
+                            ? typeof(UIWidgetMissionTextPrototype)
+                            : baseType.Equals("Hotspot", StringComparison.OrdinalIgnoreCase)
+                                ? typeof(HotspotPrototype)
+                                : typeof(MetaGamePrototype);
 
             var results = new List<object>();
             foreach (PrototypeId protoRef in DataDirectory.Instance.IteratePrototypesInHierarchy(iterateType, PrototypeIterateFlags.NoAbstract))
@@ -41,12 +49,14 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (query.Length > 0 && path.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
 
                 Prototype proto = protoRef.As<Prototype>();
+                bool? visibleByDefault = (proto as WorldEntityPrototype)?.VisibleByDefault;
                 results.Add(new
                 {
                     ProtoRef = $"0x{(ulong)protoRef:X16}",
                     Name = ExtractLeaf(path),
                     Path = path,
                     ConcreteTypeName = proto?.GetType().Name ?? "Unknown",
+                    VisibleByDefault = visibleByDefault,
                 });
                 if (results.Count >= limit) break;
             }

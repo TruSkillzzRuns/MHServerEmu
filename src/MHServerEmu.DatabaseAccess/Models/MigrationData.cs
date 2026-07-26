@@ -87,6 +87,17 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// </summary>
         public bool PendingTrialWarp { get; set; }
 
+        /// <summary>
+        /// Danger Room Endless Terminal — same shape as PendingTrialWarp, set
+        /// right before TeleportToRegionFromWeb warps the player into the
+        /// training arena after confirming the Coulson dialog. Snapshotted by
+        /// Player.SnapshotDangerRoomEndlessWarpForTransfer() at
+        /// BeginRegionTransfer, consumed by
+        /// Player.OnAvatarEnteredRegionForDangerRoomEndless() from the new
+        /// Avatar's OnEnteredWorld once it's actually standing in the arena.
+        /// </summary>
+        public bool PendingDangerRoomEndlessWarp { get; set; }
+
         public MigrationData() { }
 
         public List<(ulong, ulong)> GetOrCreatePropertyList(ulong entityDbId)
@@ -124,6 +135,7 @@ namespace MHServerEmu.DatabaseAccess.Models
             CombatRangePrefs.Clear();
             PendingWaveRun = null;
             PendingTrialWarp = false;
+            PendingDangerRoomEndlessWarp = false;
         }
     }
 
@@ -147,6 +159,15 @@ namespace MHServerEmu.DatabaseAccess.Models
     {
         /// <summary>Hero PrototypeId as ulong.</summary>
         public ulong HeroRef;
+
+        /// <summary>
+        /// True when HeroRef is a real boss-tier AgentPrototype (Doctor Doom,
+        /// Kraven, etc. — CuratedBossRoster) instead of a playable Avatar.
+        /// Boss nemeses can't be respawned via SpawnNemesisPhantomHero (it
+        /// hard-requires an AvatarPrototype) — revenge spawns for these go
+        /// through the plain-Agent boss-spawn path instead. Added 2026-07-26.
+        /// </summary>
+        public bool IsBoss;
 
         /// <summary>Rank climbs on repeat deaths. 1..5, capped.</summary>
         public int Rank;

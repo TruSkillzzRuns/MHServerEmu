@@ -509,5 +509,18 @@ namespace MHServerEmu.Games.Entities
             int r = Math.Clamp(rank, 1, NemesisMaxRank);
             return NemesisSuffixes[r];
         }
+
+        // Rank curve for BOSS nemeses (NemesisEntry.IsBoss) — real bosses
+        // don't go through SpawnNemesisPhantomHero/SpawnPhantomHeroCore's
+        // rank-buff pipeline at all (they're plain Agents, not phantom
+        // Avatars), so NemesisHealthMultForRank/NemesisDmgBoostForRank above
+        // don't apply. This is a separate, much lighter curve applied
+        // multiplicatively on top of the boss's own already-substantial
+        // native stats (see Player.WaveDirector.cs's SpawnCuratedBoss) —
+        // real story/raid bosses are already tuned as a real fight, so this
+        // only needs to make repeat-kill rank escalation feel meaningful,
+        // not carry the whole difficulty curve the way the phantom numbers do.
+        public static float BossNemesisExtraHealthMultForRank(int rank) => 1f + Math.Clamp(rank, 0, NemesisMaxRank) * 0.15f;
+        public static float BossNemesisExtraDamageMultForRank(int rank) => 1f + Math.Clamp(rank, 0, NemesisMaxRank) * 0.10f;
     }
 }

@@ -557,6 +557,7 @@ namespace MHServerEmu.Games.Entities
             Game?.GameEventScheduler?.CancelAllEvents(_waveEvents);
             UnsubscribeTerminalRunTracking();
             UnsubscribeTrialTracking();
+            UnsubscribeDangerRoomEndlessTracking();
 
             MissionManager.Deallocate();
             AchievementManager.Deallocate();

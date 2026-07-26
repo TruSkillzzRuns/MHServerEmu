@@ -2287,92 +2287,11 @@ namespace MHServerEmu.Games.Entities
             if (adjustHealth < 0 && avatar != null && avatar.Id != Id && powerResults.TestFlag(PowerResultFlags.Hostile))
                 Powers.DpsMeter.RecordDamage(avatar, -adjustHealth);
 
-            // VERIFICATION DIAGNOSTIC (2026-07-21) — rank 4/5 nemesis/rogue
-            // "basically one-shots phantom heroes" balance investigation.
-            // Logs every ACTUAL applied hit (post-mitigation, same value the
-            // DPS meter above records) from an enemy phantom onto a
-            // player-side target, tagged with the attacker's real numeric
-            // nemesis rank and its live damage-multiplier properties, plus
-            // the target's exact before/after/max HP.
-            //
-            // Deliberately does NOT assume the report is about rank 4/5
-            // specifically — TryGetEnemyPhantomRank reports the real rank
-            // whatever it is (0 for a plain rogue), so this settles "which
-            // rank(s) are actually doing this" from data rather than the
-            // report's guess.
-            //
-            // Discriminator: attacker.IsPhantomHero + Hostile flag true is
-            // sufficient to prove the attacker is enemy-aligned WITHOUT a
-            // separate enemy/friendly lookup — a friendly phantom's alliance
-            // (Players) can never register a Hostile-flagged hit against
-            // another Players-aligned target (the real human, a friendly
-            // phantom, or a friendly team-up), so if the flag is set and the
-            // target below is player-side, the attacker can only be the
-            // enemy side. Remove once the real numbers settle this.
-            if (adjustHealth < 0
-                && avatar != null
-                && avatar.Id != Id
-                && avatar.IsPhantomHero
-                && powerResults.TestFlag(PowerResultFlags.Hostile))
-            {
-                bool targetIsPlayerSide = this is Agent targetAgent
-                    && (targetAgent.GetOwnerOfType<Player>()?.PlayerConnection != null || targetAgent.IsPhantomHero);
-
-                if (targetIsPlayerSide)
-                {
-                    long targetHealthMax = Properties[PropertyEnum.HealthMax];
-                    float pctOfMax = targetHealthMax > 0 ? (float)(-adjustHealth) / targetHealthMax : 0f;
-                    bool hadRank = Avatars.Avatar.TryGetEnemyPhantomRank(avatar.Id, out int nemesisRank, out int nemesisLevel);
-
-                    float dmgMult = avatar.Properties[PropertyEnum.DamageMult];
-                    float dmgPctBonus = avatar.Properties[PropertyEnum.DamagePctBonus];
-                    float dmgRating = avatar.Properties[PropertyEnum.DamageRating];
-
-                    // Distinguishes "hits hard because of stat scaling" from
-                    // "hits hard because it's designed as a percent-of-max/
-                    // current-health execute" — HP scaling can only ever fix
-                    // the first category. If a power carries a nonzero
-                    // DamageBasePctTargetHealth{Cur,Max}, doubling the
-                    // target's HealthMax doubles the damage it deals too, so
-                    // the resulting pctOfMax NEVER changes no matter how
-                    // tanky the target gets.
-                    var powerProto = powerResults.PowerPrototype;
-                    float pctCurHealthDmg = powerProto?.Properties?[PropertyEnum.DamageBasePctTargetHealthCur] ?? 0f;
-                    float pctMaxHealthDmg = powerProto?.Properties?[PropertyEnum.DamageBasePctTargetHealthMax] ?? 0f;
-                    bool isUltimate = powerProto?.IsUltimate == true;
-
-                    Logger.Info($"[NemesisDamage] {avatar} (rank={(hadRank ? nemesisRank : -1)}, level={(hadRank ? nemesisLevel : avatar.CharacterLevel)}, " +
-                        $"dmgMult={dmgMult:F2}, dmgPctBonus={dmgPctBonus:F2}, dmgRating={dmgRating:F0}) " +
-                        $"-> {this} power={powerProto?.DataRef.GetName() ?? "?"} isUltimate={isUltimate} pctCurHealthDmg={pctCurHealthDmg:F2} pctMaxHealthDmg={pctMaxHealthDmg:F2} " +
-                        $"hit={-adjustHealth} targetHealthBefore={startHealth} targetHealthAfter={health} targetHealthMax={targetHealthMax} pctOfMax={pctOfMax:P0}");
-                }
-            }
-
             // Apply health change
             bool killed = false;
 
             if (health <= 0 && Properties[PropertyEnum.AIDefeated] == false)
             {
-                // DEATH DIAGNOSTIC (2026-07-21) — user reported multiple phantom
-                // heroes/real player dying simultaneously to a single hit even
-                // after the 15%-of-max one-shot clamp landed. The clamp only
-                // fires when the ATTACKER has IsPhantomHero set — a regular
-                // region mob/boss mechanic, hazard, or DoT tick would kill
-                // through it untouched and unlogged by [NemesisDamage]. Log
-                // EVERY player-side death unconditionally (attacker type
-                // included) so the next test proves whether the killing blow
-                // came from a phantom (and if so, whether the clamp actually
-                // capped it) or from something our clamp never covers.
-                if (this is Agent deathTargetAgent
-                    && (deathTargetAgent.GetOwnerOfType<Player>()?.PlayerConnection != null || deathTargetAgent.IsPhantomHero))
-                {
-                    long deathTargetHealthMax = Properties[PropertyEnum.HealthMax];
-                    float deathPctOfMax = deathTargetHealthMax > 0 ? (float)(startHealth) / deathTargetHealthMax : 0f;
-                    Logger.Info($"[PhantomDeath] {this} died — healthBeforeThisHit={startHealth} ({deathPctOfMax:P0} of max {deathTargetHealthMax}) " +
-                        $"hit={-adjustHealth} attacker={(avatar != null ? avatar.ToString() : ultimateOwner?.ToString() ?? "?")} " +
-                        $"attackerIsPhantomHero={avatar?.IsPhantomHero == true} power={powerResults.PowerPrototype?.DataRef.GetName() ?? "?"}");
-                }
-
                 Properties[PropertyEnum.Health] = 0;
 
                 if (this is Avatar killedAvatar)
@@ -4078,6 +3997,17 @@ namespace MHServerEmu.Games.Entities
 
         private void AwardHitLoot(float healthDelta, bool isOverTime)
         {
+            // NoLootDrop already suppresses AwardKillLoot's death-loot path
+            // (used by our Endless Wave mode's curated bosses/wave mobs to
+            // fully disable native loot) — this on-hit path is a completely
+            // separate mechanism (fires on every damaging hit, not just on
+            // death) that had no NoLootDrop check at all, confirmed live
+            // 2026-07-26 as a real source of loot appearing mid-fight.
+            // Extending the same existing suppression semantic here rather
+            // than inventing a new one.
+            if (Properties[PropertyEnum.NoLootDrop])
+                return;
+
             bool requireCombatActive = WorldEntityPrototype.RequireCombatActiveForKillCredit;
 
             using var playerListHandle = ListPool<Player>.Instance.Get(out List<Player> playerList);

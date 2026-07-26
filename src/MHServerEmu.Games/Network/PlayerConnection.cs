@@ -393,6 +393,12 @@ namespace MHServerEmu.Games.Network
             try { Player.SnapshotTrialWarpForTransfer(); }
             catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotTrialWarpForTransfer threw: {ex.Message}"); }
 
+            // Same idea for a confirmed Danger Room Endless Terminal warp
+            // still in flight — see Player.DangerRoomEndlessTerminal.cs's
+            // SnapshotDangerRoomEndlessWarpForTransfer.
+            try { Player.SnapshotDangerRoomEndlessWarpForTransfer(); }
+            catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotDangerRoomEndlessWarpForTransfer threw: {ex.Message}"); }
+
             Player.CurrentAvatar.ExitWorld();
 
             // We are likely to be on our way to another game instance, so don't save player data just yet.

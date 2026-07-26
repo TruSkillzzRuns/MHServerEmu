@@ -787,6 +787,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         n.EscapeCount,
                         n.MercyCount,
                         n.Defeated,
+                        n.IsBoss,
                         LastKillerName = n.LastKillerName ?? string.Empty,
                         Suffix = MHServerEmu.Games.Entities.Player.NemesisSuffixes[System.Math.Clamp(n.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)],
                         LastKillMs = n.LastKillMs,
@@ -894,7 +895,22 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     string displayName = string.IsNullOrEmpty(suffix) ? $"{stars} {killerBase}" : $"{stars} {killerBase} {suffix}";
 
                     int grudgeScore = MHServerEmu.Games.Entities.Player.GrudgeScore(nemesis);
-                    ulong id = avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out string spawnErr, nemesis.EscapeCount, grudgeScore);
+                    // Boss nemeses can't go through SpawnNemesisPhantomHero —
+                    // it hard-requires an AvatarPrototype and a real boss ref
+                    // fails immediately. Same plain-Agent boss spawn path
+                    // Rogue Encounter's boss revenge slot uses.
+                    ulong id;
+                    string spawnErr;
+                    if (nemesis.IsBoss)
+                    {
+                        id = p.SpawnCuratedBoss(avatar, (PrototypeId)nemesis.HeroRef, out spawnErr,
+                            MHServerEmu.Games.Entities.Player.BossNemesisExtraHealthMultForRank(nemesis.Rank),
+                            MHServerEmu.Games.Entities.Player.BossNemesisExtraDamageMultForRank(nemesis.Rank));
+                    }
+                    else
+                    {
+                        id = avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out spawnErr, nemesis.EscapeCount, grudgeScore);
+                    }
                     return (object)new { Ok = id != 0, Message = id != 0 ? $"{displayName} is coming for you" : spawnErr };
                 }
                 if (string.Equals(action, "spare", System.StringComparison.OrdinalIgnoreCase))

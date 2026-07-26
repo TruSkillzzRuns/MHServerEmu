@@ -159,6 +159,9 @@ namespace MHServerEmu.WebFrontend
             // OmegaDev2 Enemy Phantoms + Wave Director (Combat pages).
             _webService.RegisterHandler("/webapi/arena/enemyphantoms/spawn",  new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsSpawnWebHandler());
             _webService.RegisterHandler("/webapi/arena/enemyphantoms/clear",  new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsClearWebHandler());
+            _webService.RegisterHandler("/webapi/bossroster/catalog", new MHServerEmu.WebFrontend.Handlers.WebApi.BossRosterCatalogWebHandler());
+            _webService.RegisterHandler("/webapi/bossroster/spawn",   new MHServerEmu.WebFrontend.Handlers.WebApi.BossRosterSpawnWebHandler());
+            _webService.RegisterHandler("/webapi/bossroster/clear",   new MHServerEmu.WebFrontend.Handlers.WebApi.BossRosterClearWebHandler());
             _webService.RegisterHandler("/webapi/arena/enemyphantoms/status", new MHServerEmu.WebFrontend.Handlers.WebApi.EnemyPhantomsStatusWebHandler());
             _webService.RegisterHandler("/webapi/arena/waves/start",   new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStartWebHandler());
             _webService.RegisterHandler("/webapi/arena/waves/stop",    new MHServerEmu.WebFrontend.Handlers.WebApi.WavesStopWebHandler());
@@ -202,6 +205,9 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/logs/tail",    new MHServerEmu.WebFrontend.Handlers.WebApi.LogsTailWebHandler());
             _webService.RegisterHandler("/webapi/debug/logs",   new MHServerEmu.WebFrontend.Handlers.WebApi.DebugLogsWebHandler());
             _webService.RegisterHandler("/webapi/debug/position",   new MHServerEmu.WebFrontend.Handlers.WebApi.PlayerPositionWebHandler());
+            _webService.RegisterHandler("/webapi/debug/visiblebydefault", new MHServerEmu.WebFrontend.Handlers.WebApi.VisibleByDefaultWebHandler());
+            _webService.RegisterHandler("/webapi/debug/liveentity", new MHServerEmu.WebFrontend.Handlers.WebApi.LiveEntityInfoWebHandler());
+            _webService.RegisterHandler("/webapi/debug/fractionwidget", new MHServerEmu.WebFrontend.Handlers.WebApi.FractionWidgetDebugWebHandler());
             _webService.RegisterHandler("/webapi/debug/dialogtext", new MHServerEmu.WebFrontend.Handlers.WebApi.DialogTextDebugWebHandler());
             _webService.RegisterHandler("/webapi/debug/vanitytitle", new MHServerEmu.WebFrontend.Handlers.WebApi.VanityTitleDebugWebHandler());
             _webService.RegisterHandler("/webapi/debug/uiwidgets",  new MHServerEmu.WebFrontend.Handlers.WebApi.UiWidgetScanDebugWebHandler());

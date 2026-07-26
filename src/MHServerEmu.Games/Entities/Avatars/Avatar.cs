@@ -7007,6 +7007,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             player.UpdateScoringEventContext();
             player.OnAvatarEnteredRegion(region, this);
             try { player.OnAvatarEnteredRegionForTrial(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[TrialOfImpossible] OnAvatarEnteredRegionForTrial threw: {ex.Message}"); }
+            try { player.OnAvatarEnteredRegionForDangerRoomEndless(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[DangerRoomEndless] OnAvatarEnteredRegionForDangerRoomEndless threw: {ex.Message}"); }
 
             var teamUpAgent = CurrentTeamUpAgent;
             if (teamUpAgent != null)
