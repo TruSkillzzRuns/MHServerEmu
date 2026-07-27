@@ -67,6 +67,12 @@ namespace MHServerEmu.Games.Entities
         // TrialDialogYesStringId ("Continue") is reused as-is from Player.TrialOfImpossible.cs (same partial class).
         private const ulong DrEndlessGuideDialogMessageStringId = 1234567890123456790;   // "Enter the Endless Wave training arena?"
         private const ulong DrEndlessTerminalDialogMessageStringId = 1234567890123456791; // "Start Endless Wave training?"
+        private const ulong DrEndlessDifficultyPromptStringId = 1234567890123456793;      // "Choose your difficulty:"
+        private const ulong DrEndlessDifficultyRecruitStringId = 1234567890123456794;     // "Recruit"
+        private const ulong DrEndlessDifficultyVeteranStringId = 1234567890123456795;     // "Veteran"
+        private const ulong DrEndlessDifficultyOmegaStringId = 1234567890123456796;       // "Omega-Level"
+        private const ulong DrEndlessDifficultyMoreOptionsStringId = 1234567890123456797; // "More Options..."
+        private const ulong DrEndlessDifficultyAdvancedPromptStringId = 1234567890123456798; // "Choose your difficulty (advanced):"
 
         // Default Endless Challenge parameters for the in-world terminal —
         // no in-game UI to configure per-run knobs, so this mirrors a
@@ -97,6 +103,50 @@ namespace MHServerEmu.Games.Entities
         private readonly EventGroup _drEndlessEvents = new();
         private readonly EventPointer<DrEndlessArenaSettleTickEvent> _drArenaSettleTick = new();
 
+        // 4-player co-op groundwork (Phase 2) — DRRegionUniqueTutorialFight
+        // is native Danger Room tutorial content, built for exactly one
+        // player. Party members joining via the game's own existing
+        // "teleport to party member" feature (Player.cs's
+        // TeleportToPartyMember -> Teleporter.TeleportToPlayer) land in the
+        // SAME region instance as whoever they're following with zero new
+        // code needed for that part — it's the same mechanism already used
+        // to follow a friend into any private story instance. The only
+        // blocker is this specific region's own native PlayerLimit/
+        // PartyFormationAllowed data, sized for solo Danger Room training.
+        // Patched in-memory only (RuntimePrototypeEditor-style reflection
+        // write, same mechanism src\...\PrototypeEditorWriteWebHandler.cs
+        // already exposes over HTTP) — no .sip/client file is ever touched,
+        // and nothing else in the game references this specific unique-
+        // scenario region, so it can't affect any other content.
+        private static bool s_drEndlessArenaPartyPatchApplied;
+
+        private static void EnsureDrEndlessArenaAllowsParty()
+        {
+            if (s_drEndlessArenaPartyPatchApplied) return;
+            s_drEndlessArenaPartyPatchApplied = true;
+
+            try
+            {
+                var regionProto = ((PrototypeId)DrEndlessArenaRegionRef).As<RegionPrototype>();
+                if (regionProto == null)
+                {
+                    DrEndlessLogger.Warn("[DangerRoomEndless] arena region ref did not resolve to a RegionPrototype — party patch skipped");
+                    return;
+                }
+
+                typeof(RegionPrototype).GetProperty(nameof(RegionPrototype.PlayerLimit))
+                    ?.SetValue(regionProto, 4);
+                typeof(RegionPrototype).GetProperty(nameof(RegionPrototype.PartyFormationAllowed))
+                    ?.SetValue(regionProto, true);
+
+                DrEndlessLogger.Info("[DangerRoomEndless] arena region patched in-memory: PlayerLimit=4, PartyFormationAllowed=true");
+            }
+            catch (Exception ex)
+            {
+                DrEndlessLogger.Warn($"[DangerRoomEndless] arena party patch failed: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Called from Avatar.OnEnteredWorld on every region entry for a real
         /// (non-phantom) player avatar — mirrors OnAvatarEnteredRegionForTrial's call site.
@@ -104,6 +154,8 @@ namespace MHServerEmu.Games.Entities
         internal void OnAvatarEnteredRegionForDangerRoomEndless(Region region, Avatar avatar)
         {
             if (region == null || avatar == null) return;
+
+            EnsureDrEndlessArenaAllowsParty();
 
             var mig = PlayerConnection?.MigrationData;
             bool freshWarp = false;
@@ -194,6 +246,11 @@ namespace MHServerEmu.Games.Entities
                     return;
                 }
 
+                // 4-line HUD dashboard init call DISABLED — see
+                // Player.WaveDirector.cs's UpdateEndlessHudWidgets doc
+                // comment (confirmed live 2026-07-26 the widget slots it
+                // used don't render standalone text the way "Wave N" does).
+
                 if (_drTerminalRegion == region && _drTerminalNpcId != 0)
                 {
                     var existingNpc = Game.EntityManager.GetEntity<WorldEntity>(_drTerminalNpcId);
@@ -228,40 +285,60 @@ namespace MHServerEmu.Games.Entities
 
         private void SpawnDrGuideNpc(Region region, Avatar avatar)
         {
+            // Sweep the region for any leftover/live guide NPC BEFORE
+            // spawning a fresh one — cannot rely on _drGuideNpcId/
+            // _drGuideRegion (a Player-instance field) here: confirmed live
+            // 2026-07-26 that a cross-region round trip (hub -> arena -> hub)
+            // destroys the whole Game instance, so the Player object active
+            // when this runs again has never even SEEN the previous guide's
+            // id — it's not "0 vs stale", it's a brand-new Player that never
+            // tracked one at all. DetachDrGuideNpc's per-instance bookkeeping
+            // can't survive that; scanning the live region directly can.
+            //
+            // 4-player co-op groundwork (Phase 2): this same scan doubles as
+            // multi-player dedup — a second real player joining this exact
+            // region instance (via the game's own "teleport to party member"
+            // feature) hits this too, and must ADOPT the already-live guide
+            // NPC the first player spawned rather than sweep-destroy it and
+            // spawn a "new" one, which would orphan the first player's own
+            // tracking and interact registration.
+            var sweepSphere = new MHServerEmu.Core.Collisions.Sphere(s_drEndlessGuidePosition, 50f);
+            var sweepCtx = new EntityRegionSPContext(EntityRegionSPContextFlags.PrimaryPartition);
+            WorldEntity existingLive = null;
+            var staleGuides = new List<WorldEntity>();
+            foreach (WorldEntity existing in region.IterateEntitiesInVolume(sweepSphere, sweepCtx))
+            {
+                if (existing == null || existing.IsDestroyed) continue;
+                if (existing.PrototypeDataRef != (PrototypeId)DrEndlessGuideHeroRef) continue;
+                if (existing.IsInWorld && existingLive == null) existingLive = existing;
+                else staleGuides.Add(existing);
+            }
+
+            if (existingLive != null)
+            {
+                DetachDrGuideNpc();
+                _drGuideNpcId = existingLive.Id;
+                _drGuideRegion = region;
+                _drGuideInteractAction ??= OnDrGuideInteract;
+                region.PlayerInteractEvent.AddActionBack(_drGuideInteractAction);
+                DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: adopted existing guide NPC (id={existingLive.Id:X}) already present in this region instance");
+                return;
+            }
+
+            foreach (WorldEntity existing in staleGuides)
+            {
+                if (existing.IsInWorld) existing.ExitWorld();
+                existing.Destroy();
+            }
+            if (staleGuides.Count > 0)
+                DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: removed {staleGuides.Count} stale guide NPC(s) before respawn");
+
             AgentPrototype agentProto = ((PrototypeId)DrEndlessGuideHeroRef).As<AgentPrototype>();
             if (agentProto == null)
             {
                 DrEndlessLogger.Warn($"[DangerRoomEndless] {GetName()}: guide hero ref did not resolve to an AgentPrototype");
                 return;
             }
-
-            // Sweep the region for any leftover guide NPC BEFORE spawning a
-            // fresh one — cannot rely on _drGuideNpcId/_drGuideRegion (a
-            // Player-instance field) here: confirmed live 2026-07-26 that a
-            // cross-region round trip (hub -> arena -> hub) destroys the
-            // whole Game instance, so the Player object active when this
-            // runs again has never even SEEN the previous guide's id — it's
-            // not "0 vs stale", it's a brand-new Player that never tracked
-            // one at all. DetachDrGuideNpc's per-instance bookkeeping can't
-            // survive that; scanning the live region directly can.
-            int removedStale = 0;
-            var sweepSphere = new MHServerEmu.Core.Collisions.Sphere(s_drEndlessGuidePosition, 50f);
-            var sweepCtx = new EntityRegionSPContext(EntityRegionSPContextFlags.PrimaryPartition);
-            var staleGuides = new List<WorldEntity>();
-            foreach (WorldEntity existing in region.IterateEntitiesInVolume(sweepSphere, sweepCtx))
-            {
-                if (existing == null || existing.IsDestroyed) continue;
-                if (existing.PrototypeDataRef != (PrototypeId)DrEndlessGuideHeroRef) continue;
-                staleGuides.Add(existing);
-            }
-            foreach (WorldEntity existing in staleGuides)
-            {
-                if (existing.IsInWorld) existing.ExitWorld();
-                existing.Destroy();
-                removedStale++;
-            }
-            if (removedStale > 0)
-                DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: removed {removedStale} stale guide NPC(s) before respawn");
 
             Agent npc = EntityHelper.CreateAgent(agentProto, avatar, s_drEndlessGuidePosition, s_drEndlessGuideOrientation);
             if (npc == null)
@@ -384,6 +461,26 @@ namespace MHServerEmu.Games.Entities
 
         private void SpawnDrTerminalNpc(Region region, Avatar avatar)
         {
+            // 4-player co-op groundwork (Phase 2) — same adopt-if-live
+            // pattern as SpawnDrGuideNpc: a second real player joining this
+            // region instance should reuse the first player's already-spawned
+            // terminal instead of creating a duplicate prop alongside it.
+            var sweepSphere = new MHServerEmu.Core.Collisions.Sphere(s_drEndlessTerminalPosition, 50f);
+            var sweepCtx = new EntityRegionSPContext(EntityRegionSPContextFlags.PrimaryPartition);
+            foreach (WorldEntity existing in region.IterateEntitiesInVolume(sweepSphere, sweepCtx))
+            {
+                if (existing == null || existing.IsDestroyed || existing.IsInWorld == false) continue;
+                if (existing.PrototypeDataRef != (PrototypeId)DrEndlessTerminalHeroRef) continue;
+
+                DetachDrTerminalNpc();
+                _drTerminalNpcId = existing.Id;
+                _drTerminalRegion = region;
+                _drTerminalInteractAction ??= OnDrTerminalInteract;
+                region.PlayerInteractEvent.AddActionBack(_drTerminalInteractAction);
+                DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: adopted existing terminal (id={existing.Id:X}) already present in this region instance");
+                return;
+            }
+
             AgentPrototype agentProto = ((PrototypeId)DrEndlessTerminalHeroRef).As<AgentPrototype>();
             if (agentProto == null)
             {
@@ -528,17 +625,108 @@ namespace MHServerEmu.Games.Entities
             if (evt.InteractableObject == null || evt.InteractableObject.Id != _drTerminalNpcId) return;
 
             var dialog = Game.GameDialogManager.CreateInstance(DatabaseUniqueId);
-            dialog.Message.LocaleString = (LocaleStringId)DrEndlessTerminalDialogMessageStringId;
-            dialog.Options = DialogOptionEnum.ScreenBottom;
             dialog.OnResponse = OnDrTerminalDialogResponse;
-            dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary);
+
+            // Difficulty is only ever asked the FIRST time a run is started
+            // (or by whoever hosts a fresh shared run) — every later
+            // interaction with the terminal while a run is active/paused
+            // (loot break, or a non-host teammate resuming the host's run)
+            // is just "continue", never re-prompted. See
+            // ShouldShowEndlessDifficultyPicker.
+            if (ShouldShowEndlessDifficultyPicker())
+            {
+                // Confirmed live 2026-07-27 — a 3-button dialog only ever
+                // renders 2 buttons client-side (tried both ScreenBottom and
+                // MouseCenter; every OTHER dialog anywhere in the codebase
+                // only ever used 1-2 buttons too, so this looks like a real
+                // 2-button cap on the client's dialog widget, not something
+                // fixable via DialogOptionEnum). Split into two chained
+                // 2-button dialogs instead: this one offers the single-click
+                // "just start" (Recruit, the easiest/most beginner-friendly
+                // tier) plus "More Options..." for Veteran/Omega-Level,
+                // handled by OnDrTerminalDifficultyAdvancedResponse below.
+                dialog.Options = DialogOptionEnum.MouseCenter;
+                dialog.Message.LocaleString = (LocaleStringId)DrEndlessDifficultyPromptStringId;
+                dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DrEndlessDifficultyRecruitStringId, ButtonStyle.Primary);
+                dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DrEndlessDifficultyMoreOptionsStringId, ButtonStyle.Primary);
+            }
+            else
+            {
+                dialog.Options = DialogOptionEnum.ScreenBottom;
+                dialog.Message.LocaleString = (LocaleStringId)DrEndlessTerminalDialogMessageStringId;
+                dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary);
+            }
+
             Game.GameDialogManager.ShowDialog(dialog);
+        }
+
+        /// <summary>
+        /// True only when this interaction would actually START a fresh run
+        /// — never when continuing/resuming (own run paused for a loot
+        /// break, or a non-host teammate resuming the host's already-active
+        /// shared run). Mirrors the exact same state checks
+        /// OnDrTerminalDialogResponse falls through before calling
+        /// StartEndlessChallenge, kept in one place so the prompt shown here
+        /// can never drift out of sync with what the response handler
+        /// actually does with the button that gets clicked.
+        /// </summary>
+        private bool ShouldShowEndlessDifficultyPicker()
+        {
+            Region region = CurrentAvatar?.Region;
+            ulong hostDbId = region?.EndlessHostPlayerDbId ?? 0;
+            if (hostDbId != 0 && hostDbId != DatabaseUniqueId)
+            {
+                Player host = Game.EntityManager.GetEntityByDbGuid<Player>(hostDbId);
+                if (host != null && host.IsEndlessChallengeActive)
+                    return false; // continuing/resuming someone else's shared run
+            }
+
+            return IsEndlessChallengeActive == false;
         }
 
         private void OnDrTerminalDialogResponse(ulong playerGuid, DialogResponse response)
         {
             if (playerGuid != DatabaseUniqueId) return;
-            if (response.ButtonIndex != GameDialogResultEnum.eGDR_Option1) return;
+            if (response.ButtonIndex != GameDialogResultEnum.eGDR_Option1
+                && response.ButtonIndex != GameDialogResultEnum.eGDR_Option2
+                && response.ButtonIndex != GameDialogResultEnum.eGDR_Option3)
+                return;
+
+            // 4-player co-op groundwork (Phase 2) — if another real player
+            // already owns an active shared run in this region instance,
+            // route to THEIR WaveDirector state instead of starting/
+            // duplicating our own independent one. All of the run's actual
+            // state (waves, hazards, bosses, chests) lives on the host
+            // Player instance; a non-host interaction here only ever
+            // pauses/resumes THAT run, never starts a second one.
+            Region region = CurrentAvatar?.Region;
+            ulong hostDbId = region?.EndlessHostPlayerDbId ?? 0;
+            if (hostDbId != 0 && hostDbId != DatabaseUniqueId)
+            {
+                Player host = Game.EntityManager.GetEntityByDbGuid<Player>(hostDbId);
+                if (host != null && host.IsEndlessChallengeActive)
+                {
+                    if (host.IsWaveRunPaused)
+                    {
+                        host.PauseWaveRun(false);
+                        host.DespawnDrTerminalNpc();
+                        host.DespawnDrStashBox();
+                        try { host.SendBannerLines("⚔ Endless Wave resumes!"); } catch { }
+                        DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: resumed {host.GetName()}'s shared run via terminal");
+                    }
+                    else
+                    {
+                        DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: terminal interact ignored — {host.GetName()}'s Endless Challenge already active");
+                    }
+                    return;
+                }
+
+                // Host is gone or their run already ended without clearing
+                // the marker (shouldn't normally happen — EndEndlessChallenge
+                // clears it — but don't strand every future interaction on a
+                // stale reference if it does).
+                if (region != null) region.EndlessHostPlayerDbId = 0;
+            }
 
             if (IsEndlessChallengeActive)
             {
@@ -560,6 +748,42 @@ namespace MHServerEmu.Games.Entities
                 return;
             }
 
+            // First dialog: Option1=Recruit (single-click, easiest tier),
+            // Option2="More Options..." drills into a second 2-button dialog
+            // instead of starting anything yet.
+            if (response.ButtonIndex == GameDialogResultEnum.eGDR_Option2)
+            {
+                ShowEndlessDifficultyAdvancedDialog();
+                return;
+            }
+
+            StartFreshEndlessRun(EndlessDifficulty.Recruit);
+        }
+
+        /// <summary>Second-tier difficulty dialog — only reachable via "More Options..." on the first prompt. Offers Veteran (today's original tuning) and Omega-Level.</summary>
+        private void ShowEndlessDifficultyAdvancedDialog()
+        {
+            var dialog = Game.GameDialogManager.CreateInstance(DatabaseUniqueId);
+            dialog.Options = DialogOptionEnum.MouseCenter;
+            dialog.OnResponse = OnDrTerminalDifficultyAdvancedResponse;
+            dialog.Message.LocaleString = (LocaleStringId)DrEndlessDifficultyAdvancedPromptStringId;
+            dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DrEndlessDifficultyVeteranStringId, ButtonStyle.Primary);
+            dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DrEndlessDifficultyOmegaStringId, ButtonStyle.Primary);
+            Game.GameDialogManager.ShowDialog(dialog);
+        }
+
+        private void OnDrTerminalDifficultyAdvancedResponse(ulong playerGuid, DialogResponse response)
+        {
+            if (playerGuid != DatabaseUniqueId) return;
+            if (response.ButtonIndex != GameDialogResultEnum.eGDR_Option1 && response.ButtonIndex != GameDialogResultEnum.eGDR_Option2)
+                return;
+
+            StartFreshEndlessRun(response.ButtonIndex == GameDialogResultEnum.eGDR_Option1 ? EndlessDifficulty.Veteran : EndlessDifficulty.OmegaLevel);
+        }
+
+        /// <summary>Shared tail for both dialog chains once a difficulty has actually been chosen.</summary>
+        private void StartFreshEndlessRun(EndlessDifficulty difficulty)
+        {
             var baseEntry = new WaveEntryDef
             {
                 IsEnemyPhantom = true,
@@ -572,8 +796,9 @@ namespace MHServerEmu.Games.Entities
             // Already standing in the sterilized arena — no additional warp
             // or clear needed (arenaRegionRef=0, clearArena=false).
             string result = StartEndlessChallenge(baseEntry, 5000, 0, false,
-                DrEndlessCountScalePerWave, DrEndlessLevelBumpPerWave, DrEndlessRewardLootTableRef);
-            DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: terminal confirmed — {result}");
+                DrEndlessCountScalePerWave, DrEndlessLevelBumpPerWave, DrEndlessRewardLootTableRef, difficulty);
+            try { SendBannerLines($"🎯 Difficulty: {difficulty}"); } catch { }
+            DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: terminal confirmed — difficulty={difficulty} — {result}");
 
             // Only remove the terminal once the run actually started —
             // IsEndlessChallengeActive is set by StartEndlessChallenge on

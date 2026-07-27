@@ -211,6 +211,7 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/debug/dialogtext", new MHServerEmu.WebFrontend.Handlers.WebApi.DialogTextDebugWebHandler());
             _webService.RegisterHandler("/webapi/debug/vanitytitle", new MHServerEmu.WebFrontend.Handlers.WebApi.VanityTitleDebugWebHandler());
             _webService.RegisterHandler("/webapi/debug/uiwidgets",  new MHServerEmu.WebFrontend.Handlers.WebApi.UiWidgetScanDebugWebHandler());
+            _webService.RegisterHandler("/webapi/debug/findasset", new MHServerEmu.WebFrontend.Handlers.WebApi.FindAssetWebHandler());
 
             // OmegaDev2 God Mode.
             _webService.RegisterHandler("/webapi/playeradmin/godmode", new MHServerEmu.WebFrontend.Handlers.WebApi.GodModeWebHandler());

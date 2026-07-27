@@ -1157,6 +1157,19 @@ namespace MHServerEmu.Games.GameData.Prototypes
         public SelectEntityContextPrototype SelectTeleportTarget { get; protected set; }
         public ProceduralUsePowerContextPrototype[] SummonProceduralPowers { get; protected set; }
 
+        // TEMP diagnostic (2026-07-26) — narrowing down why a standalone
+        // MODOK spawn still does nothing even after forcing state and aggro
+        // range; see EntityHelper.ApplyStandaloneBossFixups's MODOK block.
+        private static readonly MHServerEmu.Core.Logging.Logger ModokDiagLogger = MHServerEmu.Core.Logging.LogManager.CreateLogger();
+        private static readonly Dictionary<ulong, long> ModokDiagLastLogMs = new();
+        private static bool ModokDiagShouldLog(ulong agentId, long currentTime)
+        {
+            if (ModokDiagLastLogMs.TryGetValue(agentId, out long lastMs) && currentTime - lastMs < 2000)
+                return false;
+            ModokDiagLastLogMs[agentId] = currentTime;
+            return true;
+        }
+
         //---
 
         private enum State
@@ -1164,6 +1177,100 @@ namespace MHServerEmu.Games.GameData.Prototypes
             TeleportToEntity,
             SummonProcedural,
             GenericProcedural,
+        }
+
+        // Confirmed live 2026-07-26 via [MODOK:ValidateDiag] logging — every
+        // one of his powers fails UsePower.ValidateInternal with
+        // OutOfPosition (Agent.IsInPositionForPower -> OutOfRange) on every
+        // single attempt, regardless of which power or which target. His
+        // ONLY native mobility is TeleportToEntityPower via the
+        // TeleportToEntity state, which requires selecting an ALLY
+        // (SelectTeleportTarget's CombatTargetType.Ally) — real population
+        // encounters apparently place a scripted ally/kismet actor next to
+        // him for this to resolve, but a standalone spawn has none, so that
+        // selection can never succeed. Neither SummonProcedural nor
+        // GenericProcedural (the states we use instead) contain ANY
+        // movement/approach logic of their own — they assume he's already
+        // positioned in range.
+        //
+        // First attempt instant-teleported him next to the target whenever
+        // out of range (Agent.ChangeRegionPosition + ChangePositionFlags.
+        // Teleport) — mechanically worked (powers started succeeding), but
+        // the user correctly called it out as wrong: their custom 1.53
+        // client has MODOK as a playable character, and he walks/moves
+        // completely normally under player control — his Locomotor and
+        // movement animations work fine, it's specifically his STOCK AI
+        // PROFILE that never calls any movement action (matches his real
+        // kit: canonically a stationary/teleporting boss in the campaign,
+        // teleporting between ~3 fixed platforms — a scripted trigger, not a
+        // chase mechanic). So the correct fix is to make him actually WALK
+        // via the same generic movement machinery every other working
+        // ranged AI profile uses (ProceduralAI.HandleContext with the
+        // MoveTo static AI state — see Behavior/StaticAI/MoveTo.cs), not to
+        // fake movement with a position snap.
+        //
+        // MoveToContext is a plain struct (Behavior/StaticAI/MoveTo.cs:466)
+        // built from a MoveToContextPrototype's fields, but nothing in
+        // ProceduralProfileMODOKPrototype's actual game data defines a
+        // MoveToContextPrototype (he was never authored to walk) — so unlike
+        // every other profile's DefaultRangedFlankerMovement/
+        // HandleMovementContext<T> calls (which need real prototype data),
+        // we construct the MoveToContext struct directly in code and hand
+        // it straight to ProceduralAI.HandleContext, bypassing the need for
+        // prototype-authored move data entirely. This drives his real
+        // Locomotor (FollowEntity/pathing), the same system confirmed
+        // working under player control, so he genuinely walks toward the
+        // target instead of teleporting.
+        private static StaticBehaviorReturnType MoveTowardTargetIfOutOfRange(AIController ownerController, ProceduralAI proceduralAI,
+            Agent agent, WorldEntity target, Picker<ProceduralUsePowerContextPrototype> powerPicker)
+        {
+            if (agent == null || target == null || target.IsInWorld == false) return StaticBehaviorReturnType.Failed;
+
+            // Only ever compensate for a standalone spawn (Endless Wave /
+            // Boss Roster test tool) — a real campaign/mission-spawned MODOK
+            // is never added to this set, so his native encounter behavior
+            // (scripted platform-teleports, no walking) is completely
+            // unaffected by this fix. See EntityHelper.StandaloneBossIds.
+            if (EntityHelper.StandaloneBossIds.Contains(agent.Id) == false) return StaticBehaviorReturnType.Completed;
+
+            float minRange = float.MaxValue;
+            int numPowers = powerPicker.GetNumElements();
+            for (int i = 0; i < numPowers; i++)
+            {
+                if (powerPicker.GetElementAt(i, out ProceduralUsePowerContextPrototype proto) == false) continue;
+                PrototypeId powerRef = proto?.PowerContext?.Power?.DataRef ?? PrototypeId.Invalid;
+                if (powerRef == PrototypeId.Invalid) continue;
+
+                Power power = agent.GetPower(powerRef);
+                if (power == null) continue;
+
+                float range = power.GetRange();
+                if (range > 0f && range < minRange)
+                    minRange = range;
+            }
+
+            if (minRange == float.MaxValue) return StaticBehaviorReturnType.Completed; // no ranged power data found — nothing to walk toward
+
+            float currentDistance = agent.GetDistanceTo(target, true);
+            if (currentDistance <= minRange) return StaticBehaviorReturnType.Completed; // already in range for at least the tightest power
+
+            // Stop comfortably inside the tightest power's range (70%)
+            // rather than right at the edge, so the subsequent
+            // orientation/LOS checks in UsePower.ValidateInternal aren't
+            // immediately borderline too.
+            MoveToContext moveContext = new()
+            {
+                OwnerController = ownerController,
+                MoveTo = MoveToType.Target,
+                MovementSpeed = MovementSpeedOverride.Default,
+                EnforceLOS = false,
+                RangeMin = 0f,
+                RangeMax = minRange * 0.7f,
+                LOSSweepPadding = 0f,
+                StopLocomotorOnMoveToFail = false,
+            };
+
+            return proceduralAI.HandleContext(MoveTo.Instance, moveContext, null);
         }
 
         public override void Init(Agent agent)
@@ -1245,32 +1352,58 @@ namespace MHServerEmu.Games.GameData.Prototypes
                     break;
 
                 case State.SummonProcedural:
+                {
+                    bool shouldLog = ModokDiagShouldLog(agent.Id, currentTime);
                     if (DefaultSensory(ref target, ownerController, proceduralAI, SelectTarget, CombatTargetType.Hostile, CombatTargetFlags.IgnoreLOS) == false)
+                    {
+                        if (shouldLog) ModokDiagLogger.Info($"[MODOK:Diag] {agent.Id:X} state=SummonProcedural DefaultSensory FAILED (no target) — returning early");
                         return;
+                    }
 
                     powerPicker = new(random);
                     PopulatePowerPicker(ownerController, powerPicker);
+                    if (MoveTowardTargetIfOutOfRange(ownerController, proceduralAI, agent, target, powerPicker) == StaticBehaviorReturnType.Running)
+                    {
+                        if (shouldLog) ModokDiagLogger.Info($"[MODOK:Diag] {agent.Id:X} state=SummonProcedural walking toward target={target?.Id:X}");
+                        return;
+                    }
+                    if (shouldLog) ModokDiagLogger.Info($"[MODOK:Diag] {agent.Id:X} state=SummonProcedural target={target?.Id:X} powerPickerCount={powerPicker.GetNumElements()}");
                     if (HandleProceduralPower(ownerController, proceduralAI, random, currentTime, powerPicker, true) == StaticBehaviorReturnType.Running)
                         return;
 
+                    if (shouldLog) ModokDiagLogger.Info($"[MODOK:Diag] {agent.Id:X} state=SummonProcedural LastPowerResult={proceduralAI.LastPowerResult}");
                     if (proceduralAI.LastPowerResult == StaticBehaviorReturnType.Completed || proceduralAI.LastPowerResult == StaticBehaviorReturnType.Failed)
                         blackboardProps[PropertyEnum.AICustomStateVal1] = (int)State.GenericProcedural;
 
                     break;
+                }
 
                 case State.GenericProcedural:
+                {
+                    bool shouldLog = ModokDiagShouldLog(agent.Id, currentTime);
                     if (DefaultSensory(ref target, ownerController, proceduralAI, SelectTarget, CombatTargetType.Hostile) == false)
+                    {
+                        if (shouldLog) ModokDiagLogger.Info($"[MODOK:Diag] {agent.Id:X} state=GenericProcedural DefaultSensory FAILED (no target) — returning early");
                         return;
+                    }
 
                     powerPicker = new(random);
                     PopulatePowerPicker(ownerController, powerPicker);
+                    if (MoveTowardTargetIfOutOfRange(ownerController, proceduralAI, agent, target, powerPicker) == StaticBehaviorReturnType.Running)
+                    {
+                        if (shouldLog) ModokDiagLogger.Info($"[MODOK:Diag] {agent.Id:X} state=GenericProcedural walking toward target={target?.Id:X}");
+                        return;
+                    }
+                    if (shouldLog) ModokDiagLogger.Info($"[MODOK:Diag] {agent.Id:X} state=GenericProcedural target={target?.Id:X} powerPickerCount={powerPicker.GetNumElements()}");
                     if (HandleProceduralPower(ownerController, proceduralAI, random, currentTime, powerPicker, true) == StaticBehaviorReturnType.Running)
                         return;
 
+                    if (shouldLog) ModokDiagLogger.Info($"[MODOK:Diag] {agent.Id:X} state=GenericProcedural LastPowerResult={proceduralAI.LastPowerResult}");
                     if (currentTime > blackboardProps[PropertyEnum.AICustomTimeVal1])
                         blackboardProps[PropertyEnum.AICustomStateVal1] = (int)State.TeleportToEntity;
 
                     break;
+                }
             }
         }
 

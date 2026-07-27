@@ -53,6 +53,7 @@ namespace MHServerEmu.Games.Entities
 
         private readonly EventPointer<WakeStartEvent> _wakeStartEvent = new();
         private readonly EventPointer<WakeEndEvent> _wakeEndEvent = new();
+        private readonly EventPointer<StandaloneBossDormantWatchdogEvent> _standaloneBossDormantWatchdogEvent = new();
         private readonly EventPointer<ExitCombatEvent> _exitCombatEvent = new();
         private readonly EventPointer<MovementStartedEvent> _movementStartedEvent = new();
         private readonly EventPointer<MovementStoppedEvent> _movementStoppedEvent = new();
@@ -473,6 +474,20 @@ namespace MHServerEmu.Games.Entities
             return power.CanActivate(target, targetPosition, flags);
         }
 
+        // TEMP DIAGNOSTIC (2026-07-26) — a Punisher phantom hero was
+        // observed repeatedly failing power activation with
+        // PowerUseResult.RestrictiveCondition, and there are 5 different
+        // branches below that can produce that exact result. Scoped to
+        // phantom heroes only (Avatar.IsPhantomHero) so this doesn't spam
+        // for every normal AI-controlled entity in the game. Remove once
+        // the real branch is identified and a proper phantom-specific fix
+        // (matching the She-Hulk/Silver Surfer pattern) lands.
+        private void LogPhantomRestrictiveConditionSource(PowerPrototype powerProto, string reason)
+        {
+            if ((this as Avatars.Avatar)?.IsPhantomHero != true) return;
+            Logger.Info($"[PhantomHero:RestrictiveCondition] {this} power={powerProto.DataRef.GetName()} reason={reason}");
+        }
+
         public override PowerUseResult CanTriggerPower(PowerPrototype powerProto, Power power, PowerActivationSettingsFlags flags)
         {
             // Agent-specific validation
@@ -482,11 +497,17 @@ namespace MHServerEmu.Games.Entities
             {
                 // Check if in world (NOTE: This is validated in a separate method called CanExecutePowers() in the client)
                 if (IsInWorld == false)
+                {
+                    LogPhantomRestrictiveConditionSource(powerProto, "IsInWorld==false");
                     return PowerUseResult.RestrictiveCondition;
+                }
 
                 // Check for power-specific locks
                 if (Properties[PropertyEnum.SinglePowerLock, powerProto.DataRef])
+                {
+                    LogPhantomRestrictiveConditionSource(powerProto, "SinglePowerLock");
                     return PowerUseResult.RestrictiveCondition;
+                }
 
                 // Check for status effects that would prevent using this power
                 if (!Verify.IsNotNull(powerProto.Properties)) return PowerUseResult.GenericError;
@@ -496,12 +517,16 @@ namespace MHServerEmu.Games.Entities
                     powerProto.PowerCategory != PowerCategoryType.ThrowablePower &&
                     powerProto.PowerCategory != PowerCategoryType.ThrowableCancelPower)
                 {
+                    LogPhantomRestrictiveConditionSource(powerProto, $"HasPowerPreventionStatus={HasPowerPreventionStatus()} HasAIControlPowerLock={HasAIControlPowerLock}");
                     return PowerUseResult.RestrictiveCondition;
                 }
 
                 // Check for tutorial locks
                 if (IsInTutorialPowerLock && powerProto.PowerCategory != PowerCategoryType.GameFunctionPower)
+                {
+                    LogPhantomRestrictiveConditionSource(powerProto, "IsInTutorialPowerLock");
                     return PowerUseResult.RestrictiveCondition;
+                }
 
                 // Check for keyword locks
                 foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.PowerLockForPowerKeyword))
@@ -509,7 +534,10 @@ namespace MHServerEmu.Games.Entities
                     Property.FromParam(kvp.Key, 0, out PrototypeId keywordProtoRef);
 
                     if (HasPowerWithKeyword(powerProto, keywordProtoRef))
+                    {
+                        LogPhantomRestrictiveConditionSource(powerProto, $"PowerLockForPowerKeyword={keywordProtoRef.GetName()}");
                         return PowerUseResult.RestrictiveCondition;
+                    }
                 }
             }
 
@@ -3156,6 +3184,49 @@ namespace MHServerEmu.Games.Entities
 
             Region?.EntityLeaveDormantEvent.Invoke(new(this));
             TryAutoActivatePowersInCollection();
+        }
+
+        // Confirmed live 2026-07-27 — a standalone-spawned boss (Endless
+        // Wave curated boss / Boss Roster test spawn) with a nonzero
+        // AgentPrototype.ReturnToDormantRange gets silently re-Dormant'd by
+        // BehaviorSensorySystem.UpdateAvatarSensory (Behavior/
+        // BehaviorSensorySystem.cs:126-140) the moment no avatar is within
+        // that range — roughly once a second, completely independent of and
+        // overriding EntityHelper.ApplyStandaloneBossFixups's one-time
+        // Dormant-clear at spawn. A real campaign encounter presumably never
+        // hits this because its own population/leash logic keeps the
+        // relationship intact; a bare standalone spawn has none of that, so
+        // once the player wanders out of range the entity goes Dormant —
+        // and stays that way, appearing to have vanished. There's no
+        // per-instance override for ReturnToDormantRange the way WakeRange/
+        // AggroRange have one, so the only real fix is a recurring
+        // self-rescheduling watchdog that keeps re-clearing Dormant for the
+        // lifetime of the entity. Scoped exclusively to
+        // EntityHelper.StandaloneBossIds — a real campaign/mission-spawned
+        // instance of the same prototype is never added to that set, so its
+        // native behavior is completely unaffected.
+        private const int StandaloneBossDormantWatchdogIntervalMs = 2000;
+
+        public void StartStandaloneBossDormantWatchdog()
+        {
+            if (_standaloneBossDormantWatchdogEvent.IsValid) return;
+            ScheduleEntityEvent(_standaloneBossDormantWatchdogEvent, TimeSpan.FromMilliseconds(StandaloneBossDormantWatchdogIntervalMs));
+        }
+
+        private void StandaloneBossDormantWatchdogCallback()
+        {
+            if (IsDestroyed || IsInWorld == false) return;
+            if (EntityHelper.StandaloneBossIds.Contains(Id) == false) return;
+
+            if (Properties[PropertyEnum.Dormant])
+                Properties[PropertyEnum.Dormant] = false;
+
+            ScheduleEntityEvent(_standaloneBossDormantWatchdogEvent, TimeSpan.FromMilliseconds(StandaloneBossDormantWatchdogIntervalMs));
+        }
+
+        private class StandaloneBossDormantWatchdogEvent : CallMethodEvent<Entity>
+        {
+            protected override CallbackDelegate GetCallback() => (t) => (t as Agent)?.StandaloneBossDormantWatchdogCallback();
         }
 
         protected class WakeStartEvent : CallMethodEvent<Entity>

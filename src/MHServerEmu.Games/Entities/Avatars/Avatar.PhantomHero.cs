@@ -799,47 +799,108 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             if (invulnStuck && exemptDeliberate == false)
             {
+                long nowMsInvuln = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+
+                // 2026-07-26 redesign — root-caused (Silver Surfer, then
+                // Punisher's Cosmic item proc) to a Condition granting these
+                // properties whose own completion event never fires for a
+                // phantom. Rather than always waiting a fixed number of
+                // ticks regardless of the source, use the Condition's OWN
+                // declared Duration/TimeRemaining when it has one — clear it
+                // the INSTANT it's already outstayed its real, intended
+                // duration (so it never lasts LONGER than it's supposed to),
+                // and fall back to the tick-counter only for the case where
+                // the condition has no finite duration to check against at
+                // all. On top of that, once a specific condition has been
+                // force-cleared, refuse to let that same condition type grant
+                // this phantom another invulnerability window again for a
+                // cooldown period — otherwise a proc that keeps re-firing
+                // reads as one continuous "can't be hurt" state even though
+                // each individual instance is technically brief.
+                bool anyOverstayedOrNoDuration = false;
+                var toRemoveNow = new List<ulong>();
+                var clearedConditionRefs = new List<PrototypeId>();
+
+                if (phantom.ConditionCollection != null)
+                {
+                    foreach (Condition condition in phantom.ConditionCollection)
+                    {
+                        if (condition.Properties[PropertyEnum.Invulnerable] == false
+                            && condition.Properties[PropertyEnum.Untargetable] == false
+                            && condition.Properties[PropertyEnum.Unaffectable] == false
+                            && condition.Properties[PropertyEnum.TutorialInvulnerable] == false)
+                        {
+                            continue;
+                        }
+
+                        PrototypeId condKeyRef = condition.CreatorPowerPrototypeRef != PrototypeId.Invalid
+                            ? condition.CreatorPowerPrototypeRef
+                            : condition.ConditionPrototypeRef;
+                        var cooldownKey = (phantom.Id, condKeyRef);
+
+                        bool inNoRepeatCooldown = s_phantomInvulnConditionCooldownUntilMs.TryGetValue(cooldownKey, out long cooldownUntil)
+                            && nowMsInvuln < cooldownUntil;
+                        bool overstayedOwnDuration = condition.IsFinite && condition.TimeRemaining <= TimeSpan.Zero;
+
+                        if (inNoRepeatCooldown || overstayedOwnDuration)
+                        {
+                            toRemoveNow.Add(condition.Id);
+                            clearedConditionRefs.Add(condKeyRef);
+
+                            // Back-to-back guard: this exact condition can't
+                            // grant another invulnerability window for at
+                            // least as long as this one was legitimately
+                            // supposed to last (its own Duration if finite),
+                            // or a flat 10s floor for a permanent/no-duration
+                            // condition — long enough that a proc firing
+                            // again immediately doesn't just chain into a
+                            // second window back to back.
+                            long cooldownSpanMs = condition.IsFinite && condition.Duration > TimeSpan.Zero
+                                ? (long)condition.Duration.TotalMilliseconds
+                                : 10_000;
+                            s_phantomInvulnConditionCooldownUntilMs[cooldownKey] = nowMsInvuln + cooldownSpanMs;
+                        }
+                        else if (condition.IsFinite == false)
+                        {
+                            // No natural duration to check against at all —
+                            // this is the "permanent until explicitly ended"
+                            // case (e.g. a toggle). Fall back to the
+                            // reactive tick-counter safety net.
+                            anyOverstayedOrNoDuration = true;
+                        }
+                    }
+                }
+
                 int invulnTicks = s_phantomInvulnerableTrack.TryGetValue(phantom.Id, out int prevTicks) ? prevTicks + 1 : 1;
-                if (invulnTicks >= PhantomStuckInvulnerableTicks)
+                bool tickCounterExpired = anyOverstayedOrNoDuration && invulnTicks >= PhantomStuckInvulnerableTicks;
+
+                if (toRemoveNow.Count > 0 || tickCounterExpired)
                 {
                     try
                     {
-                        // Confirmed live 2026-07-26 (Silver Surfer) — clearing
-                        // just the Properties wasn't enough for every case:
-                        // some phantoms re-entered this exact stuck state
-                        // within ~3s of being cleared, cycling continuously,
-                        // with NO corresponding stuck-ActivePowerRef ever
-                        // logged. That rules out the She-Hulk-style
-                        // ActiveUntilCancelled case entirely — root-caused via
-                        // code trace to a Condition (not a power) granting
-                        // these properties: for a real player the condition's
-                        // own duration/completion event clears it, but a
-                        // phantom never sends whatever release signal that
-                        // depends on, so the Condition just sits there and
-                        // keeps the properties re-applied even after we zero
-                        // them directly. Explicitly remove any condition that
-                        // grants these properties instead of just zeroing the
-                        // properties — and log its CreatorPowerPrototypeRef so
-                        // a specific hero's power can be identified if this
-                        // fires again.
-                        var stuckConditionRefs = new List<PrototypeId>();
                         if (phantom.ConditionCollection != null)
                         {
-                            var toRemove = new List<ulong>();
-                            foreach (Condition condition in phantom.ConditionCollection)
+                            // Tick-counter fallback path needs its own scan
+                            // since toRemoveNow only collected the
+                            // already-overstayed/cooldown-blocked ones above.
+                            if (tickCounterExpired)
                             {
-                                if (condition.Properties[PropertyEnum.Invulnerable]
-                                    || condition.Properties[PropertyEnum.Untargetable]
-                                    || condition.Properties[PropertyEnum.Unaffectable]
-                                    || condition.Properties[PropertyEnum.TutorialInvulnerable])
+                                foreach (Condition condition in phantom.ConditionCollection)
                                 {
-                                    toRemove.Add(condition.Id);
-                                    stuckConditionRefs.Add(condition.CreatorPowerPrototypeRef != PrototypeId.Invalid
-                                        ? condition.CreatorPowerPrototypeRef
-                                        : condition.ConditionPrototypeRef);
+                                    if (toRemoveNow.Contains(condition.Id)) continue;
+                                    if (condition.Properties[PropertyEnum.Invulnerable]
+                                        || condition.Properties[PropertyEnum.Untargetable]
+                                        || condition.Properties[PropertyEnum.Unaffectable]
+                                        || condition.Properties[PropertyEnum.TutorialInvulnerable])
+                                    {
+                                        toRemoveNow.Add(condition.Id);
+                                        clearedConditionRefs.Add(condition.CreatorPowerPrototypeRef != PrototypeId.Invalid
+                                            ? condition.CreatorPowerPrototypeRef
+                                            : condition.ConditionPrototypeRef);
+                                    }
                                 }
                             }
-                            foreach (ulong conditionId in toRemove)
+                            foreach (ulong conditionId in toRemoveNow)
                                 phantom.ConditionCollection.RemoveCondition(conditionId);
                         }
 
@@ -853,10 +914,10 @@ namespace MHServerEmu.Games.Entities.Avatars
                             stuckInvulnPower?.EndPower(EndPowerFlags.ExplicitCancel | EndPowerFlags.Force);
                         }
 
-                        string sourcesStr = stuckConditionRefs.Count > 0
-                            ? $" (source condition(s): {string.Join(", ", stuckConditionRefs.Select(r => r.GetName()))})"
+                        string sourcesStr = clearedConditionRefs.Count > 0
+                            ? $" (source condition(s): {string.Join(", ", clearedConditionRefs.Select(r => r.GetName()))})"
                             : "";
-                        PhantomLogger.Info($"[PhantomHero:Watchdog] force-cleared stuck Invulnerable/Untargetable/Unaffectable/TutorialInvulnerable on {phantom.Id:X} after {invulnTicks * 500}ms (likely a self-revive proc that never released){sourcesStr}");
+                        PhantomLogger.Info($"[PhantomHero:Watchdog] force-cleared Invulnerable/Untargetable/Unaffectable/TutorialInvulnerable on {phantom.Id:X}{sourcesStr}");
                     }
                     catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Watchdog] Invulnerable/Untargetable clear failed on {phantom.Id:X}: {ex.Message}"); }
                     s_phantomInvulnerableTrack.Remove(phantom.Id);
@@ -1983,9 +2044,24 @@ namespace MHServerEmu.Games.Entities.Avatars
         // toggle) after this many consecutive ticks. Deliberately-invincible
         // phantoms (Squad Builder's opt-in god mode, see the "invincible"
         // spawn param) are tracked separately and exempt from this.
-        private const int PhantomStuckInvulnerableTicks = 6; // 3 seconds
+        // 2026-07-26: was 6 ticks (3s) — confirmed live this same mechanism
+        // also fires from GEAR item procs (Powers/ItemPowers/ItemConditions/
+        // CosmicItemInvulnerableBuff.prototype on a Punisher phantom), not
+        // just hero self-revive powers, and can recur repeatedly through a
+        // single fight. Whatever the proc's own legitimate active duration
+        // is happens BEFORE it's even detected as "stuck", so the full
+        // window a player sees no damage land is that duration PLUS however
+        // long this watchdog waits on top — tightened to minimize the added
+        // wait, not the root cause (the Condition itself never completing
+        // for an AI-driven phantom, which needs the source data to fix
+        // properly and isn't fixable in general here).
+        private const int PhantomStuckInvulnerableTicks = 2; // 1 second
+        private const float PhantomStandaloneAggroRange = 3000f;
         private static readonly Dictionary<ulong, int> s_phantomInvulnerableTrack = new();
         private static readonly HashSet<ulong> s_phantomDeliberatelyInvincible = new();
+        // No-repeat guard: (phantom, condition/power ref) -> game-time ms until which
+        // that specific condition source is barred from granting invulnerability again.
+        private static readonly Dictionary<(ulong, PrototypeId), long> s_phantomInvulnConditionCooldownUntilMs = new();
 
         // Per-(phantom,target) blacklist expiry. Populated when ActivatePower
         // returns non-Success, so the sweep skips that target for
@@ -4868,8 +4944,27 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             if (enemy == false && bypassCap == false)
             {
-                int cap = GetPhantomPartyCap(region);
-                if (1 + host.PhantomHeroCount >= cap)
+                // Confirmed live 2026-07-26 — combining via Math.Min() was
+                // wrong: the Danger Room Endless arena's own 4-player-total
+                // co-op cap (Player.GetEndlessPhantomSlotCap, meant to allow
+                // up to 3 for a solo player) was getting silently clamped
+                // down by the UNRELATED generic party-size cap
+                // (GetPhantomPartyCap, driven by PlayerPartyMaxSize data
+                // this custom arena has nothing to do with) — a player
+                // brought 3 phantoms in and only 2 came through. The Endless
+                // arena's own rule should be fully authoritative inside that
+                // specific region, not further restricted by whatever normal
+                // party-size limit happens to apply there; it already
+                // returns int.MaxValue (no-op) everywhere else in the game.
+                int endlessCap = Player.GetEndlessPhantomSlotCap(region, host);
+                int cap = endlessCap != int.MaxValue ? endlessCap : GetPhantomPartyCap(region);
+                // Confirmed live 2026-07-26 — this was ">= cap", an off-by-
+                // one that rejected the LAST legitimate slot instead of only
+                // rejecting once actually over cap: with cap=3 and 2 already
+                // in, "1+2 >= 3" blocked the 3rd phantom even though 3 total
+                // is exactly the intended limit, not past it. A cap of N
+                // should allow N, not N-1.
+                if (1 + host.PhantomHeroCount > cap)
                 {
                     error = $"squad full ({host.PhantomHeroCount + 1}/{cap}) — this region's party/raid cap won't allow another phantom";
                     return 0;
@@ -4976,6 +5071,27 @@ namespace MHServerEmu.Games.Entities.Avatars
                         alliancePlaceholder = hostileRef.As<AlliancePrototype>();
                 }
                 teamUp.SetSummonedAllianceOverride(alliancePlaceholder);
+
+                // Same reliability fix as avatar-type ambush phantoms above
+                // and standalone curated bosses (EntityHelper.
+                // ApplyStandaloneBossFixups) — a hostile team-up spawned away
+                // from the player it's meant to ambush can sit inert until
+                // hit once and then go idle again. Widen its aggro range
+                // instead of hard-pinning one fixed target id: that still
+                // lets normal sensing (Combat.GetValidTargetsInSphere) pick
+                // ANY valid hostile in range, so it can engage the player's
+                // OTHER friendly phantom heroes/team-ups too, not just this
+                // one real player forever.
+                if (enemy)
+                {
+                    teamUp.Properties[PropertyEnum.Dormant] = false;
+                    if (teamUp.AIController != null)
+                    {
+                        var teamUpBlackboard = teamUp.AIController.Blackboard.PropertyCollection;
+                        teamUpBlackboard[PropertyEnum.AIAggroRangeOverrideHostile] = PhantomStandaloneAggroRange;
+                        teamUpBlackboard[PropertyEnum.AIAggroRangeOverrideAlly] = PhantomStandaloneAggroRange;
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -5232,8 +5348,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                 Player capHost = PhantomHost;
                 if (capHost != null)
                 {
-                    int cap = GetPhantomPartyCap(region);
-                    if (1 + capHost.PhantomHeroCount >= cap)
+                    // See the other GetEndlessPhantomSlotCap call site (this
+                    // file's SpawnTeamUpPhantomHero) for why the Endless
+                    // cap fully overrides the generic one instead of being
+                    // Math.Min'd against it.
+                    int endlessCap = Player.GetEndlessPhantomSlotCap(region, capHost);
+                    int cap = endlessCap != int.MaxValue ? endlessCap : GetPhantomPartyCap(region);
+                    // See the other call site's comment — off-by-one fixed:
+                    // a cap of N should allow N phantoms, not N-1.
+                    if (1 + capHost.PhantomHeroCount > cap)
                     {
                         error = $"squad full ({capHost.PhantomHeroCount + 1}/{cap}) — this region's party/raid cap won't allow another phantom";
                         return 0;
@@ -5544,6 +5667,29 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // loop target players/friendly phantoms, mobs ignore them,
                 // and players able to damage them.
                 phantomAvatar.Properties[PropertyEnum.AllianceOverride] = ResolveHostileAllianceRef();
+
+                // Same reliability fix applied to standalone curated bosses
+                // (EntityHelper.ApplyStandaloneBossFixups) — Dormant can
+                // leave a spawn sitting idle until a player closes the
+                // native WakeRange gap, and natural AI sensing range can be
+                // too short for a hostile phantom spawned well away from the
+                // player it's meant to ambush, making it sit inert until hit
+                // once (which force-registers the attacker through a
+                // separate path) and then go idle again once that fades.
+                // Widen the aggro range (read from AIController.Blackboard,
+                // NOT the entity's own Properties — a separate collection)
+                // rather than hard-pinning one target id: Combat.
+                // GetValidTargetsInSphere still searches the whole hostile
+                // pool within that radius, so this phantom can engage the
+                // player's OTHER friendly phantom heroes/team-ups too, not
+                // just lock onto this one real player forever.
+                phantomAvatar.Properties[PropertyEnum.Dormant] = false;
+                if (phantomAvatar.AIController != null)
+                {
+                    var phantomBlackboard = phantomAvatar.AIController.Blackboard.PropertyCollection;
+                    phantomBlackboard[PropertyEnum.AIAggroRangeOverrideHostile] = PhantomStandaloneAggroRange;
+                    phantomBlackboard[PropertyEnum.AIAggroRangeOverrideAlly] = PhantomStandaloneAggroRange;
+                }
 
                 // Enemy phantoms already have their own custom gear-drop
                 // suppression gated on IsEndlessChallengeActive (see the

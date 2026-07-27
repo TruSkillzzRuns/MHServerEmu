@@ -22,6 +22,17 @@ namespace MHServerEmu.Games.Entities
         // 1..5 rank cap. Each rank adds a name suffix + HP/damage buff.
         public const int NemesisMaxRank = 5;
 
+        // 2026-07-27 — Endless Wave-only extension of the same rank curve up
+        // to 10, for players who go deep into a long run. Deliberately NOT
+        // used by NemesisMaxRank/the persistent Rogue Encounter system — a
+        // revenge nemesis's own Rank field is separately capped at
+        // NemesisMaxRank (see RestoreNemesesFromMigration-adjacent rank++
+        // logic), so it can never actually reach ranks 6-10 even though
+        // NemesisHealthMultForRank/NemesisDmgBoostForRank below now have
+        // data for them — those cases are only ever reachable via Endless
+        // mode's own synthetic scaleIndex-driven rank (Player.WaveDirector.cs).
+        public const int EndlessMaxRank = 10;
+
         // Per-escape HP bonus (see Avatar.Nemesis.cs) — +2% HealthMaxMult on
         // top of the rank curve for every time this nemesis has escaped
         // after killing the player, applied multiplicatively at spawn.
@@ -463,7 +474,14 @@ namespace MHServerEmu.Games.Entities
             // now take full damage, so the rank curve is steeper. Rank 5
             // nemesis lands at 20× HealthMax — a proper mini-boss encounter
             // that can't be one-shot by a well-geared 60.
-            int r = Math.Clamp(rank, 0, NemesisMaxRank);
+            //
+            // Ranks 6-10 (2026-07-27) are Endless Wave-only — see
+            // EndlessMaxRank's doc comment. HP keeps accelerating past rank 5
+            // deliberately (a player this deep into a run has had far more
+            // chest tiers/gear by then), while the damage-boost curve below
+            // decelerates in comparison, so surviving this deep reads as a
+            // sustained-DPS marathon rather than an instant kill either way.
+            int r = Math.Clamp(rank, 0, EndlessMaxRank);
             return r switch
             {
                 0 => 8.0f,   // baseline enemy — matches EnemyPhantomHealthMult
@@ -472,6 +490,11 @@ namespace MHServerEmu.Games.Entities
                 3 => 12.0f,
                 4 => 22.0f,  // buffed — a genuine wall
                 5 => 32.0f,  // buffed — proper raid-boss HP pool
+                6 => 45.0f,
+                7 => 60.0f,
+                8 => 80.0f,
+                9 => 105.0f,
+                10 => 140.0f,
                 _ => 8.0f,
             };
         }
@@ -491,7 +514,8 @@ namespace MHServerEmu.Games.Entities
         // the compounding instead of re-guessing a number from scratch.
         internal static float NemesisDmgBoostForRank(int rank)
         {
-            int r = Math.Clamp(rank, 0, NemesisMaxRank);
+            // Ranks 6-10 are Endless Wave-only — see EndlessMaxRank.
+            int r = Math.Clamp(rank, 0, EndlessMaxRank);
             return r switch
             {
                 0 => 0.00f,
@@ -500,6 +524,11 @@ namespace MHServerEmu.Games.Entities
                 3 => 0.25f,
                 4 => 0.30f,  // rescaled down — was 0.60 before gear/Legendary-rank fixes
                 5 => 0.40f,  // rescaled down — was 0.80 before gear/Legendary-rank fixes
+                6 => 0.48f,
+                7 => 0.55f,
+                8 => 0.62f,
+                9 => 0.70f,
+                10 => 0.80f,
                 _ => 0.00f,
             };
         }
@@ -520,7 +549,12 @@ namespace MHServerEmu.Games.Entities
         // real story/raid bosses are already tuned as a real fight, so this
         // only needs to make repeat-kill rank escalation feel meaningful,
         // not carry the whole difficulty curve the way the phantom numbers do.
-        public static float BossNemesisExtraHealthMultForRank(int rank) => 1f + Math.Clamp(rank, 0, NemesisMaxRank) * 0.15f;
-        public static float BossNemesisExtraDamageMultForRank(int rank) => 1f + Math.Clamp(rank, 0, NemesisMaxRank) * 0.10f;
+        // Clamped to EndlessMaxRank (10), not NemesisMaxRank (5) — a real
+        // story/raid boss nemesis's own persistent Rank field is still
+        // separately capped at NemesisMaxRank, so this only actually
+        // extends past 5 for Endless Wave's periodic real-boss spawn
+        // (Player.WaveDirector.cs), which passes _endlessPeakRank here.
+        public static float BossNemesisExtraHealthMultForRank(int rank) => 1f + Math.Clamp(rank, 0, EndlessMaxRank) * 0.15f;
+        public static float BossNemesisExtraDamageMultForRank(int rank) => 1f + Math.Clamp(rank, 0, EndlessMaxRank) * 0.10f;
     }
 }

@@ -231,13 +231,46 @@ namespace MHServerEmu.Games.GameData.PatchManager
             {
                 var items = new object[array.Length];
                 for (int i = 0; i < array.Length; i++)
-                {
-                    object element = array.GetValue(i);
-                    items[i] = element is Prototype p ? $"<Prototype:{p.GetType().Name}>" : element;
-                }
+                    items[i] = SummarizeScalar(array.GetValue(i));
                 return items;
             }
-            return rawValue is Prototype proto ? $"<Prototype:{proto.GetType().Name}>" : rawValue;
+            return SummarizeScalar(rawValue);
+        }
+
+        /// <summary>
+        /// Converts a single field value into something System.Text.Json can
+        /// actually serialize. Confirmed live 2026-07-27 — the base
+        /// Prototype.ClassType field (type System.Type) reached
+        /// SendJsonAsync raw and threw NotSupportedException. A first attempt
+        /// special-cased Type/MemberInfo/Delegate directly, but that only
+        /// covers the crash observed at the TOP level of a prototype's own
+        /// properties — a property whose return type is some OTHER complex
+        /// object (e.g. PrototypeFieldInfo, which itself exposes a ClassType
+        /// : Type property — GameData/PrototypeFieldInfo.cs:31) still passes
+        /// that nested Type through untouched and crashes exactly the same
+        /// way one level deeper. Rather than keep enumerating specific
+        /// offending nested types one crash at a time, switched to a
+        /// WHITELIST: only pass a value through as-is if it's a type we
+        /// affirmatively know System.Text.Json can handle (primitives,
+        /// string, enums, our known lightweight value-wrapper structs).
+        /// Everything else — any unrecognized class or struct, however deep
+        /// or whatever it contains — becomes value.ToString() instead. This
+        /// can never crash on serialization since it never delegates to
+        /// Json for an unknown type's own field graph.
+        /// </summary>
+        private static object SummarizeScalar(object value)
+        {
+            if (value == null) return null;
+            if (value is Prototype p) return $"<Prototype:{p.GetType().Name}>";
+
+            Type type = value.GetType();
+            if (type.IsPrimitive || type == typeof(string) || type.IsEnum
+                || type == typeof(PrototypeId) || type == typeof(AssetId)
+                || type == typeof(PrototypeGuid) || type == typeof(LocaleStringId)
+                || type == typeof(BlueprintId) || type == typeof(AssetTypeId))
+                return value;
+
+            return value.ToString();
         }
 
         private static ValueBase WrapAsValueBase(object value)

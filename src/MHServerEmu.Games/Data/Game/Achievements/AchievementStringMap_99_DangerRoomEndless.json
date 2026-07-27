@@ -7,5 +7,23 @@
   },
   "1234567890123456792": {
     "en_us": "Wave $CurrentCount$"
+  },
+  "1234567890123456793": {
+    "en_us": "Choose your difficulty:"
+  },
+  "1234567890123456794": {
+    "en_us": "Recruit"
+  },
+  "1234567890123456795": {
+    "en_us": "Veteran"
+  },
+  "1234567890123456796": {
+    "en_us": "Omega-Level"
+  },
+  "1234567890123456797": {
+    "en_us": "More Options..."
+  },
+  "1234567890123456798": {
+    "en_us": "Choose your difficulty (advanced):"
   }
 }

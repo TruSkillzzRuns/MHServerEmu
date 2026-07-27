@@ -163,6 +163,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 int spawned = 0, failed = 0;
                 string firstError = null;
                 int clampedCount = Math.Clamp(count, 1, 10);
+                var spawnedIds = new List<string>();
 
                 for (int i = 0; i < clampedCount; i++)
                 {
@@ -182,13 +183,23 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         continue;
                     }
 
+                    // Same fixups Player.WaveDirector.cs's SpawnCuratedBoss
+                    // applies — Dormant clear, AllianceOverride, LootCooldown
+                    // fallback, AICustomThinkRateMS, MODOK AI-bootstrap fix.
+                    // Without these a manually test-spawned boss can spawn
+                    // Dormant, mutually hostile with other enemies, or (MODOK
+                    // specifically) stuck in a broken AI state and never
+                    // attack/move at all — confirmed live 2026-07-26.
+                    EntityHelper.ApplyStandaloneBossFixups(agent, bossProto);
+
                     spawned++;
                     if (!SpawnedByPlayer.TryGetValue(p.DatabaseUniqueId, out var ids))
                         SpawnedByPlayer[p.DatabaseUniqueId] = ids = new List<ulong>();
                     ids.Add(agent.Id);
+                    spawnedIds.Add($"0x{agent.Id:X}");
                 }
 
-                return new { Ok = spawned > 0 || failed == 0, Error = (string)null, Spawned = spawned, Failed = failed, FirstError = firstError };
+                return new { Ok = spawned > 0 || failed == 0, Error = (string)null, Spawned = spawned, Failed = failed, FirstError = firstError, EntityIds = spawnedIds };
             });
 
             Logger.Info($"[BossRoster] spawn for {player.GetName()}: {JsonSerializer.Serialize(result)}");

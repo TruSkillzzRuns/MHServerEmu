@@ -126,6 +126,28 @@ namespace MHServerEmu.Games.GameData.Calligraphy
         }
         
         /// <summary>
+        /// Debug helper (2026-07-27) — returns every asset id in this type
+        /// whose name CONTAINS the given substring, unlike
+        /// <see cref="FindAssetByName"/>'s exact match. Used to discover the
+        /// real registered name of an asset when only a rough/partial name
+        /// is known (e.g. a mesh package name confirmed via an external
+        /// tool, but not necessarily the exact string this engine's asset
+        /// directory has it registered under).
+        /// </summary>
+        public List<AssetId> FindAssetsByNameContains(string substring, bool ignoreCase)
+        {
+            var results = new List<AssetId>();
+            StringComparison comparison = ignoreCase ? StringComparison.InvariantCultureIgnoreCase : StringComparison.InvariantCulture;
+            foreach (AssetValue value in _assets)
+            {
+                string assetName = GameDatabase.GetAssetName(value.Id);
+                if (assetName != null && assetName.Contains(substring, comparison))
+                    results.Add(value.Id);
+            }
+            return results;
+        }
+
+        /// <summary>
         /// Enumerates this asset type taking symbolic enum binding into account.
         /// </summary>
         public void Enumerate()

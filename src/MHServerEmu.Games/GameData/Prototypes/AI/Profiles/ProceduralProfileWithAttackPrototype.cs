@@ -182,9 +182,21 @@ namespace MHServerEmu.Games.GameData.Prototypes
             return contextResult;
         }
 
+        // TEMP diagnostic (2026-07-26) — narrowing down why standalone MODOK
+        // senses a target and has candidate powers but HandleProceduralPower
+        // still reports LastPowerResult=Failed every tick. Gated to MODOK
+        // only so it doesn't spam for every other AI agent in the game.
+        private static readonly Logger AttackDiagLogger = LogManager.CreateLogger();
+        private static readonly Dictionary<ulong, long> AttackDiagLastLogMs = new();
+
         protected StaticBehaviorReturnType HandleUsePowerCheckCooldown(AIController ownerController, ProceduralAI proceduralAI, GRandom random,
             long currentTime, UsePowerContextPrototype powerContext, ProceduralUsePowerContextPrototype proceduralPowerContext)
         {
+            ulong ownerIdForDiag = ownerController.Owner?.Id ?? 0;
+            bool isModokDiag = this is ProceduralProfileMODOKPrototype
+                && (AttackDiagLastLogMs.TryGetValue(ownerIdForDiag, out long lastDiagMs) == false || currentTime - lastDiagMs >= 2000);
+            if (isModokDiag) AttackDiagLastLogMs[ownerIdForDiag] = currentTime;
+
             PropertyCollection blackboardProps = ownerController.Blackboard.PropertyCollection;
             long aggroTime = (long)blackboardProps[PropertyEnum.AIAggroTime] + (long)blackboardProps[PropertyEnum.AIInitialCooldownMSForPower, powerContext.Power.DataRef];
             if (currentTime >= aggroTime)
@@ -195,10 +207,18 @@ namespace MHServerEmu.Games.GameData.Prototypes
                     {
                         StaticBehaviorReturnType contextResult = HandleUsePowerContext(ownerController, proceduralAI, random, currentTime, powerContext, proceduralPowerContext);
                         OnPowerAttempted(ownerController, proceduralPowerContext, contextResult);
+                        if (isModokDiag)
+                            AttackDiagLogger.Info($"[MODOK:AttackDiag] {ownerController.Owner?.Id:X} power={powerContext.Power.DataRef.GetName()} HandleUsePowerContext result={contextResult}");
                         return contextResult;
                     }
+                    if (isModokDiag)
+                        AttackDiagLogger.Info($"[MODOK:AttackDiag] {ownerController.Owner?.Id:X} power={powerContext.Power.DataRef.GetName()} OnPowerPicked returned FALSE");
                 }
+                else if (isModokDiag)
+                    AttackDiagLogger.Info($"[MODOK:AttackDiag] {ownerController.Owner?.Id:X} power={powerContext.Power.DataRef.GetName()} blocked by AIProceduralPowerSpecificCDTime (specificCD={blackboardProps[PropertyEnum.AIProceduralPowerSpecificCDTime, powerContext.Power.DataRef]}, now={currentTime})");
             }
+            else if (isModokDiag)
+                AttackDiagLogger.Info($"[MODOK:AttackDiag] {ownerController.Owner?.Id:X} power={powerContext.Power.DataRef.GetName()} blocked by aggroTime gate (aggroTime={aggroTime}, now={currentTime})");
 
             return StaticBehaviorReturnType.Failed;
         }

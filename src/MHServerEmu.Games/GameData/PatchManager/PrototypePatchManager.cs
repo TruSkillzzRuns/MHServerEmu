@@ -170,6 +170,18 @@ namespace MHServerEmu.Games.GameData.PatchManager
             if (converter != null && converter.CanConvertFrom(rawValue.GetType()))
                 return converter.ConvertFrom(rawValue);
 
+            // Confirmed live 2026-07-27 — Convert.ChangeType refuses a direct
+            // enum-to-enum conversion (e.g. PrototypeGuid -> AssetId), even
+            // though every one of this engine's opaque ID wrapper types
+            // (PrototypeId/AssetId/AssetTypeId/BlueprintId/PrototypeGuid/
+            // LocaleStringId) is just a ulong underneath ("Invalid cast from
+            // 'PrototypeGuid' to 'AssetId'"). Route through the underlying
+            // numeric value first so any of these wrapper types can convert
+            // into any other — needed to patch e.g. a WorldEntityPrototype's
+            // UnrealClass (AssetId) field from a plain numeric input.
+            if (rawValue is Enum && targetType.IsEnum)
+                return Enum.ToObject(targetType, Convert.ToUInt64(rawValue));
+
             return Convert.ChangeType(rawValue, targetType);
         }
 

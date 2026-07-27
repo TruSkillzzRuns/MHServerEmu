@@ -1479,7 +1479,24 @@ namespace MHServerEmu.Games.Powers
                     TimeSpan cooldownTime = agentOwner.Game.CurrentTime + cooldownDuration;
                     PropertyCollection blackboardProperties = agentOwner.AIController.Blackboard.PropertyCollection;
                     blackboardProperties[PropertyEnum.AIProceduralPowerSpecificCDTime, PrototypeDataRef] = (long)cooldownTime.TotalMilliseconds;
-                    return;
+
+                    // Confirmed live 2026-07-26 — phantom heroes (synthetic
+                    // Avatars, always AI-controlled) use charge-based
+                    // resource powers the same as real players do (ammo/
+                    // combo-style kits, e.g. Punisher's Rework). This early
+                    // return skips the charge-replenishment scheduling below
+                    // entirely, so once a phantom's spawn-time charge pool
+                    // is spent it NEVER comes back — every subsequent
+                    // activation attempt fails InsufficientCharges
+                    // permanently. A real player has no AIController so
+                    // never hits this branch. Let phantom heroes specifically
+                    // fall through to the normal scheduling path below so
+                    // their charges actually regenerate; every other
+                    // AI-controlled entity (real enemy mobs/bosses/curated
+                    // bosses) keeps the exact existing blackboard-only
+                    // behavior untouched.
+                    if ((agentOwner as Avatar)?.IsPhantomHero != true)
+                        return;
                 }
             }
 

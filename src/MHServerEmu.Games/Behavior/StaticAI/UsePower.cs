@@ -106,9 +106,30 @@ namespace MHServerEmu.Games.Behavior.StaticAI
             return StaticBehaviorReturnType.Running;
         }
 
+        // TEMP diagnostic (2026-07-26) — narrowing down exactly why a
+        // standalone MODOK boss spawn's power activation always fails; the
+        // caller only ever sees a bool, this is the one place with the real
+        // PowerUseResult. Gated to MODOK only + throttled so it doesn't spam
+        // for every other AI agent's every power check.
+        private static readonly Dictionary<ulong, long> ModokValidateDiagLastLogMs = new();
+
         public bool Validate(in IStateContext context)
         {
-            return ValidateInternal(context) == PowerUseResult.Success;
+            PowerUseResult result = ValidateInternal(context);
+
+            if (context is UsePowerContext powerContext
+                && powerContext.OwnerController?.Owner is Agent diagAgent
+                && diagAgent.AgentPrototype?.BehaviorProfile?.Brain.As<Prototype>() is ProceduralProfileMODOKPrototype)
+            {
+                long nowMs = (long)(diagAgent.Game?.CurrentTime.TotalMilliseconds ?? 0);
+                if (ModokValidateDiagLastLogMs.TryGetValue(diagAgent.Id, out long lastMs) == false || nowMs - lastMs >= 2000)
+                {
+                    ModokValidateDiagLastLogMs[diagAgent.Id] = nowMs;
+                    Logger.Info($"[MODOK:ValidateDiag] {diagAgent.Id:X} power={powerContext.Power.GetName()} ValidateInternal result={result}");
+                }
+            }
+
+            return result == PowerUseResult.Success;
         }
 
         private static PowerUseResult ValidateInternal(in IStateContext context)

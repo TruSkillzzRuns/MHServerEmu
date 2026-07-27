@@ -80,6 +80,16 @@ namespace MHServerEmu.Games.Regions
         private int _playerDeaths;
         private PrototypeId _avatarOnKilledInfo = PrototypeId.Invalid;
 
+        // Danger Room Endless Terminal 4-player co-op groundwork (Phase 2,
+        // 2026-07-26) — purely additive, read/written only by
+        // Player.WaveDirector.cs/Player.DangerRoomEndlessTerminal.cs. Marks
+        // which real player's WaveDirector state is the authoritative one
+        // for a shared Endless Wave run in this region instance, so a second
+        // real player joining via the game's own "teleport to party member"
+        // feature routes terminal interactions to the SAME run instead of
+        // starting an independent parallel one. 0 = no host / not applicable.
+        public ulong EndlessHostPlayerDbId;
+
         public Game Game { get; private set; }
         public ulong Id { get; private set; } // InstanceAddress
         public RegionSettings Settings { get; private set; }

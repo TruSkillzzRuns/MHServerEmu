@@ -13,6 +13,7 @@ using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Loot;
 using MHServerEmu.Games.Properties;
 using MHServerEmu.Games.Regions;
+using MHServerEmu.Games.Social.Parties;
 using MHServerEmu.Games.UI.Widgets;
 
 namespace MHServerEmu.Games.Entities
@@ -84,20 +85,104 @@ namespace MHServerEmu.Games.Entities
         // entity, no LootSpawnGrid call at all) instead of SpawnLootFromTable.
         // See SpawnOneEndlessChest / OnEndlessChestInteract.
         private readonly Dictionary<ulong, (int rolls, List<PrototypeId> rarities)> _pendingChestLoot = new();
+
+        // Spawn timestamp (WaveNowMs) for every Item entity dropped from a
+        // chest, so DespawnLeftoverGroundLoot can tell freshly-dropped loot
+        // (protect it) apart from loot that's genuinely been sitting for a
+        // full cycle (safe to sweep). See OnEndlessChestInteract /
+        // DespawnLeftoverGroundLoot.
+        private readonly Dictionary<ulong, long> _lootSpawnTimeMs = new();
+        private const int LootSweepGraceMs = 60_000;
         private Region _endlessChestRegion;
         private Event<PlayerInteractGameEvent>.Action _endlessChestInteractAction;
 
         // Endless Challenge (2026-07-22) — a thin layer on top of the manual
         // wave engine above: a single WaveDef that loops forever (_waveLoop
         // stays true), with a SEPARATE escalation counter that keeps climbing
-        // even though _waveIndex itself resets to 0 every loop. Ends on the
-        // real avatar's death (wipe) or an explicit Extract call (safe bail),
-        // committing waves-survived to the "EndlessChallenge" Leaderboard kind.
+        // even though _waveIndex itself resets to 0 every loop. Ends on a
+        // wipe (see EndlessMaxDeathsPerRealPlayer) or an explicit Extract
+        // call (safe bail), committing waves-survived to the
+        // "EndlessChallenge" Leaderboard kind.
         private bool _isEndlessMode;
         private int _endlessCycle;
         private int _endlessPeakRank;
         private string _endlessHeroName;
         private int _endlessLastBossWaveSpawned = -1; // scaleIndex a boss was already spawned for — guards against double-spawning if SpawnNextWave ever re-runs the same wave
+
+        // 2026-07-26 — 4-player co-op groundwork (Phase 1). A real player
+        // gets up to EndlessMaxDeathsPerRealPlayer deaths before being
+        // permanently downed for the run; the whole run ends the moment
+        // EITHER every real player currently in the run is downed, OR any
+        // single real player exhausts their lives — whichever comes first.
+        // Keyed by the real player's DatabaseUniqueId so it survives a
+        // cross-region Game-instance reset the same way NemesisEntry does.
+        // Phantom/team-up deaths never count — they aren't real players.
+        // Currently only ever contains `this` player's own entry (multiple
+        // real players sharing one run is Phase 2), but keyed/structured so
+        // adding more real players later is just iterating more entries
+        // instead of a redesign.
+        private const int EndlessMaxDeathsPerRealPlayerDefault = 3;
+        private int _endlessMaxDeathsPerRealPlayer = EndlessMaxDeathsPerRealPlayerDefault;
+        private readonly Dictionary<ulong, int> _endlessRealPlayerDeaths = new();
+
+        // Difficulty preset chosen at the terminal the FIRST time a run is
+        // started (never re-prompted on a loot-break "continue" — see
+        // OnDrTerminalInteract/OnDrTerminalDialogResponse in
+        // Player.DangerRoomEndlessTerminal.cs). Recruit/Veteran/Omega-Level
+        // map to eGDR_Option1/2/3. Veteran is deliberately identical to the
+        // tuning this mode already shipped with (zero regression for anyone
+        // who doesn't care about difficulty selection) — Recruit only eases
+        // survival/enemy toughness, Omega-Level only tightens both and adds
+        // a loot bonus as the tradeoff.
+        public enum EndlessDifficulty { Recruit = 1, Veteran = 2, OmegaLevel = 3 }
+        private EndlessDifficulty _endlessDifficulty = EndlessDifficulty.Veteran;
+
+        // Multiplier applied to the per-wave enemy COUNT scale (see
+        // StartEndlessChallenge, where it's folded into the countScalePerWave
+        // argument before StartWaveRun stores it). Level bump per wave is
+        // deliberately left alone across all three tiers — the level-60 cap
+        // is reached quickly regardless, so it isn't a meaningful lever;
+        // rank-bump frequency, boss frequency, and crowd size are.
+        private float _endlessCountScaleMult = 1f;
+
+        private void ApplyEndlessDifficulty(EndlessDifficulty difficulty)
+        {
+            _endlessDifficulty = difficulty;
+            switch (difficulty)
+            {
+                case EndlessDifficulty.Recruit:
+                    _endlessMaxDeathsPerRealPlayer = 5;
+                    _endlessHazardMinDelayMs = 10_000;
+                    _endlessHazardMaxDelayMs = 18_000;
+                    _endlessHazardChance = 0.6;
+                    _endlessLootRollBonus = 0;
+                    _endlessCountScaleMult = 0.65f;    // ~10% enemies/wave instead of 15%
+                    _endlessRankBumpEveryNWaves = 4;   // was 3 — toughness ramps slower
+                    _endlessBossEveryNWaves = 9;       // was 7 — real bosses show up less often
+                    break;
+                case EndlessDifficulty.OmegaLevel:
+                    _endlessMaxDeathsPerRealPlayer = 1;
+                    _endlessHazardMinDelayMs = 4_000;
+                    _endlessHazardMaxDelayMs = 8_000;
+                    _endlessHazardChance = 1.0;
+                    _endlessLootRollBonus = 2;
+                    _endlessCountScaleMult = 1.45f;    // ~22% enemies/wave instead of 15%
+                    _endlessRankBumpEveryNWaves = 2;   // was 3 — toughness ramps much faster
+                    _endlessBossEveryNWaves = 5;       // was 7 — real bosses show up much more often
+                    break;
+                case EndlessDifficulty.Veteran:
+                default:
+                    _endlessMaxDeathsPerRealPlayer = EndlessMaxDeathsPerRealPlayerDefault;
+                    _endlessHazardMinDelayMs = EndlessHazardMinDelayMsDefault;
+                    _endlessHazardMaxDelayMs = EndlessHazardMaxDelayMsDefault;
+                    _endlessHazardChance = EndlessHazardChanceDefault;
+                    _endlessLootRollBonus = 0;
+                    _endlessCountScaleMult = 1f;
+                    _endlessRankBumpEveryNWaves = EndlessRankBumpEveryNWavesDefault;
+                    _endlessBossEveryNWaves = EndlessBossEveryNWavesDefault;
+                    break;
+            }
+        }
 
         // Random hazard events — an extra ambush phantom that can drop in
         // mid-wave, independent of the wave's own spawn count. Ticks on a
@@ -111,9 +196,16 @@ namespace MHServerEmu.Games.Entities
         // fire constantly throughout the whole wave, not just occasionally —
         // shortened the delay and raised the chance so bursts land every
         // ~6-12s instead.
-        private const int EndlessHazardMinDelayMs = 6_000;
-        private const int EndlessHazardMaxDelayMs = 12_000;
-        private const double EndlessHazardChance = 0.85; // rolled each time the tick fires — occasionally skips so it's not perfectly metronomic
+        private const int EndlessHazardMinDelayMsDefault = 6_000;
+        private const int EndlessHazardMaxDelayMsDefault = 12_000;
+        private const double EndlessHazardChanceDefault = 0.85; // rolled each time the tick fires — occasionally skips so it's not perfectly metronomic
+        private int _endlessHazardMinDelayMs = EndlessHazardMinDelayMsDefault;
+        private int _endlessHazardMaxDelayMs = EndlessHazardMaxDelayMsDefault;
+        private double _endlessHazardChance = EndlessHazardChanceDefault;
+        // Extra loot rolls granted per chest at Omega-Level difficulty as the
+        // tradeoff for its harsher hazard/lives tuning — see
+        // ApplyEndlessDifficulty. 0 for Recruit/Veteran.
+        private int _endlessLootRollBonus;
         private readonly EventPointer<EndlessHazardTickEvent> _endlessHazardTick = new();
 
         // Periodic REAL boss — every EndlessBossEveryNWaves cleared waves,
@@ -125,7 +217,8 @@ namespace MHServerEmu.Games.Entities
         // content, not reused player-hero prototypes, so no phantom
         // pipeline or manual stat buff is needed; they carry their own
         // native hostile alliance/stats already.
-        private const int EndlessBossEveryNWaves = 7;
+        private const int EndlessBossEveryNWavesDefault = 7;
+        private int _endlessBossEveryNWaves = EndlessBossEveryNWavesDefault;
 
         // Loot break — every EndlessLootBreakEveryNWaves cleared waves,
         // pause and let the player bank loot at a stash box before
@@ -136,13 +229,6 @@ namespace MHServerEmu.Games.Entities
 
         /// <summary>True while the wave run is paused (manual pause OR a loot break) — used to tell "not started" apart from "paused mid-run" at the terminal.</summary>
         public bool IsWaveRunPaused => _wavePaused;
-
-        // AI think-rate tuning for every SpawnCuratedBoss spawn (2026-07-26)
-        // — per-instance only, see the comment at the Properties assignment
-        // in SpawnCuratedBoss for why this can't leak into original content.
-        // Native default is 100ms with a target / 500ms without one; this
-        // tightens it so bosses react/reconsider noticeably faster.
-        private const int CuratedBossThinkRateMs = 50;
 
         private static List<PrototypeId> s_endlessBossPool;
         private static readonly object s_endlessBossPoolLock = new();
@@ -231,69 +317,14 @@ namespace MHServerEmu.Games.Entities
             Agent agent = EntityHelper.CreateAgent(bossProto, avatar, position, orientation);
             if (agent == null) { error = "CreateAgent returned null"; return 0; }
 
-            // Confirmed live 2026-07-26 via code trace — any AgentPrototype
-            // with a nonzero WakeRange (Agent.cs:126) spawns Dormant and
-            // only wakes once a player closes to within that native range
-            // (BehaviorSensorySystem.cs's UpdateAvatarSensory). That's
-            // correct for a real population encounter the player walks up
-            // to, but our spawn drops bosses 250-400u from the player
-            // directly — if the boss's own WakeRange is smaller than that,
-            // it just sits there until the player closes the remaining gap.
-            // Force-clear it per-instance so a directly-spawned wave boss
-            // engages immediately; real population-triggered spawns
-            // elsewhere in the game are untouched.
-            agent.Properties[PropertyEnum.Dormant] = false;
-
-            // A curated boss keeps its own native AgentPrototype alliance by
-            // default — confirmed live 2026-07-26 that this can be (and was)
-            // genuinely mutually hostile with the phantom-hero enemy
-            // alliance per the real game's own alliance table, so phantoms
-            // and the boss fought each other instead of both only fighting
-            // the player. Override to the exact same alliance phantom heroes
-            // use — alliances are auto-friendly to themselves, so this makes
-            // all enemy categories mutually friendly while staying hostile
-            // to the player. Per-instance Properties write only, no
-            // prototype/global alliance data touched.
-            PrototypeId enemyAllianceRef = Avatars.Avatar.GetEnemyPhantomAllianceRef();
-            if (enemyAllianceRef != PrototypeId.Invalid)
-                agent.Properties[PropertyEnum.AllianceOverride] = enemyAllianceRef;
+            // Shared with BossRosterWebHandler.cs's manual test spawn —
+            // Dormant clear, AllianceOverride, LootCooldown fallback,
+            // AICustomThinkRateMS, and the MODOK AI-bootstrap fix. See
+            // EntityHelper.ApplyStandaloneBossFixups's own doc comment.
+            EntityHelper.ApplyStandaloneBossFixups(agent, bossProto);
 
             if (extraHealthMult != 1f) agent.Properties[PropertyEnum.HealthMaxMult] = (float)agent.Properties[PropertyEnum.HealthMaxMult] * extraHealthMult;
             if (extraDamageMult != 1f) agent.Properties[PropertyEnum.DamageMult] = (float)agent.Properties[PropertyEnum.DamageMult] * extraDamageMult;
-
-            // Real bosses spawned via the game's own population/spawner
-            // system get one of LootCooldownByChannel/LootCooldownTimeHours/
-            // LootCooldownRolloverWallTime set automatically — that's what
-            // ItemResolverContext.SetInternal (Loot\ItemResolverContext.cs:
-            // 369-394) uses to resolve a valid CooldownData.OriginProtoRef
-            // for any cooldown-gated loot table entry (common for unique
-            // boss drops). A bare EntityHelper.CreateAgent spawn has none of
-            // these, so OriginProtoRef stays PrototypeId.Invalid and
-            // GetDropChance's Verify check (line 65) fails and silently
-            // returns 0 (no drop) for those entries — confirmed live
-            // 2026-07-26 via repeated "Verify failed" log spam right after
-            // a curated boss spawn. LootCooldownTimeHours=0 is enough to
-            // make SetInternal resolve OriginProtoRef to this boss's own
-            // PrototypeDataRef (always valid) without imposing any real
-            // farm-cooldown restriction.
-            if (agent.Properties.HasProperty(PropertyEnum.LootCooldownByChannel) == false
-                && agent.Properties.HasProperty(PropertyEnum.LootCooldownTimeHours) == false
-                && agent.Properties.HasProperty(PropertyEnum.LootCooldownRolloverWallTime) == false)
-            {
-                agent.Properties[PropertyEnum.LootCooldownTimeHours] = 0;
-            }
-
-            // Faster AI reaction time — per-instance only (Properties on
-            // THIS spawned entity), zero effect on any other spawn of the
-            // same boss prototype elsewhere in the game (story campaign,
-            // terminals, endgame use the native population/mission spawner,
-            // a completely separate code path). Default think interval is
-            // 100ms with a target / 500ms without one (AIController.cs) —
-            // this tightens the decision loop so the boss reconsiders/reacts
-            // noticeably faster without touching its actual attack-pacing
-            // or power-choice data (that's baked into the profile prototype
-            // itself and would be a shared, global change — not done here).
-            agent.Properties[PropertyEnum.AICustomThinkRateMS] = CuratedBossThinkRateMs;
 
             // Real bosses are plain Agents — their on-death loot comes from
             // WorldEntity.AwardKillLoot (WorldEntity.cs:4027), a completely
@@ -323,7 +354,8 @@ namespace MHServerEmu.Games.Entities
         // same rank->HP/damage curves the manual Rank field already uses
         // (NemesisHealthMultForRank/NemesisDmgBoostForRank in Avatar.PhantomHero.cs),
         // just driven by a synthetic "effective rank" instead of a fixed value.
-        private const int EndlessRankBumpEveryNWaves = 3;
+        private const int EndlessRankBumpEveryNWavesDefault = 3;
+        private int _endlessRankBumpEveryNWaves = EndlessRankBumpEveryNWavesDefault;
 
         // Endless Challenge has its own fixed reward/pacing cadence instead
         // of the manual run's configurable reward mode + intermission slider:
@@ -559,25 +591,80 @@ namespace MHServerEmu.Games.Entities
         }
 
         /// <summary>
+        /// 4-player co-op groundwork (Phase 1) — total (real players +
+        /// phantom heroes/team-ups) can never exceed 4 in the Danger Room
+        /// Endless arena specifically. Real players always take priority;
+        /// leftover slots go to phantoms: 4 real players = 0 phantom slots;
+        /// 3 real = 1 slot (party leader only); 2 real = 1 slot each; 1 real
+        /// (solo) = 3 slots. Returns int.MaxValue (no override) outside this
+        /// specific region, so Avatar.PhantomHero.cs's existing
+        /// GetPhantomPartyCap behavior is completely untouched everywhere
+        /// else in the game — this is combined with that cap via Math.Min,
+        /// never replaces it.
+        ///
+        /// Currently region.PlayerCount can only ever be 1 in this arena
+        /// (actual multi-real-player room-sharing is Phase 2) — this is
+        /// written to already handle 2-4 once that lands, rather than
+        /// needing a second pass later.
+        /// </summary>
+        public static int GetEndlessPhantomSlotCap(Region region, Player requestingPlayer)
+        {
+            if (region == null || region.PrototypeDataRef != (PrototypeId)DrEndlessArenaRegionRef)
+                return int.MaxValue;
+
+            const int maxTotalSlots = 4;
+            int realPlayerCount = Math.Max(1, region.PlayerCount);
+            int leftoverSlots = Math.Max(0, maxTotalSlots - realPlayerCount);
+
+            if (realPlayerCount <= 1) return leftoverSlots; // solo: 3
+            if (realPlayerCount == 2) return leftoverSlots >= 2 ? 1 : 0; // 2 real: 1 each
+
+            if (realPlayerCount == 3)
+            {
+                // Only 1 leftover slot to go around for 3 real players —
+                // reserved for the party leader rather than first-come.
+                Party party = requestingPlayer?.GetParty();
+                bool isLeader = party != null && party.IsLeader(requestingPlayer);
+                return isLeader ? Math.Min(1, leftoverSlots) : 0;
+            }
+
+            return 0; // 4 real players: no leftover slots
+        }
+
+        /// <summary>
         /// Start an Endless Challenge run: a single wave entry that repeats
         /// forever, escalating rank (every EndlessRankBumpEveryNWaves clears,
         /// capped at 5) and optionally count/level via the same scaling knobs
-        /// manual runs already use. Ends on the real avatar's death (wipe) or
-        /// an explicit ExtractEndlessChallenge call (safe bail) — either way,
-        /// waves survived commits to the "EndlessChallenge" Leaderboard kind.
+        /// manual runs already use. Ends on a wipe (see
+        /// EndlessMaxDeathsPerRealPlayer) or an explicit
+        /// ExtractEndlessChallenge call (safe bail) — either way, waves
+        /// survived commits to the "EndlessChallenge" Leaderboard kind.
         /// </summary>
         public string StartEndlessChallenge(WaveEntryDef baseEntry, int intermissionMs, ulong arenaRegionRef, bool clearArena,
-            float countScalePerWave, int levelBumpPerWave, ulong rewardLootTableRef)
+            float countScalePerWave, int levelBumpPerWave, ulong rewardLootTableRef, EndlessDifficulty difficulty = EndlessDifficulty.Veteran)
         {
             Avatar avatar = CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false) return "no avatar in world";
             if (baseEntry == null) return "no wave entry defined";
+
+            ApplyEndlessDifficulty(difficulty);
 
             _isEndlessMode = true;
             _endlessCycle = 0;
             _endlessPeakRank = baseEntry.Rank;
             _endlessHeroName = GetFriendlyHeroName(avatar);
             _endlessLastBossWaveSpawned = -1;
+            _endlessRealPlayerDeaths.Clear();
+            _pendingChestLoot.Clear();
+            _lootSpawnTimeMs.Clear();
+
+            // 4-player co-op groundwork (Phase 2) — mark THIS player as the
+            // authoritative host for this region instance's shared run, so
+            // Player.DangerRoomEndlessTerminal.cs's OnDrTerminalDialogResponse
+            // routes other real players' terminal interactions here instead
+            // of letting each of them start their own independent run.
+            if (avatar.Region != null)
+                avatar.Region.EndlessHostPlayerDbId = DatabaseUniqueId;
 
             var wave = new WaveDef();
             wave.Entries.Add(baseEntry);
@@ -589,7 +676,7 @@ namespace MHServerEmu.Games.Entities
             // tiered chest(s) AdvanceAfterWaveCleared spawns on milestone
             // waves (SpawnEndlessChests), still backed by rewardLootTableRef.
             string result = StartWaveRun(new List<WaveDef> { wave }, EndlessNormalIntermissionMs, arenaRegionRef, clearArena,
-                loop: true, countScalePerWave, levelBumpPerWave, WaveRewardMode.None, rewardLootTableRef);
+                loop: true, countScalePerWave * _endlessCountScaleMult, levelBumpPerWave, WaveRewardMode.None, rewardLootTableRef);
 
             ScheduleEndlessHazardTick();
             return result;
@@ -619,6 +706,13 @@ namespace MHServerEmu.Games.Entities
             _isEndlessMode = false;
             StopWaveRun(cleanup: true);
 
+            // 4-player co-op groundwork (Phase 2) — release the region host
+            // marker so the next terminal interaction (by anyone) can start
+            // a fresh run instead of finding a stale host reference.
+            Region endedRegion = CurrentAvatar?.Region;
+            if (endedRegion != null && endedRegion.EndlessHostPlayerDbId == DatabaseUniqueId)
+                endedRegion.EndlessHostPlayerDbId = 0;
+
             // Bring the Danger Room Endless Terminal back so another run can
             // be started — see Player.DangerRoomEndlessTerminal.cs (same
             // partial class). No-op if the player isn't in that arena.
@@ -633,7 +727,7 @@ namespace MHServerEmu.Games.Entities
             var scheduler = Game?.GameEventScheduler;
             if (scheduler == null || _isEndlessMode == false) return;
             if (_endlessHazardTick.IsValid) return;
-            int delayMs = Game.Random.Next(EndlessHazardMinDelayMs, EndlessHazardMaxDelayMs);
+            int delayMs = Game.Random.Next(_endlessHazardMinDelayMs, _endlessHazardMaxDelayMs);
             scheduler.ScheduleEvent(_endlessHazardTick, TimeSpan.FromMilliseconds(delayMs), _waveEvents);
             _endlessHazardTick.Get().Initialize(this);
         }
@@ -692,7 +786,7 @@ namespace MHServerEmu.Games.Entities
             {
                 if (_isEndlessMode == false) return; // run ended between scheduling and firing
 
-                if (Game.Random.NextDouble() < EndlessHazardChance)
+                if (Game.Random.NextDouble() < _endlessHazardChance)
                 {
                     Avatar avatar = CurrentAvatar;
                     if (avatar != null && avatar.IsInWorld)
@@ -980,13 +1074,33 @@ namespace MHServerEmu.Games.Entities
             // Endless Challenge wipe check — only meaningful once the run is
             // actually settled into Fighting/Intermission (avatar state
             // during Warp/Settle is transient and not a real "died" signal).
+            // 2026-07-26 — real players get EndlessMaxDeathsPerRealPlayer
+            // lives before they're out for good; a death before that just
+            // revives them in place and the run keeps going. The run only
+            // actually ends once every real player currently in it is out
+            // (for now, solo, that's just this one player hitting the cap —
+            // Phase 2 generalizes this to check every real player's count).
             if (_isEndlessMode && (_waveState == WaveState.Fighting || _waveState == WaveState.Intermission))
             {
                 Avatar endlessAvatar = CurrentAvatar;
                 if (endlessAvatar != null && endlessAvatar.IsDead)
                 {
-                    EndEndlessChallenge(died: true);
-                    return; // no reschedule — run is over
+                    int deaths = _endlessRealPlayerDeaths.TryGetValue(DatabaseUniqueId, out int prevDeaths) ? prevDeaths + 1 : 1;
+                    _endlessRealPlayerDeaths[DatabaseUniqueId] = deaths;
+
+                    if (deaths >= _endlessMaxDeathsPerRealPlayer)
+                    {
+                        WaveLogger.Info($"[WaveDirector] {GetName()}: wipe — exhausted {deaths}/{_endlessMaxDeathsPerRealPlayer} lives");
+                        EndEndlessChallenge(died: true);
+                        return; // no reschedule — run is over
+                    }
+
+                    try
+                    {
+                        endlessAvatar.Resurrect();
+                        SendBannerLines($"💀 Down! {deaths}/{_endlessMaxDeathsPerRealPlayer} lives used — back in the fight!");
+                    }
+                    catch (Exception ex) { WaveLogger.Warn($"[WaveDirector] {GetName()}: revive-on-death failed: {ex.Message}"); }
                 }
             }
 
@@ -1163,9 +1277,10 @@ namespace MHServerEmu.Games.Entities
             if (avatar == null || avatar.IsInWorld == false) return;
 
             List<PrototypeId> allowedRarities = Avatar.GetEndlessChestAllowedRarities(_endlessCycle, bumpOneBand: isLootsplosion);
-            int rolls = isLootsplosion
+            int rolls = (isLootsplosion
                 ? EndlessLootsplosionRolls
-                : Math.Min(EndlessChestMaxRolls, EndlessChestBaseRolls + _endlessCycle / EndlessChestRollsPerWaves);
+                : Math.Min(EndlessChestMaxRolls, EndlessChestBaseRolls + _endlessCycle / EndlessChestRollsPerWaves))
+                + _endlessLootRollBonus;
 
             try
             {
@@ -1227,21 +1342,23 @@ namespace MHServerEmu.Games.Entities
 
         /// <summary>
         /// Fires on ANY player interaction in the arena region — filters down
-        /// to interactions with one of THIS player's own pending reward
-        /// chests. Rolls and gives the loot straight to the player's
-        /// inventory (LootManager.GiveLootFromTable — never touches the
-        /// world/ground at all) then removes the chest so it can't be
-        /// re-opened.
+        /// to interactions with one of the tracked pending reward chests
+        /// this (host) player's WaveDirector spawned. Rolls loot for
+        /// WHOEVER actually interacted (evt.Player) — 4-player co-op
+        /// groundwork (Phase 2): the chest is host-tracked/host-spawned, but
+        /// any real player sharing this arena instance can open it and get
+        /// their own properly-scoped loot, not just the host.
         /// </summary>
         private void OnEndlessChestInteract(in PlayerInteractGameEvent evt)
         {
-            if (evt.Player != this) return;
             if (evt.InteractableObject == null) return;
             if (_pendingChestLoot.TryGetValue(evt.InteractableObject.Id, out var spec) == false) return;
+            Player interactingPlayer = evt.Player;
+            if (interactingPlayer == null) return;
 
             _pendingChestLoot.Remove(evt.InteractableObject.Id);
             WorldEntity chest = evt.InteractableObject;
-            Avatar avatar = CurrentAvatar;
+            Avatar avatar = interactingPlayer.CurrentAvatar;
             if (avatar == null) return;
 
             // The chest itself is a static prop — anchor every roll to ITS
@@ -1260,7 +1377,7 @@ namespace MHServerEmu.Games.Entities
                 if (_waveRewardLootTableRef != PrototypeId.Invalid)
                 {
                     using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
-                    inputSettings.Initialize(LootContext.Drop, this, avatar, chestPos);
+                    inputSettings.Initialize(LootContext.Drop, interactingPlayer, avatar, chestPos);
 
                     if (spec.rarities != null && spec.rarities.Count > 0)
                     {
@@ -1269,12 +1386,30 @@ namespace MHServerEmu.Games.Entities
                             inputSettings.LootRollSettings.Rarities.Add(r);
                     }
 
+                    var preExistingItemIds = new HashSet<ulong>();
+                    Region lootRegion = avatar.Region;
+                    if (lootRegion != null)
+                        foreach (Entity e in lootRegion.Entities)
+                            if (e is MHServerEmu.Games.Entities.Items.Item preItem)
+                                preExistingItemIds.Add(preItem.Id);
+
                     for (int i = 0; i < Math.Max(1, spec.rolls); i++)
                         Game.LootManager.SpawnLootFromTable(_waveRewardLootTableRef, inputSettings, 1);
+
+                    // Stamp every newly-created ground item so the next
+                    // DespawnLeftoverGroundLoot sweep gives it a grace period
+                    // instead of destroying it before the player can grab it.
+                    if (lootRegion != null)
+                    {
+                        long spawnStampMs = WaveNowMs;
+                        foreach (Entity e in lootRegion.Entities)
+                            if (e is MHServerEmu.Games.Entities.Items.Item newItem && preExistingItemIds.Contains(newItem.Id) == false)
+                                _lootSpawnTimeMs[newItem.Id] = spawnStampMs;
+                    }
                 }
 
-                try { SendBannerLines("💰 Chest opened!"); } catch { }
-                WaveLogger.Info($"[WaveDirector] {GetName()}: {GetName()} opened Endless chest {chest.Id:X} — {spec.rolls} roll(s) spawned at the chest");
+                try { interactingPlayer.SendBannerLines("💰 Chest opened!"); } catch { }
+                WaveLogger.Info($"[WaveDirector] {GetName()}: {interactingPlayer.GetName()} opened Endless chest {chest.Id:X} — {spec.rolls} roll(s) spawned at the chest");
             }
             catch (Exception ex)
             {
@@ -1404,16 +1539,32 @@ namespace MHServerEmu.Games.Entities
             var sweepPerfSw = System.Diagnostics.Stopwatch.StartNew();
             int scanned = 0;
 
+            long nowMs = WaveNowMs;
             var staleLoot = new List<WorldEntity>();
             foreach (Entity existing in region.Entities)
             {
                 scanned++;
                 if (existing is not MHServerEmu.Games.Entities.Items.Item item) continue;
                 if (item.IsDestroyed) continue;
+
+                // Confirmed live 2026-07-26 — sweeping every item
+                // unconditionally on every wave transition was destroying
+                // Cosmic+ gear the instant it dropped from a chest, before the
+                // player had a chance to walk over and pick it up (chest
+                // waves get a short intermission, and a slow grab could still
+                // be in progress when the next wave's sweep fired). Give
+                // recently-dropped loot a grace window instead of nuking it
+                // unconditionally; only genuinely stale loot (older than the
+                // grace period — i.e. left over from an earlier cycle) gets
+                // swept here.
+                if (_lootSpawnTimeMs.TryGetValue(item.Id, out long spawnedAtMs) && nowMs - spawnedAtMs < LootSweepGraceMs)
+                    continue;
+
                 staleLoot.Add(item);
             }
             foreach (WorldEntity existing in staleLoot)
             {
+                _lootSpawnTimeMs.Remove(existing.Id);
                 if (existing.IsInWorld) existing.ExitWorld();
                 existing.Destroy();
             }
@@ -1460,7 +1611,7 @@ namespace MHServerEmu.Games.Entities
                 int rank = entry.Rank;
                 if (_isEndlessMode && entry.IsEnemyPhantom)
                 {
-                    rank = Math.Clamp(entry.Rank + scaleIndex / EndlessRankBumpEveryNWaves, 0, 5);
+                    rank = Math.Clamp(entry.Rank + scaleIndex / _endlessRankBumpEveryNWaves, 0, EndlessMaxRank);
                     if (rank > _endlessPeakRank)
                     {
                         _endlessPeakRank = rank;
@@ -1569,7 +1720,7 @@ namespace MHServerEmu.Games.Entities
             // needed. _endlessLastBossWaveSpawned guards against a
             // double-spawn if SpawnNextWave ever re-runs for the same
             // scaleIndex (e.g. the "player died mid-spawn" retry path).
-            if (_isEndlessMode && scaleIndex > 0 && scaleIndex % EndlessBossEveryNWaves == 0 && _endlessLastBossWaveSpawned != scaleIndex)
+            if (_isEndlessMode && scaleIndex > 0 && scaleIndex % _endlessBossEveryNWaves == 0 && _endlessLastBossWaveSpawned != scaleIndex)
             {
                 _endlessLastBossWaveSpawned = scaleIndex;
                 var bossPool = GetEndlessBossPool();
@@ -1587,7 +1738,20 @@ namespace MHServerEmu.Games.Entities
                     // mutually hostile with the phantom-hero alliance,
                     // causing enemies to fight each other instead of both
                     // only fighting the player).
-                    ulong bossId = SpawnCuratedBoss(avatar, bossRef, out string bossSpawnErr);
+                    // Confirmed live 2026-07-27 — this periodic boss was
+                    // spawning at flat native stats with NO rank-based
+                    // scaling at all, unlike the phantom nemesis curve above
+                    // (BossNemesisExtraHealthMultForRank/DamageMultForRank
+                    // exist in Player.Nemesis.cs and are already used for
+                    // repeat-kill boss nemesis scaling, just never wired in
+                    // here). Reuse _endlessPeakRank — the same effective rank
+                    // the phantom mob curve tracks — so a real boss spawned
+                    // late into a long run (or under Omega-Level's faster
+                    // rank ramp) is a genuinely tougher fight, not identical
+                    // to the very first one.
+                    float bossExtraHealthMult = BossNemesisExtraHealthMultForRank(_endlessPeakRank);
+                    float bossExtraDamageMult = BossNemesisExtraDamageMultForRank(_endlessPeakRank);
+                    ulong bossId = SpawnCuratedBoss(avatar, bossRef, out string bossSpawnErr, bossExtraHealthMult, bossExtraDamageMult);
                     if (bossId != 0)
                     {
                         _waveAliveIds.Add(bossId);
@@ -1603,7 +1767,21 @@ namespace MHServerEmu.Games.Entities
             }
 
             if (_isEndlessMode)
+            {
                 UpdateEndlessWaveWidget(avatar);
+                // UpdateEndlessHudWidgets(avatar, isLive: true); — DISABLED
+                // 2026-07-26: confirmed live this does NOT work like
+                // MissionName does. The other 6 UIWidgetMissionText
+                // prototypes (ObjectiveNameLeft/Right/Center/LeftB/LeftC,
+                // MissionObjectiveName) all rendered raw unresolved
+                // placeholder text ("$MissionObjectiveName$") stacked on top
+                // of each other instead of our pushed strings — MissionName
+                // is apparently the only one of the 7 that works standalone;
+                // the rest likely need to be bound to a real active
+                // Mission's objective data to render anything sensible.
+                // Needs a different approach before re-enabling — see
+                // UpdateEndlessHudWidgets's own doc comment.
+            }
         }
 
         // Cached once per process: a UIWidgetGenericFractionPrototype the
@@ -1690,6 +1868,32 @@ namespace MHServerEmu.Games.Entities
         private const ulong EndlessWaveTextBaseStringId = 1234567890123460000; // + waveNumber = "Wave {waveNumber}"
         private const int EndlessWaveTextMaxBaked = 300; // AchievementStringMap_99_DangerRoomEndlessWaveNumbers.json bakes 1..300
 
+        // 2026-07-26 — persistent live "dashboard" HUD, same core trick as
+        // the Wave-N widget above (pre-baked LocaleStringId per possible
+        // value, picked and pushed live via UIWidgetMissionText.SetText) —
+        // see AchievementStringMap_99_DangerRoomEndlessHud.json for the
+        // baked strings. Each stat gets its OWN widget slot (found via
+        // /webapi/protoeditor/discover?baseType=UIWidgetMissionText —
+        // UI/MetaGame/ has 7 total blank UIWidgetMissionTextPrototype
+        // instances; MissionName is already used above, these 4 more are
+        // otherwise-unused ObjectiveName*/MissionObjectiveName slots),
+        // so several independently-live-updating lines can be on screen at
+        // once. Kill count is the one stat with an unbounded range — capped
+        // at 500 the same way Wave-N caps at 300, showing "Kills: 500+"
+        // beyond that rather than baking an infinite string table.
+        private const ulong EndlessHudLiveStatusWidgetRef = 0x2CCB121232F20FB7; // UI/MetaGame/ObjectiveNameLeft.prototype
+        private const ulong EndlessHudPeakRankWidgetRef = 0xC949F8AC4380102A;   // UI/MetaGame/ObjectiveNameRight.prototype
+        private const ulong EndlessHudAliveWidgetRef = 0x404C0678537A108D;     // UI/MetaGame/ObjectiveNameCenter.prototype
+        private const ulong EndlessHudKillsWidgetRef = 0x35D38509675A110E;     // UI/MetaGame/MissionObjectiveName.prototype
+
+        private const ulong EndlessHudLiveStatusBaseStringId = 1234567890123470000; // +0 = not running, +1 = live
+        private const ulong EndlessHudPeakRankBaseStringId = 1234567890123471000;   // +rank (0-5)
+        private const ulong EndlessHudAliveBaseStringId = 1234567890123472000;      // +count (0-30, matches the wave-mob spawn cap)
+        private const ulong EndlessHudKillsBaseStringId = 1234567890123473000;      // +count (0-500)
+        private const int EndlessHudKillsMaxBaked = 500;
+        private const ulong EndlessHudKillsOverflowStringId = 1234567890123473501; // "Kills: 500+"
+        private const int EndlessHudAliveMaxBaked = 30;
+
         private void UpdateEndlessWaveWidget(Avatar avatar)
         {
             try
@@ -1708,13 +1912,72 @@ namespace MHServerEmu.Games.Entities
             }
         }
 
-        /// <summary>Tear down the wave-count widget when an Endless Challenge run ends.</summary>
+        /// <summary>
+        /// DISABLED (2026-07-26, all call sites currently commented out) —
+        /// confirmed live this doesn't work. The 4 widget refs below
+        /// (ObjectiveNameLeft/Right/Center, MissionObjectiveName) are
+        /// UIWidgetMissionTextPrototype like EndlessWaveOnlyWidgetRef
+        /// (MissionName) above, but unlike that one, pushing SetText to them
+        /// rendered raw unresolved placeholder text ("$MissionObjectiveName$")
+        /// all stacked on top of each other on screen instead of our
+        /// strings. MissionName is apparently the only one of the 7
+        /// UIWidgetMissionText prototypes in UI/MetaGame/ that works
+        /// standalone with no host mission — the ObjectiveName* ones look
+        /// like they need to be genuinely bound to an active Mission's real
+        /// objective data (each representing one parallel objective slot in
+        /// the mission tracker) to render anything sensible, which we don't
+        /// have. Left in place (not deleted) as a documented dead end and a
+        /// starting point if a real bound-mission approach is attempted
+        /// later — see the chat with the user for the investigation that
+        /// led here (mission objective progress IS pushed as a live number
+        /// separately from text, confirmed from protobuf, but the label
+        /// text side needs an actual Mission, not a bare widget).
+        /// </summary>
+        private void UpdateEndlessHudWidgets(Avatar avatar, bool isLive)
+        {
+            try
+            {
+                var provider = avatar?.Region?.UIDataProvider;
+                if (provider == null) return;
+
+                int peakRank = Math.Clamp(_endlessPeakRank, 0, EndlessMaxRank);
+                int aliveCount = Math.Clamp(_waveAliveIds.Count, 0, EndlessHudAliveMaxBaked);
+                ulong killsStringId = _waveKills <= EndlessHudKillsMaxBaked
+                    ? EndlessHudKillsBaseStringId + (ulong)Math.Max(0, _waveKills)
+                    : EndlessHudKillsOverflowStringId;
+
+                provider.GetWidget<UIWidgetMissionText>((PrototypeId)EndlessHudLiveStatusWidgetRef)
+                    ?.SetText((LocaleStringId)(EndlessHudLiveStatusBaseStringId + (isLive ? 1u : 0u)), LocaleStringId.Blank);
+                provider.GetWidget<UIWidgetMissionText>((PrototypeId)EndlessHudPeakRankWidgetRef)
+                    ?.SetText((LocaleStringId)(EndlessHudPeakRankBaseStringId + (ulong)peakRank), LocaleStringId.Blank);
+                provider.GetWidget<UIWidgetMissionText>((PrototypeId)EndlessHudAliveWidgetRef)
+                    ?.SetText((LocaleStringId)(EndlessHudAliveBaseStringId + (ulong)aliveCount), LocaleStringId.Blank);
+                provider.GetWidget<UIWidgetMissionText>((PrototypeId)EndlessHudKillsWidgetRef)
+                    ?.SetText((LocaleStringId)killsStringId, LocaleStringId.Blank);
+            }
+            catch (Exception ex)
+            {
+                WaveLogger.Warn($"[WaveDirector] {GetName()}: Endless HUD widget update failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>Tear down the "Wave N" in-combat widget when an Endless Challenge run ends.</summary>
         private void ClearEndlessWaveWidget(Avatar avatar)
         {
             try
             {
-                PrototypeId widgetRef = (PrototypeId)EndlessWaveOnlyWidgetRef;
-                avatar?.Region?.UIDataProvider?.DeleteWidget(widgetRef);
+                var provider = avatar?.Region?.UIDataProvider;
+                if (provider == null) return;
+
+                provider.DeleteWidget((PrototypeId)EndlessWaveOnlyWidgetRef);
+
+                // 4-line HUD dashboard disabled (see UpdateEndlessHudWidgets'
+                // doc comment) — explicitly delete rather than reset any
+                // widgets a prior test run may have already dirtied.
+                provider.DeleteWidget((PrototypeId)EndlessHudLiveStatusWidgetRef);
+                provider.DeleteWidget((PrototypeId)EndlessHudPeakRankWidgetRef);
+                provider.DeleteWidget((PrototypeId)EndlessHudAliveWidgetRef);
+                provider.DeleteWidget((PrototypeId)EndlessHudKillsWidgetRef);
             }
             catch { /* best effort */ }
         }

@@ -5,6 +5,7 @@
 // runtime-CreateEntity-spawned prop actually resolves a Cell the same way a
 // spawned Agent does. Read-only, no state changes.
 
+using System.Linq;
 using MHServerEmu.Core.Network.Web;
 using MHServerEmu.Games.Entities;
 using MHServerEmu.Games.GameData;
@@ -55,6 +56,35 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     RestrictedToPlayerGuid = (ulong)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.RestrictedToPlayerGuid],
                     RestrictedToPlayerGuidParty = (ulong)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.RestrictedToPlayerGuidParty],
                     OwnerPlayerDbId = p.DatabaseUniqueId,
+                    UnrealClass = entity.WorldEntityPrototype != null
+                        ? GameDatabase.GetAssetName(entity.WorldEntityPrototype.UnrealClass)
+                        : "<null WorldEntityPrototype>",
+                    UnrealClassAssetId = entity.WorldEntityPrototype != null ? (ulong)entity.WorldEntityPrototype.UnrealClass : 0,
+                    Health = (long)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.Health],
+                    HealthMax = (long)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.HealthMax],
+                    entity.IsDead,
+                    Stealth = (int)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.Stealth],
+                    StealthDetection = (int)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.StealthDetection],
+                    Untargetable = (bool)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.Untargetable],
+                    Unaffectable = (bool)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.Unaffectable],
+                    Invulnerable = (bool)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.Invulnerable],
+                    Dormant = (bool)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.Dormant],
+                    Visible = (bool)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.Visible],
+                    IsVisibleWhenDormant = (entity as MHServerEmu.Games.Entities.Agent)?.IsVisibleWhenDormant,
+                    DramaticEntrancePlayedOnce = (bool)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.DramaticEntrancePlayedOnce],
+                    Rank = entity.Properties.HasProperty(MHServerEmu.Games.Properties.PropertyEnum.Rank)
+                        ? GameDatabase.GetPrototypeName((MHServerEmu.Games.GameData.PrototypeId)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.Rank])
+                        : "<none>",
+                    EnemyBoosts = entity.Properties.IteratePropertyRange(MHServerEmu.Games.Properties.PropertyEnum.EnemyBoost)
+                        .Select(kvp => { MHServerEmu.Games.GameData.PrototypeId boostRef = default; MHServerEmu.Games.Properties.Property.FromParam(kvp.Key, 0, out boostRef); return GameDatabase.GetPrototypeName(boostRef); })
+                        .ToList(),
+                    Bounds = new
+                    {
+                        entity.Bounds.Geometry,
+                        entity.Bounds.CollisionType,
+                        Radius = entity.Bounds.Radius,
+                        HalfHeight = entity.Bounds.HalfHeight,
+                    },
                 };
             });
             await context.SendJsonAsync(result);

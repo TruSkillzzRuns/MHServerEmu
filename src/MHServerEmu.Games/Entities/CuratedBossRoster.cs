@@ -33,7 +33,15 @@ namespace MHServerEmu.Games.Entities
             "Wolverine Clone", "Wizard", "Winter Soldier", "War X-Skrull", "War Machine", "Vulture",
             "Very Tenacious Skrull Cmdr.", "Very Protective Skrull Cmdr.", "Very Dangerous Skrull Cmdr.",
             "Very Cold Skrull Cmdr.", "Very Bloodthirsty Skrull Cmdr.", "Very Agressive Skrull Cmdr.",
-            "Venom", "Ultron Prime", "Ulrik of Myrkvidr", "Tombstone", "Toad", "The Hood", "The Deceiver",
+            "Venom", "Ultron Prime", "Ulrik of Myrkvidr", "Tombstone", "The Hood", "The Deceiver",
+            // "Toad" removed 2026-07-27 — confirmed live doesn't render. Its
+            // only curated match resolves to Entity/Characters/Bosses/
+            // PVEInstances/EG01Toad.prototype — instance-exclusive content
+            // that apparently depends on scripted mission dressing to
+            // render, same category as Mole Man above. NOTE: "Venom" and
+            // "Sabretooth" below currently ALSO only resolve to PVEInstances
+            // variants (EG01Venom/EG01Sabretooth) — not yet confirmed broken
+            // live, but worth testing given this exact pattern.
             "The \"Business\"", "Tenacious Skrull Commander", "Taskmaster", "Superior Spider-Clone",
             "Stark Sentinel", "Skrull X-23", "Skrull Thor", "Skrull Punisher", "Skrull Psylocke",
             "Skrull Nick Fury", "Skrull Ms Marvel", "Skrull Luke Cage", "Skrull Iron Fist", "Skrull Elektra",

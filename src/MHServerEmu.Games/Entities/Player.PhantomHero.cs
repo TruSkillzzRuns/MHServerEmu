@@ -473,6 +473,16 @@ namespace MHServerEmu.Games.Entities
 
             if (mig.PhantomIntents.Count == 0) return 0;
             int spawned = 0;
+            // Confirmed live 2026-07-26 — this used to Clear() the whole
+            // list unconditionally after the loop, regardless of whether
+            // each intent actually succeeded. A phantom that failed to
+            // restore (e.g. rejected by the destination region's cap) had
+            // its intent thrown away right here — silently and permanently
+            // "kicked from the party," not just left behind for that one
+            // region. Only remove intents that actually succeeded; a failed
+            // one stays queued and gets retried on the next region
+            // transfer/restore instead of vanishing forever.
+            var failedIntents = new List<PhantomIntent>();
             foreach (var intent in mig.PhantomIntents)
             {
                 try
@@ -486,21 +496,27 @@ namespace MHServerEmu.Games.Entities
                     // (e.g. entering a terminal).
                     ulong id = caller.SpawnPhantomHeroFromIntent((PrototypeId)intent.AvatarRef, intent.Level, intent.Username, intent.LockLevel, intent.CostumeRef, out string error, intent.GearRefs, intent.Invincible, intent.BypassCap);
                     if (id != 0) spawned++;
-                    else PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} failed: {error}");
+                    else
+                    {
+                        failedIntents.Add(intent);
+                        PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} failed (kept queued for retry): {error}");
+                    }
                 }
                 catch (System.Exception ex)
                 {
                     // Full stack trace — the previous "threw: NRE" one-liner
                     // swallowed the location that would tell us which line
                     // in SpawnPhantomHeroCore failed.
-                    PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} threw ({ex.GetType().Name}): {ex.Message}\n" +
+                    failedIntents.Add(intent);
+                    PhantomHostLogger.Warn($"[Phantom] restore intent {intent.Username} threw ({ex.GetType().Name}) (kept queued for retry): {ex.Message}\n" +
                         $"  avatarRef=0x{intent.AvatarRef:X} level={intent.Level} costumeRef=0x{intent.CostumeRef:X} " +
                         $"gearCount={(intent.GearRefs?.Count ?? 0)} invincible={intent.Invincible} lockLevel={intent.LockLevel}\n" +
                         $"{ex.StackTrace}");
                 }
             }
             mig.PhantomIntents.Clear();
-            PhantomHostLogger.Info($"[Phantom] restore from migration: {spawned} phantom(s) re-spawned");
+            mig.PhantomIntents.AddRange(failedIntents);
+            PhantomHostLogger.Info($"[Phantom] restore from migration: {spawned} phantom(s) re-spawned, {failedIntents.Count} kept queued for retry");
             return spawned;
         }
 
