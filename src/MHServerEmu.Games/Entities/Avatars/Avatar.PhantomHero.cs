@@ -1276,8 +1276,16 @@ namespace MHServerEmu.Games.Entities.Avatars
                     // gets set once, when a NEW claimant takes over, so a
                     // hard cap (PhantomReviveClaimMaxHoldMs) applies
                     // regardless of how active the claimant stays.
-                    long firstClaimedAtMs = (claim.claimantId == phantom.Id) ? claim.firstClaimedAtMs : nowMsRevive;
+                    bool isNewClaimant = claim.claimantId != phantom.Id;
+                    long firstClaimedAtMs = isNewClaimant ? nowMsRevive : claim.firstClaimedAtMs;
                     s_phantomReviveClaim[downed.Id] = (phantom.Id, nowMsRevive, firstClaimedAtMs);
+
+                    // A fresh claimant gets a clean slate — the previous
+                    // holder's failure count says nothing about whether THIS
+                    // phantom (likely standing somewhere different) will
+                    // also get rejected.
+                    if (isNewClaimant)
+                        s_phantomReviveOutOfPositionCount.Remove(downed.Id);
                 }
             }
 
@@ -1372,6 +1380,55 @@ namespace MHServerEmu.Games.Entities.Avatars
                                 // remains the only escape hatch for a claimant that's truly
                                 // stuck (e.g. dead itself).
                             }
+                            else if (reviveResult == PowerUseResult.OutOfPosition)
+                            {
+                                // GetReviveCastRangeSq's gate uses a squared
+                                // 3D distance check, but this rejection means
+                                // the power itself disagrees every time
+                                // despite that check passing — almost always
+                                // a navmesh obstruction or line-of-sight
+                                // blocker a flat distance comparison can't
+                                // see (same class of issue as the path-failed
+                                // rescue above, just discovered by the power
+                                // instead of the pathfinder). Unlike
+                                // RestrictiveCondition, this has no natural
+                                // reason to resolve itself by waiting.
+                                int failCount = s_phantomReviveOutOfPositionCount.TryGetValue(downed.Id, out int prevFail) ? prevFail + 1 : 1;
+                                s_phantomReviveOutOfPositionCount[downed.Id] = failCount;
+
+                                if (failCount == PhantomReviveRepositionAfterFailures)
+                                {
+                                    try
+                                    {
+                                        Vector3 targetPos = downed.RegionLocation.Position;
+                                        Vector3 rescuePos = ChoosePhantomLeashPos(region, targetPos, rng, phantom.Bounds.Radius);
+                                        phantom.Locomotor?.Stop();
+                                        phantom.ChangeRegionPosition(rescuePos, null);
+                                        PhantomLogger.Info($"[PhantomHero:Revive] {phantom} stuck OutOfPosition reviving {downed} ({failCount}x) — force-repositioned to {rescuePos.ToStringNames()}");
+                                    }
+                                    catch (Exception rescueEx) { PhantomLogger.Warn($"[PhantomHero:Revive] reposition-on-stuck threw: {rescueEx.Message}"); }
+                                }
+                                else if (failCount >= PhantomReviveGiveUpAfterFailures)
+                                {
+                                    // Repositioning didn't fix it either.
+                                    // Releasing the claim here (rather than
+                                    // waiting on PhantomReviveClaimMaxHoldMs,
+                                    // which never actually applies to the
+                                    // CURRENT holder — see the field comment
+                                    // above) lets this phantom or a
+                                    // squadmate re-claim fresh next tick, and
+                                    // lets THIS phantom fall through to Hunt
+                                    // in the meantime instead of idling
+                                    // forever on an unreachable target.
+                                    s_phantomReviveClaim.Remove(downed.Id);
+                                    s_phantomReviveOutOfPositionCount.Remove(downed.Id);
+                                    PhantomLogger.Info($"[PhantomHero:Revive] {phantom} giving up reviving {downed} after {failCount} OutOfPosition rejections — claim released");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            s_phantomReviveOutOfPositionCount.Remove(downed.Id);
                         }
                         // Race fix (lordunborn's fork independently hit the same
                         // bug): releasing the claim the instant Success comes
@@ -1974,6 +2031,25 @@ namespace MHServerEmu.Games.Entities.Avatars
         private const long PhantomReviveClaimTimeoutMs = 6_000;
         private const long PhantomReviveClaimMaxHoldMs = 20_000;
         private static readonly Dictionary<ulong, (ulong claimantId, long claimedAtMs, long firstClaimedAtMs)> s_phantomReviveClaim = new();
+
+        // 2026-07-28 — real bug found live: unlike RestrictiveCondition (an
+        // expected, self-resolving mid-combat interruption with explicit
+        // reasoning below), an OutOfPosition rejection had ZERO handling —
+        // the claimant just re-logged and retried the exact same cast
+        // forever. Confirmed live: a phantom held a revive claim for over a
+        // minute straight, rejected OutOfPosition roughly every 0.5s, never
+        // attacking or moving. Made worse by a second bug: the 20s
+        // PhantomReviveClaimMaxHoldMs cap above is only ever evaluated from
+        // ANOTHER phantom's perspective when it's deciding whether to back
+        // off — the claimant's own tick never checks its own hold duration
+        // (claim.claimantId != phantom.Id short-circuits false for the
+        // current holder), so a claimant with nothing nearby to contest it
+        // literally never hits that cap. Tracked per downed-entity-ID
+        // (reset whenever the claim changes hands or the revive succeeds)
+        // since only one phantom holds a given claim at a time anyway.
+        private const int PhantomReviveRepositionAfterFailures = 3;
+        private const int PhantomReviveGiveUpAfterFailures = 8;
+        private static readonly Dictionary<ulong, int> s_phantomReviveOutOfPositionCount = new();
 
         // Per-phantom next-ultimate timestamp (ms). Ultimates fire on any
         // target once available, then rest for 20 minutes regardless of

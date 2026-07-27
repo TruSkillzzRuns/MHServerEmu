@@ -574,7 +574,7 @@ namespace MHServerEmu.Games.Entities
             if (_drTerminalNpcId == 0) SpawnDrTerminalNpc(region, avatar);
             SpawnDrStashBox(region, avatar);
 
-            try { SendBannerLines("💰 LOOT BREAK — bank your gear at the stash, then talk to the technician to continue."); } catch { }
+            BroadcastEndlessBannerLines("💰 LOOT BREAK — bank your gear at the stash, then talk to the technician to continue.");
             DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: loot break triggered at wave {_endlessCycle}");
         }
 
@@ -711,7 +711,7 @@ namespace MHServerEmu.Games.Entities
                         host.PauseWaveRun(false);
                         host.DespawnDrTerminalNpc();
                         host.DespawnDrStashBox();
-                        try { host.SendBannerLines("⚔ Endless Wave resumes!"); } catch { }
+                        host.BroadcastEndlessBannerLines("⚔ Endless Wave resumes!");
                         DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: resumed {host.GetName()}'s shared run via terminal");
                     }
                     else
@@ -739,7 +739,7 @@ namespace MHServerEmu.Games.Entities
                     PauseWaveRun(false);
                     DespawnDrTerminalNpc();
                     DespawnDrStashBox();
-                    try { SendBannerLines("⚔ Endless Wave resumes!"); } catch { }
+                    BroadcastEndlessBannerLines("⚔ Endless Wave resumes!");
                     DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: loot break ended — run resumed");
                     return;
                 }
@@ -797,7 +797,7 @@ namespace MHServerEmu.Games.Entities
             // or clear needed (arenaRegionRef=0, clearArena=false).
             string result = StartEndlessChallenge(baseEntry, 5000, 0, false,
                 DrEndlessCountScalePerWave, DrEndlessLevelBumpPerWave, DrEndlessRewardLootTableRef, difficulty);
-            try { SendBannerLines($"🎯 Difficulty: {difficulty}"); } catch { }
+            BroadcastEndlessBannerLines($"🎯 Difficulty: {difficulty}");
             DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: terminal confirmed — difficulty={difficulty} — {result}");
 
             // Only remove the terminal once the run actually started —

@@ -56,8 +56,9 @@ server is running:
 
 ## License
 
-MHServerEmu itself is released under the MIT License. See [LICENSE](LICENSE).
-The Phantom Heroes additions on top are released under the same license.
+MHServerEmu itself is released under the GNU Affero General Public License
+v3.0 (AGPL-3.0). See [LICENSE](LICENSE). The Phantom Heroes additions on top
+are released under the same license.
 
 ## Upstream FAQ
 

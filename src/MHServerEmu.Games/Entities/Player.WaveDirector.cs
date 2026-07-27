@@ -125,6 +125,52 @@ namespace MHServerEmu.Games.Entities
         private int _endlessMaxDeathsPerRealPlayer = EndlessMaxDeathsPerRealPlayerDefault;
         private readonly Dictionary<ulong, int> _endlessRealPlayerDeaths = new();
 
+        // 2026-07-28 — 4-player co-op (Phase 2). Wipe condition is
+        // last-one-standing: the run only ends once EVERY real player
+        // currently sharing this arena instance has exhausted their lives —
+        // a player who's out just stays down (no more auto-revive) while the
+        // rest keep fighting. Enemy count and hazard bursts also scale up
+        // with party size so a full party doesn't steamroll the tuning a
+        // solo player sees.
+        private const float EndlessPartySizeCountMultPerExtra = 0.35f;
+
+        /// <summary>
+        /// Every real (non-phantom) player currently standing in this run's
+        /// arena region — the host (this player) plus anyone who followed in
+        /// via party teleport. PlayerConnection != null is the established
+        /// real-vs-phantom check used throughout Avatar.PhantomHero.cs.
+        /// </summary>
+        private List<Player> GetEndlessRunRealPlayers()
+        {
+            var result = new List<Player>();
+            Region region = CurrentAvatar?.Region;
+            if (region == null) return result;
+
+            foreach (Player player in new PlayerIterator(region))
+                if (player.PlayerConnection != null)
+                    result.Add(player);
+
+            return result;
+        }
+
+        /// <summary>Sends a banner-style notification to every real player currently sharing this run, not just the host.</summary>
+        private void BroadcastEndlessBannerLines(string text)
+        {
+            foreach (Player participant in GetEndlessRunRealPlayers())
+            {
+                try { participant.SendBannerLines(text); }
+                catch (Exception ex) { WaveLogger.Warn($"[WaveDirector] {GetName()}: broadcast to {participant.GetName()} failed: {ex.Message}"); }
+            }
+        }
+
+        /// <summary>1.0 for a solo player; scales up by EndlessPartySizeCountMultPerExtra for each additional real player sharing the run.</summary>
+        private float GetEndlessPartySizeMultiplier()
+        {
+            int participantCount = GetEndlessRunRealPlayers().Count;
+            if (participantCount <= 1) return 1f;
+            return 1f + (participantCount - 1) * EndlessPartySizeCountMultPerExtra;
+        }
+
         // Difficulty preset chosen at the terminal the FIRST time a run is
         // started (never re-prompted on a loot-break "continue" — see
         // OnDrTerminalInteract/OnDrTerminalDialogResponse in
@@ -800,7 +846,11 @@ namespace MHServerEmu.Games.Entities
                         float minX = regionAabb.Min.X + insetX, maxX = regionAabb.Max.X - insetX;
                         float minY = regionAabb.Min.Y + insetY, maxY = regionAabb.Max.Y - insetY;
 
-                        int spawnCount = rng.Next(EndlessHazardMinCount, EndlessHazardMaxCount + 1);
+                        // 2026-07-28 — 4-player co-op (Phase 2): more hazards
+                        // per burst when more real players share the run.
+                        int spawnCount = Math.Clamp(
+                            (int)MathF.Round(rng.Next(EndlessHazardMinCount, EndlessHazardMaxCount + 1) * GetEndlessPartySizeMultiplier()),
+                            EndlessHazardMinCount, EndlessHazardMaxCount * 3);
                         var spawnedNames = new List<string>();
 
                         // TEMP PERF INSTRUMENTATION (2026-07-26) — this does
@@ -858,9 +908,7 @@ namespace MHServerEmu.Games.Entities
                         WaveLogger.Info($"[WaveDirector:Perf] OnEndlessHazardTick spawnCount={spawnCount} spawned={spawnedNames.Count} took {hazardPerfSw.Elapsed.TotalMilliseconds:F1}ms");
 
                         if (spawnedNames.Count > 0)
-                        {
-                            try { SendBannerLines($"⚠ HAZARDS — {string.Join(", ", spawnedNames)} across the room, move!"); } catch { }
-                        }
+                            BroadcastEndlessBannerLines($"⚠ HAZARDS — {string.Join(", ", spawnedNames)} across the room, move!");
                     }
                 }
             }
@@ -1074,33 +1122,52 @@ namespace MHServerEmu.Games.Entities
             // Endless Challenge wipe check — only meaningful once the run is
             // actually settled into Fighting/Intermission (avatar state
             // during Warp/Settle is transient and not a real "died" signal).
-            // 2026-07-26 — real players get EndlessMaxDeathsPerRealPlayer
-            // lives before they're out for good; a death before that just
-            // revives them in place and the run keeps going. The run only
-            // actually ends once every real player currently in it is out
-            // (for now, solo, that's just this one player hitting the cap —
-            // Phase 2 generalizes this to check every real player's count).
+            // 2026-07-28 — 4-player co-op (Phase 2, last-one-standing): every
+            // real player sharing this run gets their own
+            // EndlessMaxDeathsPerRealPlayer lives. A death before a
+            // participant's own cap just revives them in place; once they're
+            // out, they stay down (no more auto-revive) but the run keeps
+            // going for everyone else. The run only actually ends once EVERY
+            // participant currently in it has exhausted their lives.
             if (_isEndlessMode && (_waveState == WaveState.Fighting || _waveState == WaveState.Intermission))
             {
-                Avatar endlessAvatar = CurrentAvatar;
-                if (endlessAvatar != null && endlessAvatar.IsDead)
+                List<Player> participants = GetEndlessRunRealPlayers();
+                bool allParticipantsOut = participants.Count > 0;
+
+                foreach (Player participant in participants)
                 {
-                    int deaths = _endlessRealPlayerDeaths.TryGetValue(DatabaseUniqueId, out int prevDeaths) ? prevDeaths + 1 : 1;
-                    _endlessRealPlayerDeaths[DatabaseUniqueId] = deaths;
+                    Avatar participantAvatar = participant.CurrentAvatar;
+                    int deaths = _endlessRealPlayerDeaths.TryGetValue(participant.DatabaseUniqueId, out int prevDeaths) ? prevDeaths : 0;
 
-                    if (deaths >= _endlessMaxDeathsPerRealPlayer)
+                    if (participantAvatar != null && participantAvatar.IsDead && deaths < _endlessMaxDeathsPerRealPlayer)
                     {
-                        WaveLogger.Info($"[WaveDirector] {GetName()}: wipe — exhausted {deaths}/{_endlessMaxDeathsPerRealPlayer} lives");
-                        EndEndlessChallenge(died: true);
-                        return; // no reschedule — run is over
+                        deaths++;
+                        _endlessRealPlayerDeaths[participant.DatabaseUniqueId] = deaths;
+
+                        if (deaths >= _endlessMaxDeathsPerRealPlayer)
+                        {
+                            try { participant.SendBannerLines($"💀 Out of lives ({deaths}/{_endlessMaxDeathsPerRealPlayer}) — down for the rest of this run."); } catch { }
+                        }
+                        else
+                        {
+                            try
+                            {
+                                participantAvatar.Resurrect();
+                                participant.SendBannerLines($"💀 Down! {deaths}/{_endlessMaxDeathsPerRealPlayer} lives used — back in the fight!");
+                            }
+                            catch (Exception ex) { WaveLogger.Warn($"[WaveDirector] {GetName()}: revive-on-death failed for {participant.GetName()}: {ex.Message}"); }
+                        }
                     }
 
-                    try
-                    {
-                        endlessAvatar.Resurrect();
-                        SendBannerLines($"💀 Down! {deaths}/{_endlessMaxDeathsPerRealPlayer} lives used — back in the fight!");
-                    }
-                    catch (Exception ex) { WaveLogger.Warn($"[WaveDirector] {GetName()}: revive-on-death failed: {ex.Message}"); }
+                    if (deaths < _endlessMaxDeathsPerRealPlayer)
+                        allParticipantsOut = false;
+                }
+
+                if (allParticipantsOut)
+                {
+                    WaveLogger.Info($"[WaveDirector] {GetName()}: wipe — every real player ({participants.Count}) exhausted their lives");
+                    EndEndlessChallenge(died: true);
+                    return; // no reschedule — run is over
                 }
             }
 
@@ -1599,11 +1666,19 @@ namespace MHServerEmu.Games.Entities
             // every loop) instead of _waveIndex (resets to 0 every loop).
             int scaleIndex = _isEndlessMode ? _endlessCycle : _waveIndex;
 
+            // 2026-07-28 — 4-player co-op (Phase 2): more real players
+            // sharing the run means more enemies per wave, so a full party
+            // doesn't trivialize the difficulty tuning a solo player sees.
+            // 1.0 for solo (zero behavior change), scales up per extra
+            // participant. Re-evaluated every wave so a party that grows or
+            // shrinks mid-run adjusts naturally on the next spawn.
+            float partySizeMult = _isEndlessMode ? GetEndlessPartySizeMultiplier() : 1f;
+
             foreach (WaveEntryDef entry in wave.Entries)
             {
                 // Difficulty scaling: both default to 0, so a run that never
                 // opts in behaves identically to before this feature existed.
-                int count = Math.Clamp((int)MathF.Round(entry.Count * (1f + _waveCountScalePerWave * scaleIndex)), 1, 30);
+                int count = Math.Clamp((int)MathF.Round(entry.Count * (1f + _waveCountScalePerWave * scaleIndex) * partySizeMult), 1, 30);
                 int level = entry.Level;
                 if (entry.IsEnemyPhantom && level != 0 && _waveLevelBumpPerWave != 0)
                     level = Math.Clamp(level + _waveLevelBumpPerWave * scaleIndex, 1, 60);
@@ -1756,7 +1831,7 @@ namespace MHServerEmu.Games.Entities
                     {
                         _waveAliveIds.Add(bossId);
                         string bossName = LeafHeroName(bossRef);
-                        try { SendBannerLines($"☠ A BOSS HAS ARRIVED — {bossName}!"); } catch { }
+                        BroadcastEndlessBannerLines($"☠ A BOSS HAS ARRIVED — {bossName}!");
                         WaveLogger.Info($"[WaveDirector] {GetName()}: Endless boss spawned at wave {scaleIndex} ({bossName})");
                     }
                     else
