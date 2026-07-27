@@ -13,7 +13,16 @@ namespace MHServerEmu.Games.GameData.PatchManager
         private static readonly Logger Logger = LogManager.CreateLogger();
         private Stack<PrototypeId> _protoStack = new();
         private readonly Dictionary<PrototypeId, List<PrototypePatchEntry>> _patchDict = new();
-        private Dictionary<Prototype, string> _pathDict = new ();
+
+        // Owner is the DataRef of the true top-level prototype this nested
+        // entry's path is relative to, captured at SetPath/SetPathIndex time
+        // by walking the real object tree — NOT read from _protoStack at
+        // PostOverride time. See PostOverride's nested-prototype branch for
+        // why this matters (2026-07-28 Discord report: a patch meant for
+        // InfinityOrbsAgeOfUltronTable was instead applied to an unrelated
+        // RelicBoxOFTHTable, which then propagated to every RelicBox*
+        // variant that uses it as a parent).
+        private Dictionary<Prototype, (PrototypeId Owner, string Path)> _pathDict = new();
         private bool _initialized = false;
 
         public static PrototypePatchManager Instance { get; } = new();
@@ -124,23 +133,45 @@ namespace MHServerEmu.Games.GameData.PatchManager
         {
             if (_protoStack.Count == 0) return;
 
-            string currentPath = string.Empty;
-            if (prototype.DataRef == PrototypeId.Invalid 
-                && _pathDict.TryGetValue(prototype, out currentPath) == false) return;
+            PrototypeId patchProtoRef;
+            string currentPath;
 
-            PrototypeId patchProtoRef = _protoStack.Peek();
             if (prototype.DataRef != PrototypeId.Invalid)
             {
+                // Top-level prototype — must match whatever the stack
+                // currently thinks is the active patch target.
+                patchProtoRef = _protoStack.Peek();
                 if (prototype.DataRef != patchProtoRef) return;
                 if (_patchDict.ContainsKey(prototype.DataRef))
-                    patchProtoRef = _protoStack.Pop();
+                    _protoStack.Pop();
+                currentPath = string.Empty;
+            }
+            else
+            {
+                // Nested/embedded prototype (mixin, loot table entry, etc.)
+                // — resolve its patch target from the TRUE ownership chain
+                // recorded at SetPath/SetPathIndex time, not from
+                // _protoStack.Peek(). Blindly trusting the top of a single
+                // global stack here is what let an unrelated sibling
+                // prototype's patch bleed onto this one whenever the real
+                // target hadn't been popped yet (see field comment above
+                // _pathDict) — two structurally similar tables (e.g. two
+                // loot tables with a parallel ".Choices[n]" shape) could
+                // coincidentally share a ClearPath string, and without an
+                // ownership check the stuck patch would apply to whichever
+                // one happened to be loading while it sat on the stack.
+                if (_pathDict.TryGetValue(prototype, out var entry) == false) return;
+                if (entry.Owner == PrototypeId.Invalid) return;
+
+                patchProtoRef = entry.Owner;
+                currentPath = entry.Path;
             }
 
             if (_patchDict.TryGetValue(patchProtoRef, out var list) == false) return;
 
-            foreach (var entry in list)
-                if (entry.Patched == false)
-                    CheckAndUpdate(entry, prototype, currentPath);
+            foreach (var patchEntry in list)
+                if (patchEntry.Patched == false)
+                    CheckAndUpdate(patchEntry, prototype, currentPath);
 
             if (_protoStack.Count == 0)
                 _pathDict.Clear();
@@ -323,20 +354,38 @@ namespace MHServerEmu.Games.GameData.PatchManager
             return ConvertValue(valueEntry, elementType);            
         }
 
+        /// <summary>
+        /// Resolves the true (owner, relative path) pair for a child of
+        /// <paramref name="parent"/> by walking the real object tree, rather
+        /// than trusting whatever's currently on top of _protoStack.
+        /// </summary>
+        private (PrototypeId Owner, string Path) ResolveParentContext(Prototype parent)
+        {
+            if (parent.DataRef != PrototypeId.Invalid)
+            {
+                // parent is itself a top-level prototype — it's the root of
+                // this subtree regardless of whether it currently has any
+                // patches of its own pending (if it doesn't, the eventual
+                // _patchDict lookup for it simply finds nothing).
+                return (parent.DataRef, string.Empty);
+            }
+
+            if (_pathDict.TryGetValue(parent, out var parentEntry))
+                return parentEntry;
+
+            return (PrototypeId.Invalid, string.Empty);
+        }
+
         public void SetPath(Prototype parent, Prototype child, string fieldName)
         {
-            string parentPath = _pathDict.TryGetValue(parent, out var path) ? path : string.Empty;
-            if (parent.DataRef != PrototypeId.Invalid && _patchDict.ContainsKey(parent.DataRef)) 
-                parentPath = string.Empty;
-            _pathDict[child] = $"{parentPath}.{fieldName}";
+            var (owner, parentPath) = ResolveParentContext(parent);
+            _pathDict[child] = (owner, $"{parentPath}.{fieldName}");
         }
 
         public void SetPathIndex(Prototype parent, Prototype child, string fieldName, int index)
         {
-            string parentPath = _pathDict.TryGetValue(parent, out var path) ? path : string.Empty;
-            if (parent.DataRef != PrototypeId.Invalid && _patchDict.ContainsKey(parent.DataRef)) 
-                parentPath = string.Empty;
-            _pathDict[child] = $"{parentPath}.{fieldName}[{index}]";
+            var (owner, parentPath) = ResolveParentContext(parent);
+            _pathDict[child] = (owner, $"{parentPath}.{fieldName}[{index}]");
         }
     }
 }
