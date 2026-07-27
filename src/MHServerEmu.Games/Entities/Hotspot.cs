@@ -584,6 +584,7 @@ namespace MHServerEmu.Games.Entities
                 _notifiedPlayers.Add(player.Id);
             }
 
+            // V48_TODO?: This may need to use TutorialSystem::ShowTip() instead.
             if (hotspotProto.TutorialTip != null)
                 player.ShowHUDTutorial(hotspotProto.TutorialTip);
 

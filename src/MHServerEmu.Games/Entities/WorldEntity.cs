@@ -3108,10 +3108,14 @@ namespace MHServerEmu.Games.Entities
                     indexProperties[PropertyEnum.CombatLevel] = CombatLevel;
                     indexProperties.CopyProperty(Properties, PropertyEnum.ItemLevel);
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                     if (modProto is InfinityGemBonusPrototype)
                         indexProperties.CopyPropertyRange(Properties, PropertyEnum.InfinityGemBonusRank);
-                    else if (modProto is OmegaBonusPrototype)
+#endif
+#if !GAME_VERSION_1_53
+                    if (modProto is OmegaBonusPrototype)
                         indexProperties.CopyPropertyRange(Properties, PropertyEnum.OmegaRank);
+#endif
 
                     AttachProperties(modProto.Type, modRef, 0, modProto.Properties, indexProperties, rank, true);
                 }
@@ -3966,11 +3970,13 @@ namespace MHServerEmu.Games.Entities
                     // Add faraway mission participants if needed
                     Mission.AddContributorsForLootSpawn(agent, playerList);
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                     // Bonus Item Find (aka Shield Supply Boost) points. This is limited to agents to exclude all props.
                     // Also check hostility to filter out non-prop entities that may be abused.
                     // We can't rely on hostility alone because some legacy props are actually hostile to players.
                     if (IsHostileToPlayers())
                         AwardBonusLoot(playerList);
+#endif
                 }
 
                 // OnKilled loot table is different based on the rank of this entity
@@ -4158,8 +4164,13 @@ namespace MHServerEmu.Games.Entities
             Region region = Region;
             if (!Verify.IsNotNull(region)) return false;
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
             TuningTable tuningTable = region.TuningTable;
             if (!Verify.IsNotNull(tuningTable)) return false;
+#else
+            DifficultyTable difficultyTable = region.DifficultyTable;
+            if (!Verify.IsNotNull(difficultyTable)) return false;
+#endif
 
             foreach (Player player in playerList)
             {
@@ -4169,7 +4180,11 @@ namespace MHServerEmu.Games.Entities
 
                 if (WorldEntityPrototype.GetXPAwarded(avatar.CharacterLevel, out long xp, out long minXP, player.CanUseLiveTuneBonuses()))
                 {
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                     xp = avatar.ApplyXPModifiers(xp, true, tuningTable);
+#else
+                    xp = avatar.ApplyXPModifiers(xp, true, difficultyTable);
+#endif
                     avatar.AwardXP(xp, minXP, Properties[PropertyEnum.ShowXPRewardText]);
                 }
             }
@@ -4183,6 +4198,7 @@ namespace MHServerEmu.Games.Entities
             return iterator.GetEnumerator().MoveNext();
         }
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
         private bool AwardBonusLoot(List<Player> playerList)
         {
             Region region = Region;
@@ -4207,6 +4223,7 @@ namespace MHServerEmu.Games.Entities
 
             return true;
         }
+#endif
 
         private bool ApplyLootTableSourceOverrides(Region region)
         {
@@ -4458,8 +4475,12 @@ namespace MHServerEmu.Games.Entities
         {
             if (SpawnSpec != null)
                 return SpawnSpec.RoleKey;
-            else
-                return (ScriptRoleKeyEnum)(uint)Properties[PropertyEnum.ScriptRoleKey];
+
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            return (ScriptRoleKeyEnum)(uint)Properties[PropertyEnum.ScriptRoleKey];
+#else
+            return ScriptRoleKeyEnum.Invalid;
+#endif
         }
 
         public bool CanEntityActionTrigger(EntitySelectorActionEventType eventType)

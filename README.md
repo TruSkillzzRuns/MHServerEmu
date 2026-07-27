@@ -4,7 +4,10 @@ A fork of [MHServerEmu](https://github.com/Crypto137/MHServerEmu) with
 **Phantom Heroes** baked in — server-side hero NPCs you can spawn on demand
 that follow, fight alongside you, and can revive you.
 
-Targets the **1.52.0.1700** client (the still-Steam-available "2.16a" build).
+Targets the **1.52.0.1700** client (the still-Steam-available "2.16a" build,
+"Full Support" upstream). Upstream also has preliminary support for
+**1.48.0.1712** (Pre-BUE) and **1.53.0.203** (Test Center) via separate build
+configurations — this fork has not been tested against those and assumes 1.52.
 
 ## What this fork adds over upstream
 
@@ -55,3 +58,10 @@ server is running:
 
 MHServerEmu itself is released under the MIT License. See [LICENSE](LICENSE).
 The Phantom Heroes additions on top are released under the same license.
+
+## Upstream FAQ
+
+See the [upstream repo](https://github.com/Crypto137/MHServerEmu#faq) for the
+full FAQ (client downloads, other version support, project scope, etc.) — it
+all still applies here since this fork changes gameplay content, not the
+underlying server/client compatibility work.

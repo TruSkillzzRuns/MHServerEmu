@@ -33,6 +33,8 @@ namespace MHServerEmu.Games.Social.Parties
             return party;
         }
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+        // V48_FIXME
         public void OnClientPartyOperationRequest(Player player, PartyOperationPayload request)
         {
             Party party = player.GetParty();
@@ -237,6 +239,7 @@ namespace MHServerEmu.Games.Social.Parties
                 player.SendMessage(clientUpdate.Build());
             }
         }
+#endif
 
         public void OnPlayerEnteredRegion(Player player)
         {
@@ -257,6 +260,8 @@ namespace MHServerEmu.Games.Social.Parties
                 TryCleanUpParty(partyId);
         }
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+        // V48_FIXME
         private Party CreateOrUpdateParty(PartyInfo partyInfo)
         {
             ulong partyId = partyInfo.GroupId;
@@ -272,6 +277,7 @@ namespace MHServerEmu.Games.Social.Parties
 
             return localParty;
         }
+#endif
 
         private void TryCleanUpParty(ulong partyId)
         {
@@ -293,6 +299,8 @@ namespace MHServerEmu.Games.Social.Parties
             Logger.Info($"Removed party 0x{partyId:X} from game 0x{Game.Id:X}");
         }
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+        // V48_FIXME
         private static void SendOperationRequestToPlayerManager(PartyOperationPayload request)
         {
             ServiceMessage.PartyOperationRequest message = new(request);
@@ -311,5 +319,6 @@ namespace MHServerEmu.Games.Social.Parties
             player.SendMessage(message);
             return true;
         }
+#endif
     }
 }
