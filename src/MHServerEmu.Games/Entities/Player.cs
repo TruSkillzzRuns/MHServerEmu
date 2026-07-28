@@ -836,6 +836,15 @@ namespace MHServerEmu.Games.Entities
             return true;
         }
 
+        /// <summary>Returns every tracked <see cref="StashTabOptions"/>, keyed by inventory PrototypeId. Used by account migration tooling to export tab name/color/sort.</summary>
+        public IEnumerable<KeyValuePair<PrototypeId, StashTabOptions>> GetAllStashTabOptions() => _stashTabOptionsDict;
+
+        /// <summary>Directly sets/overwrites the <see cref="StashTabOptions"/> for a given inventory ref, bypassing the client-driven <see cref="UpdateStashTabOptions"/> message path. Used by account migration tooling to restore tab name/color/sort.</summary>
+        public void SetStashTabOptionsDirect(PrototypeId inventoryRef, StashTabOptions options)
+        {
+            _stashTabOptionsDict[inventoryRef] = options;
+        }
+
         /// <summary>
         /// Updates <see cref="StashTabOptions"/> with the data from a <see cref="NetMessageStashTabOptions"/>.
         /// </summary>
@@ -1702,6 +1711,9 @@ namespace MHServerEmu.Games.Entities
         {
             return _badges.Contains(badge);
         }
+
+        /// <summary>Returns every badge currently granted to this <see cref="Player"/>. Used by account migration tooling.</summary>
+        public IEnumerable<AvailableBadges> GetAllBadges() => _badges;
 
         #endregion
 

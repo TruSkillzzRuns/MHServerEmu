@@ -614,7 +614,21 @@ namespace MHServerEmu.Games.MetaGames
                 var player = avatar.GetOwnerOfType<Player>();
                 // if (player != null) AddPlayer(player); // Problem UI in MetaStateLimitPlayerDeaths and MetaStateTrackRegionScore
 
-                // HARDFix for TrainingRoom
+                // HARDFix for TrainingRoom. REVERTED to 1.52-only 2026-07-28
+                // after pulling upstream/master and finding Crypto137
+                // deliberately narrowed this from `1.52 || 1.53` down to
+                // `1.52` only two days earlier (commit 57d9f7c19, "Disable
+                // training room hack for 1.53") -- meaning they hit a real,
+                // demonstrated problem running this on 1.53 specifically.
+                // I had widened this to ALL THREE versions on the theory
+                // that PrototypeId literals are content-hash-stable and this
+                // was "just never tested elsewhere" -- that reasoning was
+                // exactly the kind of assumption that turned out wrong for
+                // the DialogButton.Hold bug the same night. Matching
+                // upstream's known-safe configuration exactly instead of
+                // re-guessing; 1.48 was never in scope for this hack in
+                // upstream's own history either, so it stays excluded too
+                // pending real evidence either way.
                 if (PrototypeDataRef == (PrototypeId)11068099654406640132) // TrainingRoom
                 {
                     // Skip for phantom Avatars — their synthetic Player has

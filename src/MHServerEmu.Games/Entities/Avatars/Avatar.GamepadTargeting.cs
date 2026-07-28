@@ -27,6 +27,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// </summary>
         private ulong FindNearestHostileForGamepadTarget(Vector3 aimTargetPosition)
         {
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
             Region region = Region;
             if (region == null) return Entity.InvalidId;
 
@@ -75,6 +76,12 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
 
             return bestId;
+#else
+            // GamepadGlobalsPrototype doesn't exist under 1.48 -- this
+            // feature simply has nothing to hook into on that version, so
+            // fall back to "no substitution" (same as region == null above).
+            return Entity.InvalidId;
+#endif
         }
     }
 }

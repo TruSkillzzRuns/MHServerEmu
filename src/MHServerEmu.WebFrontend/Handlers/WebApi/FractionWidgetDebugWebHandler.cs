@@ -43,8 +43,13 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 DescriptorText = descriptorText,
                 IconComplete = (long)proto.IconComplete,
                 IconIncomplete = (long)proto.IconIncomplete,
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                 IconCompleteHiRes = (long)proto.IconCompleteHiRes,
                 IconIncompleteHiRes = (long)proto.IconIncompleteHiRes,
+#else
+                IconCompleteHiRes = 0L,
+                IconIncompleteHiRes = 0L,
+#endif
                 proto.IconSpacing,
             });
         }

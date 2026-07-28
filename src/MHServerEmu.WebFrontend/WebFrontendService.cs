@@ -182,6 +182,12 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/inventory",        new MHServerEmu.WebFrontend.Handlers.WebApi.InventoryListWebHandler());
             _webService.RegisterHandler("/webapi/inventory/delete", new MHServerEmu.WebFrontend.Handlers.WebApi.InventoryDeleteWebHandler());
 
+            // OmegaDev2 cross-version Account Migration (1.48/1.52/1.53).
+            _webService.RegisterHandler("/webapi/account/migration/export", new MHServerEmu.WebFrontend.Handlers.WebApi.AccountMigrationExportWebHandler());
+            _webService.RegisterHandler("/webapi/account/migration/import", new MHServerEmu.WebFrontend.Handlers.WebApi.AccountMigrationImportWebHandler());
+            _webService.RegisterHandler("/webapi/account/migration/credentials/export", new MHServerEmu.WebFrontend.Handlers.WebApi.AccountMigrationCredentialsExportWebHandler());
+            _webService.RegisterHandler("/webapi/account/migration/credentials/import", new MHServerEmu.WebFrontend.Handlers.WebApi.AccountMigrationCredentialsImportWebHandler());
+
             // OmegaDev2 DPS Meter.
             _webService.RegisterHandler("/webapi/dps",       new MHServerEmu.WebFrontend.Handlers.WebApi.DpsWebHandler());
             _webService.RegisterHandler("/webapi/dps/reset", new MHServerEmu.WebFrontend.Handlers.WebApi.DpsResetWebHandler());

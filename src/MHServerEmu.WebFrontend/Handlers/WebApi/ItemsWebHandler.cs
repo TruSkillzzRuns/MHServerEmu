@@ -113,7 +113,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                             avatar = LeafOf(GameDatabase.GetPrototypeName(single.DataRef));
                     }
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                     AssetId iconAssetId = itemProto.IconPathHiRes != 0 ? itemProto.IconPathHiRes : itemProto.IconPath;
+#else
+                    AssetId iconAssetId = itemProto.IconPath;
+#endif
 
                     items.Add(new ItemCatalogEntry
                     {

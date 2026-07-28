@@ -72,9 +72,13 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                             rarityTier = rarityRef.As<RarityPrototype>()?.Tier ?? 0;
                         }
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                         AssetId iconAssetId = itemProto != null
                             ? (itemProto.IconPathHiRes != 0 ? itemProto.IconPathHiRes : itemProto.IconPath)
                             : 0;
+#else
+                        AssetId iconAssetId = itemProto != null ? itemProto.IconPath : 0;
+#endif
 
                         items.Add(new
                         {

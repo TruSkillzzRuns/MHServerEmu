@@ -65,7 +65,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     // Resolve the best portrait asset for this agent. Prefer the HD variant
                     // when present; fall back to the standard IconPath. Agents with neither
                     // tend to be utility / internal prototypes, not real enemies — skip them.
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                     AssetId iconAssetId = proto.IconPathHiRes != 0 ? proto.IconPathHiRes : proto.IconPath;
+#else
+                    AssetId iconAssetId = proto.IconPath;
+#endif
                     if (iconAssetId == 0) continue;
 
                     string path = GameDatabase.GetPrototypeName(agentRef);

@@ -108,7 +108,11 @@ namespace MHServerEmu.Commands.Implementations
         }
 #endif
 
-#if GAME_VERSION_1_52
+#if !GAME_VERSION_1_53
+        // Omega itself exists on both 1.48 and 1.52 (only 1.53 replaced it
+        // with Infinity, per Player.cs's own !GAME_VERSION_1_53 gate on the
+        // underlying API) -- these commands were needlessly scoped to 1.52
+        // only despite the API being available on 1.48 too.
         [Command("maxomega")]
         [CommandDescription("Maxes out Omega experience.")]
         [CommandUsage("level maxomega")]
@@ -118,30 +122,43 @@ namespace MHServerEmu.Commands.Implementations
             PlayerConnection playerConnection = (PlayerConnection)client;
             Player player = playerConnection.Player;
 
-            // V48_FIXME
+#if GAME_VERSION_1_52
             if (player.Game.InfinitySystemEnabled)
                 return "Omega system is disabled by server settings.";
 
             player.Properties[PropertyEnum.OmegaXP] = GameDatabase.AdvancementGlobalsPrototype.InfinityXPCap;
+#else
+            // AdvancementGlobalsPrototype.InfinityXPCap is Infinity-system
+            // data that doesn't exist on 1.48 (and InfinitySystemEnabled is
+            // moot there too -- 1.48 predates Infinity entirely, so Omega is
+            // unconditionally available). TryOmegaLevelUp() below clamps the
+            // resulting points to OmegaPointsCap regardless of how large this
+            // XP value is, so any sufficiently large constant reaches the
+            // same real cap the 1.52 branch does.
+            player.Properties[PropertyEnum.OmegaXP] = long.MaxValue / 4;
+#endif
             player.TryOmegaLevelUp(true);
 
             return $"Omega experience maxed out.";
         }
 #endif
 
-#if GAME_VERSION_1_52
+#if !GAME_VERSION_1_53
         [Command("resetomega")]
         [CommandDescription("Removes all Omega progression.")]
         [CommandUsage("level resetomega")]
         [CommandInvokerType(CommandInvokerType.Client)]
         public string ResetOmega(string[] @params, NetClient client)
         {
-            // V48_FIXME
             PlayerConnection playerConnection = (PlayerConnection)client;
             Player player = playerConnection.Player;
 
+#if GAME_VERSION_1_52
+            // Moot on 1.48 -- Infinity doesn't exist there, so it can never
+            // be "enabled" to conflict with Omega.
             if (player.Game.InfinitySystemEnabled)
                 return "Omega system is disabled by server settings.";
+#endif
 
             // Force respec for all avatars
             foreach (Avatar avatar in new AvatarIterator(player))

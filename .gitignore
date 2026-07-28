@@ -428,3 +428,13 @@ StartServer.bat
 StopServer.bat
 StartClient.bat
 StartApache.bat
+StartServer_v48.bat
+StartServer_v53.bat
+StopServer_v48.bat
+StopServer_v53.bat
+StartClient_v48.bat
+StartClient_v53.bat
+
+# Personal local Apache install (includes a private TLS key under conf/) —
+# never for the repo, same reasoning as the launcher scripts above.
+Apache24/

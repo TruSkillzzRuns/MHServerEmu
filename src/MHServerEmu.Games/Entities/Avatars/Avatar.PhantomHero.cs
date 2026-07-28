@@ -4145,7 +4145,14 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (s_phantomNextSelfHealMs.TryGetValue(phantom.Id, out long nextAt) && nowMs < nextAt)
                 return false;
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
             PrototypeId healPowerRef = GameDatabase.GlobalsPrototype?.AvatarHealPower ?? PrototypeId.Invalid;
+#else
+            // GlobalsPrototype.AvatarHealPower doesn't exist under 1.48 --
+            // no known equivalent to grant instead, so self-heal simply
+            // never fires on that version.
+            PrototypeId healPowerRef = PrototypeId.Invalid;
+#endif
             if (healPowerRef == PrototypeId.Invalid) return false;
 
             Power healPower = phantom.GetPower(healPowerRef);

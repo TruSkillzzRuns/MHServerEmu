@@ -104,6 +104,34 @@ namespace MHServerEmu.Games.Entities
             RegionPrototypeId.WakandaP1RegionL60,
         };
 
+        // s_trialArenaPool was captured against the 1.52 client and mixes
+        // "StoryRevamp" region variants with older "Story" ones. Verified
+        // live 2026-07-28 against all three running servers via
+        // /webapi/protoeditor/fields: 51 of the 59 StoryRevamp entries do
+        // NOT exist on 1.48 at all (that content postdates the 1.48 client),
+        // and WakandaP1RegionL60 doesn't exist on 1.53. A raw random pick
+        // from the full pool would try to warp into a nonexistent region
+        // roughly 86% of the time on 1.48. Filter to whatever actually
+        // resolves on THIS server before picking, cached after first use.
+        private static RegionPrototypeId[] s_validTrialArenaPool;
+
+        private static RegionPrototypeId[] GetValidTrialArenaPool()
+        {
+            if (s_validTrialArenaPool != null) return s_validTrialArenaPool;
+
+            var valid = new List<RegionPrototypeId>();
+            foreach (RegionPrototypeId regionId in s_trialArenaPool)
+            {
+                if (GameDatabase.GetPrototype<RegionPrototype>((PrototypeId)(ulong)regionId) != null)
+                    valid.Add(regionId);
+            }
+
+            // Never worse than the pre-fix behavior even in the
+            // (shouldn't-happen) case where nothing resolved at all.
+            s_validTrialArenaPool = valid.Count > 0 ? valid.ToArray() : s_trialArenaPool;
+            return s_validTrialArenaPool;
+        }
+
         // A Nick Fury look used purely as a stationary, interactable prop —
         // spawned as a plain Agent (EntityHelper.CreateAgent), NOT via the
         // phantom-hero pipeline. SpawnPhantomHeroFromIntent creates a full
@@ -363,7 +391,8 @@ namespace MHServerEmu.Games.Entities
             Avatar avatar = CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false) return;
 
-            RegionPrototypeId chosen = s_trialArenaPool[Game.Random.Next(s_trialArenaPool.Length)];
+            RegionPrototypeId[] validPool = GetValidTrialArenaPool();
+            RegionPrototypeId chosen = validPool[Game.Random.Next(validPool.Length)];
 
             _trialWarpPending = true;
             avatar.TeleportToRegionFromWeb((ulong)chosen);

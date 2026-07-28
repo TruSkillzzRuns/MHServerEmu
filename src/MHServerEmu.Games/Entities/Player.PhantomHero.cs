@@ -569,6 +569,7 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         private void SyncPhantomParty()
         {
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
             // Only the human host synthesises a party. Phantom Players
             // (PlayerConnection == null) shouldn't recurse into this.
             if (PlayerConnection == null) return;
@@ -752,6 +753,15 @@ namespace MHServerEmu.Games.Entities
                     .Build());
             }
             catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party] sync failed: {ex.Message}"); }
+#else
+            // The party-sync protobuf messages this method builds
+            // (PartyInfo/PartyMemberInfo/PartyInfoClientUpdate/
+            // PartyMemberInfoClientUpdate/CommunityMemberAvatarSlot) don't
+            // exist in the 1.48 protocol -- the synthetic "phantoms show up
+            // in your party UI" feature simply isn't available on that
+            // version. Phantoms still work normally, they just won't have
+            // party nameplates/HP bars under 1.48.
+#endif
         }
 
         /// <summary>

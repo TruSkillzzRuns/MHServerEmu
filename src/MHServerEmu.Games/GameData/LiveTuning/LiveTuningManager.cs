@@ -30,8 +30,20 @@ namespace MHServerEmu.Games.GameData.LiveTuning
 
         public bool LoadLiveTuningData(bool sendToServices)
         {
-#if GAME_VERSION_1_52
-            // V48_FIXME
+            // Was previously #if GAME_VERSION_1_52 only -- a no-op on BOTH
+            // 1.48 and 1.53 -- despite NetStructLiveTuningSettingProtoEnumValue
+            // (the protobuf type this loads into) existing identically in
+            // all three Gazillion protocol versions, and despite
+            // LiveTuningData.cs's own per-category fields already being
+            // gated `|| GAME_VERSION_1_53` throughout (i.e. that class was
+            // clearly meant to support 1.53 too; this entry point just never
+            // got widened to match). Verified safe to run unconditionally:
+            // every JSON setting name is resolved via ParseTuningVarEnum(),
+            // which already gracefully skips (Verify.IsTrue + continue, not
+            // a throw) any setting name that doesn't resolve on this
+            // server's compiled data -- the same by-name, skip-if-missing
+            // pattern used everywhere else in this codebase for cross-
+            // version safety.
             if (!Verify.IsTrue(Directory.Exists(LiveTuningDataDirectory), "Live Tuning data directory not found"))
                 return false;
 
@@ -51,7 +63,6 @@ namespace MHServerEmu.Games.GameData.LiveTuning
 
             if (sendToServices)
                 LiveTuningEventScheduler.Instance.SendEventMessageTextToGroupingManager();
-#endif
 
             return true;
         }

@@ -48,7 +48,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 var proto = agentRef.As<AgentPrototype>();
                 if (proto == null || proto is AvatarPrototype) continue;
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                 AssetId iconAssetId = proto.IconPathHiRes != 0 ? proto.IconPathHiRes : proto.IconPath;
+#else
+                AssetId iconAssetId = proto.IconPath;
+#endif
                 if (iconAssetId == 0) continue;
 
                 string path = GameDatabase.GetPrototypeName(agentRef);

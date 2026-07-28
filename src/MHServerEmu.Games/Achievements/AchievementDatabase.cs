@@ -165,6 +165,13 @@ namespace MHServerEmu.Games.Achievements
         /// </summary>
         public List<AchievementInfo> GetItemCollectedAchievements(Prototype itemPrototype)
         {
+            // A null prototype means the caller is holding an item with
+            // invalid/unresolvable data (e.g. a corrupt ItemSpec) -- treat
+            // it as "no achievements" rather than crashing the whole game
+            // instance over one bad item.
+            if (itemPrototype == null)
+                return new();
+
             lock (_prototypeToAchievementInfo)
             {
                 if (_prototypeToAchievementInfo.TryGetValue(itemPrototype, out List<AchievementInfo> achievementInfosFound) == false)
