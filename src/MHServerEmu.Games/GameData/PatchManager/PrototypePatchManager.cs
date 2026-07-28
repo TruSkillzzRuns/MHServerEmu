@@ -1,4 +1,4 @@
-﻿using MHServerEmu.Core.Helpers;
+using MHServerEmu.Core.Helpers;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.Games.GameData.Prototypes;
 using System.ComponentModel;
@@ -9,8 +9,8 @@ namespace MHServerEmu.Games.GameData.PatchManager
 {
     public class PrototypePatchManager
     {
-
         private static readonly Logger Logger = LogManager.CreateLogger();
+
         private Stack<PrototypeId> _protoStack = new();
         private readonly Dictionary<PrototypeId, List<PrototypePatchEntry>> _patchDict = new();
 
@@ -202,13 +202,22 @@ namespace MHServerEmu.Games.GameData.PatchManager
 
             if (targetType.IsSubclassOf(typeof(Prototype)))
             {
+                PrototypeId? protoRef = null;
                 switch (rawValue)
                 {
-                    case PrototypeId protoRef:
-                        return GameDatabase.GetPrototype<Prototype>(protoRef);
+                    case PrototypeId protoId:   protoRef = protoId; break;
+                    case ulong dataId:          protoRef = (PrototypeId)dataId; break;
+                }
 
-                    case ulong dataId:
-                        return GameDatabase.GetPrototype<Prototype>((PrototypeId)dataId);
+                if (protoRef.HasValue)
+                {
+                    PatchContext contextBefore = Instance.CreateSubContext();
+
+                    Prototype proto = GameDatabase.GetPrototype<Prototype>(protoRef.Value);
+
+                    Instance.RestoreContext(contextBefore);
+
+                    return proto;
                 }
             }
 
@@ -280,14 +289,14 @@ namespace MHServerEmu.Games.GameData.PatchManager
 
         private static void InsertValue(Prototype prototype, PropertyInfo fieldInfo, ValueBase value)
         {
-            Type fieldType = fieldInfo.PropertyType; 
+            Type fieldType = fieldInfo.PropertyType;
             if (fieldType.IsArray == false)
-                throw new InvalidOperationException($"Field {fieldInfo.Name} is not array.");     
+                throw new InvalidOperationException($"Field {fieldInfo.Name} is not array.");
 
             var valueEntry = value.GetValue();
 
             var entryType = valueEntry.GetType();
-            Type elementType = fieldType.GetElementType(); 
+            Type elementType = fieldType.GetElementType();
 
             if (elementType == null || IsTypeCompatible(elementType, entryType, value.ValueType) == false)
                 throw new InvalidOperationException($"Type {value.ValueType} is not assignable for {elementType?.Name}.");
@@ -320,7 +329,7 @@ namespace MHServerEmu.Games.GameData.PatchManager
         private static bool IsTypeCompatible(Type baseType, Type entryType, ValueType valueType)
         {
             if (entryType.IsArray) entryType = entryType.GetElementType();
-            if (valueType == ValueType.PrototypeDataRef || valueType == ValueType.PrototypeDataRefArray) 
+            if (valueType == ValueType.PrototypeDataRef || valueType == ValueType.PrototypeDataRefArray)
                 entryType = typeof(Prototype);
             return baseType.IsAssignableFrom(entryType) || entryType.IsAssignableFrom(baseType);
         }
@@ -346,12 +355,12 @@ namespace MHServerEmu.Games.GameData.PatchManager
         {
             if (elementType.IsClass && valueEntry is PrototypeId dataRef)
             {
-                var prototype = GameDatabase.GetPrototype<Prototype>(dataRef) 
+                var prototype = GameDatabase.GetPrototype<Prototype>(dataRef)
                     ?? throw new InvalidOperationException($"DataRef {dataRef} is not Prototype.");
                 valueEntry = prototype;
             }
 
-            return ConvertValue(valueEntry, elementType);            
+            return ConvertValue(valueEntry, elementType);
         }
 
         /// <summary>
@@ -386,6 +395,41 @@ namespace MHServerEmu.Games.GameData.PatchManager
         {
             var (owner, parentPath) = ResolveParentContext(parent);
             _pathDict[child] = (owner, $"{parentPath}.{fieldName}[{index}]");
+        }
+
+        // Snapshots and clears the current patch-resolution state so that a
+        // recursive GameDatabase.GetPrototype() call (e.g. resolving a
+        // PrototypeId reference encountered mid-patch in ConvertValue) can't
+        // push onto / read from the SAME _protoStack/_pathDict as the
+        // in-progress outer patch and corrupt it. Adopted from upstream's
+        // PatchContext re-entrancy fix, adapted to our (Owner, Path) tuple
+        // _pathDict rather than upstream's plain-string PathDict, since ours
+        // is what the nested-prototype cross-contamination fix above depends
+        // on.
+        private PatchContext CreateSubContext()
+        {
+            PatchContext oldContext = new(_protoStack, _pathDict);
+            _protoStack = new();
+            _pathDict = new();
+            return oldContext;
+        }
+
+        private void RestoreContext(in PatchContext context)
+        {
+            _protoStack = context.ProtoStack;
+            _pathDict = context.PathDict;
+        }
+
+        private readonly struct PatchContext
+        {
+            public readonly Stack<PrototypeId> ProtoStack;
+            public readonly Dictionary<Prototype, (PrototypeId Owner, string Path)> PathDict;
+
+            public PatchContext(Stack<PrototypeId> protoStack, Dictionary<Prototype, (PrototypeId Owner, string Path)> pathDict)
+            {
+                ProtoStack = protoStack;
+                PathDict = pathDict;
+            }
         }
     }
 }
