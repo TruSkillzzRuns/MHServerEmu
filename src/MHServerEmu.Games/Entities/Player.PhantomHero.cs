@@ -6,6 +6,7 @@ using MHServerEmu.Core.VectorMath;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.GameData;
+using MHServerEmu.Games.Properties;
 using MHServerEmu.Games.Regions;
 
 namespace MHServerEmu.Games.Entities
@@ -1181,6 +1182,32 @@ namespace MHServerEmu.Games.Entities
             return results;
         }
 
+        /// <summary>
+        /// Forces an already-in-world avatar to re-enter the world in place
+        /// (same region/position/orientation). ChangeCostume() only writes
+        /// the CostumeCurrent property — for a BRAND NEW phantom that's
+        /// applied before EnterWorld so the initial entity-creation packet
+        /// already carries the right look, but for an ALREADY-spawned
+        /// phantom (re-costuming from the app's dropdown or !phantom
+        /// costume) there's no equivalent trigger, so already-connected
+        /// clients keep rendering the old mesh even though the server-side
+        /// property (and thus Inspect, which reads it directly) is correct.
+        /// Exit+re-enter forces a fresh entity-creation packet, the same
+        /// path already confirmed to render costumes correctly on spawn.
+        /// </summary>
+        private static void RefreshPhantomVisual(Avatar phantom)
+        {
+            if (phantom == null || phantom.IsInWorld == false) return;
+
+            Region region = phantom.Region;
+            Vector3 position = phantom.RegionLocation.Position;
+            Orientation orientation = phantom.Orientation;
+            if (region == null) return;
+
+            phantom.ExitWorld();
+            phantom.EnterWorld(region, position, orientation);
+        }
+
         /// <summary>Give every active phantom a random costume.</summary>
         public string RandomizePhantomCostumes()
         {
@@ -1198,6 +1225,7 @@ namespace MHServerEmu.Games.Entities
                 if (phantom.ChangeCostume(costumeRef))
                 {
                     UpdatePhantomCostume(avatarId, (ulong)costumeRef);
+                    RefreshPhantomVisual(phantom);
                     changed++;
                 }
             }
@@ -1244,7 +1272,50 @@ namespace MHServerEmu.Games.Entities
                 return "ChangeCostume failed — check server log.";
 
             UpdatePhantomCostume(phantom.Id, (ulong)costumeRef);
+            RefreshPhantomVisual(phantom);
             return $"Costume applied.";
+        }
+
+        /// <summary>
+        /// Grants ownership of a costume the same way a real store purchase
+        /// would (PropertyEnum.CostumeUnlock keyed by the costume's ref) —
+        /// without going through the store/catalog/purchase flow at all.
+        /// </summary>
+        public bool UnlockCostume(PrototypeId costumeRef)
+        {
+            if (costumeRef == PrototypeId.Invalid) return false;
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            if ((int)Properties[PropertyEnum.CostumeUnlock, costumeRef] != 0) return true;
+            Properties[PropertyEnum.CostumeUnlock, costumeRef] = 1;
+            return true;
+#else
+            return false; // No CostumeUnlock property on 1.48.
+#endif
+        }
+
+        /// <summary>
+        /// Force-equips a costume directly on THIS player's own live avatar,
+        /// bypassing the item/store/closet flow entirely — same mechanism
+        /// as the phantom costume commands above. Also grants CostumeUnlock
+        /// first (real ownership, same property a store purchase would set)
+        /// so we can isolate whether the client's block on low-DesignState
+        /// costumes is an ownership/anti-spoof check (this should get past
+        /// it) versus a hard DesignState wall baked into rendering itself
+        /// (this won't help, and would confirm a client-data patch is the
+        /// only route).
+        /// </summary>
+        public string ForceEquipCostumeOnCurrentAvatar(PrototypeId costumeRef)
+        {
+            Avatar avatar = CurrentAvatar;
+            if (avatar == null) return "No current avatar in world.";
+
+            UnlockCostume(costumeRef);
+
+            if (avatar.ChangeCostume(costumeRef) == false)
+                return "ChangeCostume failed — check server log.";
+
+            RefreshPhantomVisual(avatar);
+            return $"Applied {costumeRef.GetName()} to {avatar.PrototypeDataRef.GetName()}.";
         }
 
         /// <summary>

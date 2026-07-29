@@ -1678,6 +1678,16 @@ namespace MHServerEmu.Games.Entities
                 Properties.RemoveProperty(propId);
 
             removeList.Clear();
+
+            // Confirmed live 2026-07-29 -- clearing PowerSpec above frees up
+            // the underlying rank data, but PropertyEnum.PowerPointsUnspent
+            // (what "Points Available" actually reads) is only ever
+            // recalculated after a successful PowerPointAllocationCommit
+            // (see UpdatePowerPointsUnspent's other call site). Without this
+            // call, respec/reset appears to do nothing from the player's
+            // perspective -- points are freed server-side but the client
+            // keeps showing whatever "Points Available" was before the reset.
+            UpdatePowerPointsUnspent(specIndex);
 #endif
 
             // Lock powers

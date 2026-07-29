@@ -1714,7 +1714,12 @@ namespace MHServerEmu.Games.Entities
                         {
                             PrototypeId heroRef = (PrototypeId)entry.HeroRef;
                             string heroName = heroRef != PrototypeId.Invalid ? LeafHeroName(heroRef) : "Phantom";
-                            string display = $"★{Math.Clamp(rank, 1, 5)} {heroName}";
+                            // rank is already clamped to [0, EndlessMaxRank] above and we're in
+                            // the rank > 0 branch, so it's safe to display as-is (was previously
+                            // hardcoded to Math.Clamp(rank, 1, 5), silently hiding ranks 6-10 in
+                            // the nameplate even though the HP/damage buff below already scaled
+                            // correctly up to EndlessMaxRank).
+                            string display = $"★{rank} {heroName}";
                             spawnedId = avatar.SpawnNemesisPhantomHero(heroRef, level, display, rank, out err);
                         }
                         else

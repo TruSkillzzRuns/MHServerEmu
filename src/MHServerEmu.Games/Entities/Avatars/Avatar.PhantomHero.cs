@@ -4842,10 +4842,14 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 
         /// <summary>
-        /// All approved costumes usable by the given avatar, resolved from
-        /// the loaded client data (CostumePrototype.UsableBy). Like the
-        /// hero pool, this is entirely runtime — no costume names live in
-        /// server source.
+        /// All costumes usable by the given avatar, resolved from the loaded
+        /// client data (CostumePrototype.UsableBy). Like the hero pool, this
+        /// is entirely runtime — no costume names live in server source.
+        /// Deliberately NOT using ApprovedOnly: some real, fully-populated
+        /// costumes (e.g. the Age of Apocalypse Horsemen on 1.53) are still
+        /// flagged DesignState=DevelopmentOnly in the retail data despite
+        /// being complete and playable, and that flag would silently hide
+        /// them from selection here.
         /// </summary>
         public static List<(PrototypeId CostumeRef, string ShortName)> GetCostumesForAvatar(PrototypeId avatarRef)
         {
@@ -4853,7 +4857,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (avatarRef == PrototypeId.Invalid) return results;
 
             foreach (PrototypeId costumeRef in DataDirectory.Instance
-                .IteratePrototypesInHierarchy<CostumePrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
+                .IteratePrototypesInHierarchy<CostumePrototype>(PrototypeIterateFlags.NoAbstract))
             {
                 CostumePrototype costumeProto = costumeRef.As<CostumePrototype>();
                 if (costumeProto == null) continue;

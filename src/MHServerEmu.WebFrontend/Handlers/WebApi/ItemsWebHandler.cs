@@ -65,6 +65,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 PrototypeId rarityUniqueRef = GameDatabase.LootGlobalsPrototype.RarityUnique;
 
                 var items = new List<ItemCatalogEntry>(1 << 14);
+                var seenItemRefs = new HashSet<ulong>(1 << 14);
+
                 foreach (PrototypeId itemRef in DataDirectory.Instance
                     .IteratePrototypesInHierarchy<ItemPrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
                 {
@@ -131,7 +133,56 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         IconPath = iconAssetId != 0 ? GameDatabase.GetAssetName(iconAssetId) : null,
                         IsUnique = IsUniqueItem(itemProto, path, rarityUniqueRef),
                     });
+                    seenItemRefs.Add((ulong)itemRef);
                 }
+
+                // Supplemental pass: costumes whose DesignState is below the
+                // approval threshold (e.g. the Age of Apocalypse Horsemen on
+                // 1.53) are real, fully-populated costumes that the ApprovedOnly
+                // pass above silently excludes -- same finding as the phantom
+                // costume dropdown fix. Included here too so the Gear Picker
+                // (and the force-equip test button) can actually reach them.
+                foreach (PrototypeId costumeRef in DataDirectory.Instance
+                    .IteratePrototypesInHierarchy<CostumePrototype>(PrototypeIterateFlags.NoAbstract))
+                {
+                    if (seenItemRefs.Contains((ulong)costumeRef)) continue;
+
+                    var costumeProto = costumeRef.As<CostumePrototype>();
+                    if (costumeProto == null) continue;
+
+                    string path = GameDatabase.GetPrototypeName(costumeRef);
+                    if (string.IsNullOrEmpty(path)) continue;
+                    if (path.IndexOf("zzzDeprecated", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                    if (path.IndexOf("/TEST", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+
+                    string displayName = null;
+                    if (costumeProto.DisplayName != LocaleStringId.Invalid && locale != null)
+                    {
+                        displayName = locale.GetLocaleString(costumeProto.DisplayName);
+                        if (string.IsNullOrWhiteSpace(displayName)) displayName = null;
+                    }
+
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+                    AssetId costumeIconAssetId = costumeProto.IconPathHiRes != 0 ? costumeProto.IconPathHiRes : costumeProto.IconPath;
+#else
+                    AssetId costumeIconAssetId = costumeProto.IconPath;
+#endif
+
+                    items.Add(new ItemCatalogEntry
+                    {
+                        ProtoRef = $"0x{(ulong)costumeRef:X16}",
+                        Name = LeafOf(path),
+                        DisplayName = displayName,
+                        Path = path,
+                        Category = "Costume",
+                        Slot = null,
+                        Avatar = LeafOf(GameDatabase.GetPrototypeName(costumeProto.UsableBy)),
+                        IconPath = costumeIconAssetId != 0 ? GameDatabase.GetAssetName(costumeIconAssetId) : null,
+                        IsUnique = false,
+                    });
+                    seenItemRefs.Add((ulong)costumeRef);
+                }
+
                 items.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
 
                 // Rarity ladder for the override dropdown, straight from data.

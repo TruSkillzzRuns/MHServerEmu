@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Gazillion;
 using MHServerEmu.Core.Logging;
+using MHServerEmu.Core.Memory;
 using MHServerEmu.Core.VectorMath;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.Events;
@@ -61,7 +62,33 @@ namespace MHServerEmu.Games.Entities
         // player's actual Stash inventory (Dialog\StashOption.cs:25) — no
         // special prototype logic needed beyond that one property.
         private const ulong DrEndlessStashRef = 0x53EB98704E8E15C6; // Entity/Characters/NPCs/Objects/AvengersStash.prototype
-        private static readonly Vector3 s_drEndlessStashOffset = new(60f, 0f, 0f); // relative to the terminal's position
+        // 80f matches the spacing SpawnOneEndlessChest already uses to keep
+        // multiple same-milestone chests from touching each other -- reused
+        // here for the same reason, between the terminal/stash/portal cluster.
+        private static readonly Vector3 s_drEndlessStashOffset = new(80f, 0f, 0f); // relative to the terminal's position
+
+        // Loot-break return portal — a real base-game "return to Danger Room"
+        // Transition prototype, Type=ReturnToLastTown. Spawning it as a real
+        // Transition entity needs no manual destination wiring at all:
+        // Avatar.cs's generic OnPlayerInteracted already special-cases any
+        // interacted Transition entity and calls UseTransition() on it
+        // automatically, which for this type resolves to
+        // Transition.UseTransitionReturnToLastTown -> Teleporter.TeleportToLastTown().
+        //
+        // No single asset covers all three client versions (confirmed live,
+        // 2026-07-28, via /webapi/protoeditor against all three running
+        // servers) — each entry here resolves on a different subset:
+        //   ReturnToLastBaseDR            -> 1.48, 1.52 (not 1.53)
+        //   ReturnToLastBaseHolosimVisible -> 1.53 only
+        // SpawnDrPortal tries them in order and uses whichever resolves on
+        // this server, same self-healing-pool pattern as
+        // Player.TrialOfImpossible.cs's GetValidTrialArenaPool.
+        private static readonly ulong[] s_drEndlessReturnPortalRefCandidates =
+        {
+            0x65013AB9D36D1394, // Entity/Transitions/ReturnToLastBaseDR.prototype
+            0x68F74D36E02D18A7, // Entity/Transitions/ReturnToLastBaseHolosimVisible.prototype
+        };
+        private static readonly Vector3 s_drEndlessPortalOffset = new(-80f, 0f, 0f); // relative to the terminal's position, opposite side from the stash (160f from the stash itself)
 
         // Custom dialog strings — see Data/Game/Achievements/AchievementStringMap_99_DangerRoomEndless.json.
         // TrialDialogYesStringId ("Continue") is reused as-is from Player.TrialOfImpossible.cs (same partial class).
@@ -94,6 +121,17 @@ namespace MHServerEmu.Games.Entities
         private Event<PlayerInteractGameEvent>.Action _drTerminalInteractAction;
 
         private ulong _drStashNpcId;
+        private ulong _drPortalNpcId;
+        private Region _drPortalRegion;
+        private Event<PlayerInteractGameEvent>.Action _drPortalInteractAction;
+        private readonly EventPointer<DrPortalLastTownRestoreEvent> _drPortalLastTownRestoreTick = new();
+
+        // How long after using the portal to restore the player's real
+        // LastTownRegionForAccount (see OnDrPortalInteract) -- long enough
+        // that the teleport this triggers has definitely already resolved,
+        // short enough nothing else reads the temporarily-overridden value
+        // in between.
+        private const int DrPortalLastTownRestoreMs = 5000;
 
         // True from the moment the player confirms the Coulson dialog until
         // BeginRegionTransfer snapshots it onto MigrationData — same shape as
@@ -573,8 +611,9 @@ namespace MHServerEmu.Games.Entities
             PauseWaveRun(true);
             if (_drTerminalNpcId == 0) SpawnDrTerminalNpc(region, avatar);
             SpawnDrStashBox(region, avatar);
+            SpawnDrPortal(region, avatar);
 
-            BroadcastEndlessBannerLines("💰 LOOT BREAK — bank your gear at the stash, then talk to the technician to continue.");
+            BroadcastEndlessBannerLines("💰 LOOT BREAK — bank your gear at the stash, then talk to the technician to continue, or step into the portal to return to the Danger Room hub.");
             DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: loot break triggered at wave {_endlessCycle}");
         }
 
@@ -617,6 +656,138 @@ namespace MHServerEmu.Games.Entities
                 }
             }
             _drStashNpcId = 0;
+        }
+
+        /// <summary>
+        /// Spawns the loot-break "leave now" return portal alongside the
+        /// terminal/stash. A real Transition entity (not an Agent prop like
+        /// the stash) -- Avatar.cs's generic interact handler already knows
+        /// how to use any Transition it's interacted with, so no custom
+        /// interact/teleport code is needed here at all; the prototype's own
+        /// ReturnToLastTown type handles it natively, same as every other
+        /// return-to-town portal in the real game.
+        /// </summary>
+        // Cached after the first resolution attempt -- which candidate
+        // resolves never changes for the lifetime of a running server, so
+        // there's no need to re-check every loot break.
+        private static PrototypeId? s_drEndlessReturnPortalRefResolved;
+
+        private static PrototypeId GetValidDrEndlessReturnPortalRef()
+        {
+            if (s_drEndlessReturnPortalRefResolved != null)
+                return s_drEndlessReturnPortalRefResolved.Value;
+
+            foreach (ulong candidate in s_drEndlessReturnPortalRefCandidates)
+            {
+                if (GameDatabase.PrototypeExists((PrototypeId)candidate))
+                {
+                    s_drEndlessReturnPortalRefResolved = (PrototypeId)candidate;
+                    return s_drEndlessReturnPortalRefResolved.Value;
+                }
+            }
+
+            DrEndlessLogger.Warn("[DangerRoomEndless] none of the known return-portal prototypes resolve on this server");
+            s_drEndlessReturnPortalRefResolved = PrototypeId.Invalid;
+            return PrototypeId.Invalid;
+        }
+
+        private void SpawnDrPortal(Region region, Avatar avatar)
+        {
+            DespawnDrPortal();
+
+            PrototypeId portalRef = GetValidDrEndlessReturnPortalRef();
+            if (portalRef == PrototypeId.Invalid)
+                return; // already logged in GetValidDrEndlessReturnPortalRef
+
+            using EntitySettings entitySettings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            entitySettings.EntityRef = portalRef;
+            entitySettings.Position = s_drEndlessTerminalPosition + s_drEndlessPortalOffset;
+            entitySettings.Orientation = s_drEndlessTerminalOrientation;
+            entitySettings.RegionId = region.Id;
+
+            WorldEntity portal = Game.EntityManager.CreateEntity(entitySettings) as WorldEntity;
+            if (portal == null)
+            {
+                DrEndlessLogger.Warn($"[DangerRoomEndless] {GetName()}: failed to spawn return portal (CreateEntity returned null)");
+                return;
+            }
+
+            portal.Properties[PropertyEnum.Interactable] = true;
+
+            _drPortalNpcId = portal.Id;
+            _drPortalRegion = region;
+            _drPortalInteractAction ??= OnDrPortalInteract;
+            region.PlayerInteractEvent.AddActionBack(_drPortalInteractAction);
+            DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: return portal spawned in training arena (id={portal.Id:X})");
+        }
+
+        /// <summary>
+        /// Avatar.cs's generic OnPlayerInteracted always calls UseTransition()
+        /// on any interacted Transition entity right after invoking
+        /// PlayerInteractEvent, which for this prototype's type resolves to
+        /// Teleporter.TeleportToLastTown() -> PropertyEnum.LastTownRegionForAccount.
+        /// DangerRoomHubRegion has Behavior=PrivateNonStory (confirmed live,
+        /// 2026-07-29), not Town, so it's never naturally tracked as a "last
+        /// town" -- without this, the portal would send the player to
+        /// whatever their REAL last town actually was (Avengers Tower,
+        /// wherever), not back here. Point it at the hub just-in-time, right
+        /// before the engine's own UseTransition() call reads it (this
+        /// handler runs first, synchronously, as part of the same
+        /// PlayerInteractEvent.Invoke() the engine calls before UseTransition),
+        /// then restore the player's real value shortly after so normal
+        /// Bodyslide-to-town behavior elsewhere is never affected.
+        /// </summary>
+        private void OnDrPortalInteract(in PlayerInteractGameEvent evt)
+        {
+            if (evt.Player != this) return;
+            if (evt.InteractableObject == null || evt.InteractableObject.Id != _drPortalNpcId) return;
+
+            PrototypeId previousLastTown = Properties[PropertyEnum.LastTownRegionForAccount];
+            Properties[PropertyEnum.LastTownRegionForAccount] = (PrototypeId)DrEndlessHubRegionRef;
+
+            var scheduler = Game?.GameEventScheduler;
+            if (scheduler != null)
+            {
+                if (_drPortalLastTownRestoreTick.IsValid) scheduler.CancelEvent(_drPortalLastTownRestoreTick);
+                scheduler.ScheduleEvent(_drPortalLastTownRestoreTick, TimeSpan.FromMilliseconds(DrPortalLastTownRestoreMs), _drEndlessEvents);
+                _drPortalLastTownRestoreTick.Get().Initialize(this, previousLastTown);
+            }
+
+            DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: return portal used — LastTownRegionForAccount pointed at hub, will restore in {DrPortalLastTownRestoreMs}ms");
+        }
+
+        private void RestoreLastTownAfterPortal(PrototypeId previousLastTown)
+        {
+            Properties[PropertyEnum.LastTownRegionForAccount] = previousLastTown;
+            DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: restored real LastTownRegionForAccount after portal use");
+        }
+
+        private sealed class DrPortalLastTownRestoreEvent : CallMethodEventParam1<Player, PrototypeId>
+        {
+            protected override CallbackDelegate GetCallback() => static (player, previousLastTown) => player.RestoreLastTownAfterPortal(previousLastTown);
+        }
+
+        private void DetachDrPortalNpc()
+        {
+            if (_drPortalRegion != null && _drPortalInteractAction != null)
+                _drPortalRegion.PlayerInteractEvent.RemoveAction(_drPortalInteractAction);
+            _drPortalRegion = null;
+        }
+
+        private void DespawnDrPortal()
+        {
+            DetachDrPortalNpc();
+
+            if (_drPortalNpcId != 0)
+            {
+                var existing = Game.EntityManager.GetEntity<WorldEntity>(_drPortalNpcId);
+                if (existing != null && existing.IsDestroyed == false)
+                {
+                    if (existing.IsInWorld) existing.ExitWorld();
+                    existing.Destroy();
+                }
+            }
+            _drPortalNpcId = 0;
         }
 
         private void OnDrTerminalInteract(in PlayerInteractGameEvent evt)
@@ -711,6 +882,7 @@ namespace MHServerEmu.Games.Entities
                         host.PauseWaveRun(false);
                         host.DespawnDrTerminalNpc();
                         host.DespawnDrStashBox();
+                        host.DespawnDrPortal();
                         host.BroadcastEndlessBannerLines("⚔ Endless Wave resumes!");
                         DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: resumed {host.GetName()}'s shared run via terminal");
                     }
@@ -739,6 +911,7 @@ namespace MHServerEmu.Games.Entities
                     PauseWaveRun(false);
                     DespawnDrTerminalNpc();
                     DespawnDrStashBox();
+                    DespawnDrPortal();
                     BroadcastEndlessBannerLines("⚔ Endless Wave resumes!");
                     DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: loot break ended — run resumed");
                     return;
@@ -815,6 +988,11 @@ namespace MHServerEmu.Games.Entities
             DetachDrGuideNpc();
             DetachDrTerminalNpc();
             DespawnDrStashBox();
+            DespawnDrPortal();
+
+            var scheduler = Game?.GameEventScheduler;
+            if (scheduler != null && _drPortalLastTownRestoreTick.IsValid)
+                scheduler.CancelEvent(_drPortalLastTownRestoreTick);
         }
     }
 }

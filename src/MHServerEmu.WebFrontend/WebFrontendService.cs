@@ -142,6 +142,10 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/items/catalog", new MHServerEmu.WebFrontend.Handlers.WebApi.ItemCatalogWebHandler());
             _webService.RegisterHandler("/webapi/items/give",    new MHServerEmu.WebFrontend.Handlers.WebApi.ItemGiveWebHandler());
 
+            // OmegaDev2 Gear Picker -- force-equip a costume directly on the
+            // player's own live avatar, bypassing the item/store/closet flow.
+            _webService.RegisterHandler("/webapi/avatar/costume", new MHServerEmu.WebFrontend.Handlers.WebApi.AvatarCostumeWebHandler());
+
             // OmegaDev2 Phantom Heroes tool — full command surface over WebAPI.
             _webService.RegisterHandler("/webapi/phantoms/catalog", new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsCatalogWebHandler());
             _webService.RegisterHandler("/webapi/phantoms/status",  new MHServerEmu.WebFrontend.Handlers.WebApi.PhantomsStatusWebHandler());

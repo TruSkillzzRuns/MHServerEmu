@@ -237,6 +237,35 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         continue;
                     }
 
+#if GAME_VERSION_1_48
+                    // PowerSpec/PowerSpecPending are NOT version-gated in
+                    // PropertyEnum, so ImportEntity's generic by-name property
+                    // copy above happily carries over whatever value the
+                    // source (1.52/1.53) avatar had, even though those builds
+                    // have no power-point-allocation UI/commit path that
+                    // meaningfully sets it. 1.48's new power point system
+                    // reads PowerSpec directly as "points already invested" --
+                    // confirmed live 2026-07-29: a migrated avatar showed
+                    // ValidatePendingPowerPointAllocation() computing
+                    // TotalAfterAllocation=21 against Max=20 while trying to
+                    // spend the correct 19th/20th point on a fresh power the
+                    // player insisted they had never touched. Every migrated
+                    // 1.48 avatar must start with a clean power-point slate,
+                    // so strip whatever PowerSpec/PowerSpecPending values
+                    // ImportEntity just copied in before the player ever
+                    // opens the Powers screen.
+                    using (var removeListHandle = MHServerEmu.Core.Memory.ListPool<MHServerEmu.Games.Properties.PropertyId>.Instance.Get(out var removeList))
+                    {
+                        foreach (var kvp in avatar.Properties.IteratePropertyRange(MHServerEmu.Games.Properties.PropertyEnum.PowerSpec))
+                            removeList.Add(kvp.Key);
+                        foreach (var kvp in avatar.Properties.IteratePropertyRange(MHServerEmu.Games.Properties.PropertyEnum.PowerSpecPending))
+                            removeList.Add(kvp.Key);
+
+                        foreach (var propId in removeList)
+                            avatar.Properties.RemoveProperty(propId);
+                    }
+#endif
+
                     // The roster shows PropertyEnum.AvatarLibraryLevel, which
                     // lives on the PLAYER (not the avatar) and is normally
                     // only kept in sync by the avatar's own level-up code
