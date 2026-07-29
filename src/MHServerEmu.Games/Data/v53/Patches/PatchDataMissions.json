@@ -1,0 +1,106 @@
+[
+    {
+        "Enabled": true,
+        "Prototype": "Missions/Prototypes/Act0/PlayOpening.prototype",
+        "Path": "DesignState",
+        "Description": "Enable Intro Movie",
+        "ValueType": "Enum",
+        "Value": "Live"
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Missions/Prototypes/Act3/Ch09Asgard/Ambushes/Norway/NorwayFrostGolemsFaeAmbushV1.prototype",
+        "Path": "DesignState",
+        "Description": "Enable NorwayFrostGolemsFaeAmbushV1",
+        "ValueType": "Enum",
+        "Value": "Live"
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Missions/Prototypes/Act3/Ch09Asgard/Ambushes/Norway/NorwayFrostGolemsFaeAmbushV2.prototype",
+        "Path": "DesignState",
+        "Description": "Enable NorwayFrostGolemsFaeAmbushV2",
+        "ValueType": "Enum",
+        "Value": "Live"
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Missions/Prototypes/Act3/Ch09Asgard/Ambushes/Norway/NorwayFrostGolemsFaeAmbushV3.prototype",
+        "Path": "DesignState",
+        "Description": "Enable NorwayFrostGolemsFaeAmbushV3",
+        "ValueType": "Enum",
+        "Value": "Live"
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Entity/Spawners/CH9/NorwayFrostGolemsSpawner.prototype",
+        "Path": "SpawnSequence[1].Count",
+        "Description": "Off AsgardFrostGolemMelee for NorwayFrostGolemsSpawner",
+        "ValueType": "Integer",
+        "Value": 0
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Entity/Spawners/CH9/NorwayFrostGolemsSpawner.prototype",
+        "Path": "SpawnSequence[3].Count",
+        "Description": "Off AsgardFrostGolemRanged for NorwayFrostGolemsSpawner",
+        "ValueType": "Integer",
+        "Value": 0
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Missions/Prototypes/Act3/Ch09Asgard/Controllers/SiegeMissionGiverController.prototype",
+        "Path": "DesignState",
+        "Description": "Fix Conflict mission SiegeMissionGiverController",
+        "ValueType": "Enum",
+        "Value": "NotInGame"
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Loot/Tables/Test/testAimGunbotSpawnTable.prototype",
+        "Path": "Choices[0].Agent",
+        "Description": "ExperienceOrbDiscoveryReward for 1 Orb Reward",
+        "ValueType": "PrototypeId",
+        "Value": 17153689258362476876
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Populations/Clusters/Generic/SelectAct/SelectActRunToExitClusterClearRewarded.prototype",
+        "Path": "Rewards[0]",
+        "Description": "DiscoverySurvival as 1 Orb Rewards",
+        "ValueType": "PrototypeId",
+        "Value": 3451806331797967983
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Populations/Clusters/Generic/SelectAct/SelectActRunToExitInteract.prototype",
+        "Path": "Rewards[0]",
+        "Description": "DiscoverySurvival as 1 Orb Rewards",
+        "ValueType": "PrototypeId",
+        "Value": 3451806331797967983
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Populations/Clusters/Generic/SelectAct/SelectActRunToExitInteractThankFall.prototype",
+        "Path": "Rewards[0]",
+        "Description": "DiscoverySurvival as 1 Orb Rewards",
+        "ValueType": "PrototypeId",
+        "Value": 3451806331797967983
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Populations/Clusters/Generic/SelectAct/SelectActRunToExitOnInteractThanks.prototype",
+        "Path": "Rewards[0]",
+        "Description": "DiscoverySurvival as 1 Orb Rewards",
+        "ValueType": "PrototypeId",
+        "Value": 3451806331797967983
+    },
+    {
+        "Enabled": true,
+        "Prototype": "Populations/Clusters/Generic/SelectAct/SelectActRunToExitPlayerProxDelay5000Rewarded.prototype",
+        "Path": "Rewards[0]",
+        "Description": "DiscoverySurvival as 1 Orb Rewards",
+        "ValueType": "PrototypeId",
+        "Value": 3451806331797967983
+    }
+]

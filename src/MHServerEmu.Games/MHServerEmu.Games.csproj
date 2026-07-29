@@ -18,26 +18,32 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DefineConstants>$(DefineConstants);GAME_VERSION_1_52</DefineConstants>
+    <GameDataFolder>v52</GameDataFolder>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DefineConstants>$(DefineConstants);GAME_VERSION_1_52</DefineConstants>
+    <GameDataFolder>v52</GameDataFolder>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug 1.48|x64'">
     <DefineConstants>$(DefineConstants);DEBUG;GAME_VERSION_1_48</DefineConstants>
+    <GameDataFolder>v48</GameDataFolder>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release 1.48|x64'">
     <DefineConstants>$(DefineConstants);RELEASE;GAME_VERSION_1_48</DefineConstants>
+    <GameDataFolder>v48</GameDataFolder>
   </PropertyGroup>
 	
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug 1.53|x64'">
     <DefineConstants>$(DefineConstants);DEBUG;GAME_VERSION_1_53</DefineConstants>
+    <GameDataFolder>v53</GameDataFolder>
   </PropertyGroup>
 	
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release 1.53|x64'">
     <DefineConstants>$(DefineConstants);RELEASE;GAME_VERSION_1_53</DefineConstants>
+    <GameDataFolder>v53</GameDataFolder>
   </PropertyGroup>
 
   <ItemGroup>
@@ -55,19 +61,25 @@
     </Reference>
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(GameDataFolder)'!=''">
     <!-- Wildcard instead of a hand-maintained per-file list: the old list
-         silently missed any newly added Data\Game file (confirmed gap:
+         silently missed any newly added Data file (confirmed gap:
          LiveTuningDataBig10.json shipped in git but was never copied to
          build output because nobody added a matching <None> entry for it).
-         Mirrors the fix already validated in lordunborn's fork. -->
-    <None Update="Data\Game\**\*.*">
+         Mirrors the fix already validated in lordunborn's fork. Content
+         comes from this build's own Data\$(GameDataFolder) source folder
+         (set per Configuration above) but is linked into the deployed
+         Data\Game path, so runtime code's existing "Game"-literal paths
+         keep working unchanged. -->
+    <Content Include="Data\$(GameDataFolder)\**\*.*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+      <Link>Data\Game\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <Visible>false</Visible>
+    </Content>
     <!-- Deliberately excluded — experimental/unfinished, not ready to ship. -->
-    <None Update="Data\Game\LiveTuning\Events\Experimental\LiveTuningDataCivilWar.json">
+    <Content Update="Data\$(GameDataFolder)\LiveTuning\Events\Experimental\LiveTuningDataCivilWar.json">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </None>
+    </Content>
   </ItemGroup>
 
 </Project>
