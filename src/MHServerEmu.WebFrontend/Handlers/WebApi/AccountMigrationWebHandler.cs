@@ -223,7 +223,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     }
 
                     if (p.HasAvatarFullyUnlocked(avatarRef) == false)
-                        p.UnlockAvatar(avatarRef, false);
+                        p.UnlockAvatar(avatarRef, AvatarUnlockType.FreeUnlock, false);
 
                     Avatar avatar = null;
                     foreach (Avatar candidate in new AvatarIterator(p))
