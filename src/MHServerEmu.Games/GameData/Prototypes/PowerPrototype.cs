@@ -806,15 +806,26 @@ namespace MHServerEmu.Games.GameData.Prototypes
     public class AbilityAssignmentPrototype : Prototype
     {
         public PrototypeId Ability { get; protected set; }
+
+        // Rank is a real Calligraphy field on 1.48 -- the property MUST stay
+        // settable with this exact name or CalligraphySerializer fails to
+        // deserialize AbilityAssignment.defaults ("Unknown field"), which
+        // cascades into every avatar prototype that copies parent fields from
+        // it failing to load and crashes player-entity creation on login
+        // (confirmed live 2026-07-28 after an earlier attempt removed the
+        // setter entirely). On 1.52/1.53 the field doesn't exist in the data
+        // at all, hence no setter there.
+        //
+        // Despite being real 1.48 data, this value is NOT a starting rank --
+        // upstream's own pre-multiversion code already knew this and
+        // hardcoded 1 unconditionally rather than trust it. Confirmed live
+        // 2026-07-28: trusting this raw value sent every avatar's entire
+        // power progression table in at rank ~20 regardless of character
+        // level or points spent. Don't read this property for gameplay --
+        // see AvatarPrototype.GetStartingRank(), which ignores it and always
+        // returns 1 (matching what 1.52/1.53 always did here).
 #if GAME_VERSION_1_48
         public int Rank { get; protected set; }
-#endif
-
-        //---
-
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
-        [DoNotCopy]
-        public int Rank { get => 1; }
 #endif
     }
 

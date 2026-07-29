@@ -3794,6 +3794,11 @@ namespace MHServerEmu.Games.Entities
             PlayerConnection?.SendMessage(message);
         }
 
+        public void SendGroupingMessage(IMessage message)
+        {
+            PlayerConnection?.SendGroupingMessage(message);
+        }
+
         public void SendPlayKismetSeq(PrototypeId kismetSeqRef)
         {
             SendMessage(NetMessagePlayKismetSeq.CreateBuilder()

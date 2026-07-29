@@ -44,6 +44,13 @@ namespace MHServerEmu.Games.Entities
         // (github.com/lordunborn/MHServerEmu, commit 79514463).
         private readonly Dictionary<ulong, ulong> _syncedPhantomMemberDbIds = new();
 
+#if !GAME_VERSION_1_52 && !GAME_VERSION_1_53
+        // 1.48-only: whether we've already sent ClientCreateGroup for the
+        // current phantom-party "session" (reset on full teardown so a later
+        // respawn creates the group again). See SyncPhantomParty's 1.48 branch.
+        private bool _hasSyncedPhantomGroup48;
+#endif
+
         public IReadOnlyList<ulong> PhantomAvatarIds => _phantomAvatarIds;
         public IReadOnlyList<ulong> PhantomPlayerIds => _phantomPlayerIds;
         public int PhantomHeroCount => _phantomAvatarIds.Count;
@@ -754,13 +761,202 @@ namespace MHServerEmu.Games.Entities
             }
             catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party] sync failed: {ex.Message}"); }
 #else
-            // The party-sync protobuf messages this method builds
-            // (PartyInfo/PartyMemberInfo/PartyInfoClientUpdate/
-            // PartyMemberInfoClientUpdate/CommunityMemberAvatarSlot) don't
-            // exist in the 1.48 protocol -- the synthetic "phantoms show up
-            // in your party UI" feature simply isn't available on that
-            // version. Phantoms still work normally, they just won't have
-            // party nameplates/HP bars under 1.48.
+            // 1.48 delivers party state over the GroupingManager protocol (mux
+            // channel 2: CurrentPartyInfo/PlayerJoinedGroup/PlayerLeftGroup/
+            // ClientCreateGroup/ClientBootedFromGroup) instead of 1.52/1.53's
+            // PartyInfo/PartyMemberInfo family, which doesn't exist in 1.48's
+            // protocol at all (verified: zero matches for those class names in
+            // src/Gazillion/1.48.0.1712). No code in this fork or upstream had
+            // ever built or exercised this 1.48 message path before (2026-07-28)
+            // -- there's no known-working reference to copy, so this is a
+            // first attempt built from the real message field requirements
+            // (each message's IsInitialized list) rather than a guess. The
+            // community/HP-bar half (Community.AddMember/RequestLocalBroadcast/
+            // ReceiveMemberBroadcast, CommunityMember's 1.48 AvatarRef/
+            // CostumeRef fields) is NOT version-gated and already works
+            // identically to the 1.52 path below -- reused as-is.
+            if (PlayerConnection == null) return;
+
+            var game = Game;
+            if (game == null) return;
+
+            ulong groupId = ComputeSyntheticGroupId();
+
+            // Stale-member cleanup: mirrors the 1.52 path's PartyMemberEvent
+            // Remove, using PlayerLeftGroup instead.
+            List<ulong> staleRuntimeIds = null;
+            foreach (var kvp in _syncedPhantomMemberDbIds)
+            {
+                if (_phantomPlayerIds.Contains(kvp.Key)) continue;
+                (staleRuntimeIds ??= new List<ulong>()).Add(kvp.Key);
+            }
+            if (staleRuntimeIds != null)
+            {
+                foreach (ulong runtimeId in staleRuntimeIds)
+                {
+                    ulong staleMemberDbId = _syncedPhantomMemberDbIds[runtimeId];
+                    try
+                    {
+                        SendGroupingMessage(PlayerLeftGroup.CreateBuilder()
+                            .SetLeaverName(string.Empty) // entity is already gone -- name unknown at this point
+                            .SetPlayerSessionId(staleMemberDbId)
+                            .SetGroupId(groupId)
+                            .SetLeaveReason(GroupLeaveReason.GROUP_LEAVE_REASON_LEFT)
+                            .Build());
+                    }
+                    catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party48] member-leave failed: {ex.Message}"); }
+
+                    try { Community?.RemoveMember(staleMemberDbId, MHServerEmu.Games.Social.Communities.CircleId.__Party); }
+                    catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party48] community remove failed: {ex.Message}"); }
+
+                    _syncedPhantomMemberDbIds.Remove(runtimeId);
+                }
+            }
+
+            // Empty list = teardown. Tell the human's own client they've left
+            // the group so the HUD hides (best-effort interpretation -- there's
+            // no dedicated "disband" message on 1.48's client-facing side).
+            if (_phantomAvatarIds.Count == 0)
+            {
+                if (_hasSyncedPhantomGroup48)
+                {
+                    try
+                    {
+                        SendGroupingMessage(ClientBootedFromGroup.CreateBuilder()
+                            .SetGroupId(groupId)
+                            .SetLeaveReason(GroupLeaveReason.GROUP_LEAVE_REASON_LEFT)
+                            .Build());
+                    }
+                    catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party48] teardown failed: {ex.Message}"); }
+                    _hasSyncedPhantomGroup48 = false;
+                }
+                return;
+            }
+
+            // First phantom of this session: establish the group before
+            // anything else. ClientCreateGroup requires groupId/groupType/
+            // leaderSessionId/leaderName.
+            if (_hasSyncedPhantomGroup48 == false)
+            {
+                try
+                {
+                    SendGroupingMessage(ClientCreateGroup.CreateBuilder()
+                        .SetGroupId(groupId)
+                        .SetGroupType(GroupType.GroupType_Party)
+                        .SetLeaderSessionId(DatabaseUniqueId)
+                        .SetLeaderName(GetName())
+                        .Build());
+                }
+                catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party48] create-group failed: {ex.Message}"); }
+                _hasSyncedPhantomGroup48 = true;
+            }
+
+            var mgr = game.EntityManager;
+
+            // PerPlayerInfo.playerSessionId is a required field with no
+            // equivalent concept for a phantom (no real login session) -- use
+            // DatabaseUniqueId as a stable, non-zero stand-in. This send path
+            // goes straight to this player's own connection, bypassing the
+            // Grouping service's session-id-keyed lookup dictionaries
+            // entirely, so nothing else in the server ever needs this value
+            // to correspond to a real session.
+            var currentPartyInfoBuilder = CurrentPartyInfo.CreateBuilder()
+                .SetGroupId(groupId)
+                .SetGroupType(GroupType.GroupType_Party)
+                .SetLeader(PerPlayerInfo.CreateBuilder()
+                    .SetPlayerName(GetName())
+                    .SetPlayerSessionId(DatabaseUniqueId)
+                    .SetPlayerDbId(DatabaseUniqueId)
+                    .Build());
+
+            currentPartyInfoBuilder.AddMembers(PerPlayerInfo.CreateBuilder()
+                .SetPlayerName(GetName())
+                .SetPlayerSessionId(DatabaseUniqueId)
+                .SetPlayerDbId(DatabaseUniqueId)
+                .Build());
+
+            for (int i = 0; i < _phantomPlayerIds.Count; i++)
+            {
+                Player phantom = mgr.GetEntity<Player>(_phantomPlayerIds[i]);
+                if (phantom == null) continue;
+
+                currentPartyInfoBuilder.AddMembers(PerPlayerInfo.CreateBuilder()
+                    .SetPlayerName(phantom.GetName())
+                    .SetPlayerSessionId(phantom.DatabaseUniqueId)
+                    .SetPlayerDbId(phantom.DatabaseUniqueId)
+                    .Build());
+
+                if (_syncedPhantomMemberDbIds.ContainsKey(_phantomPlayerIds[i]) == false)
+                {
+                    try
+                    {
+                        SendGroupingMessage(PlayerJoinedGroup.CreateBuilder()
+                            .SetJoiningPlayerName(phantom.GetName())
+                            .SetPlayerSessionId(phantom.DatabaseUniqueId)
+                            .SetGroupId(groupId)
+                            .Build());
+                    }
+                    catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party48] member-join failed: {ex.Message}"); }
+
+                    // Community registration -- same ungated machinery the
+                    // 1.52 path above uses (Community.cs/CommunityMember.cs
+                    // have zero GAME_VERSION gating); the HP bar resolves via
+                    // CommunityMember's 1.48 AvatarRef/CostumeRef fields
+                    // instead of 1.52's GetAvatarSlotInfo()/slots[], reached
+                    // through Player.BuildCommunityBroadcast(), which already
+                    // has its own 1.48 branch.
+                    try
+                    {
+                        if (Community != null)
+                        {
+                            bool added = Community.AddMember(phantom.DatabaseUniqueId, phantom.GetName(), MHServerEmu.Games.Social.Communities.CircleId.__Party);
+                            var member = Community.GetMember(phantom.DatabaseUniqueId);
+                            bool broadcast = false;
+                            if (member != null)
+                            {
+                                var teamUpAgent = mgr.GetEntity<Agent>(_phantomAvatarIds[i]);
+                                if (teamUpAgent != null && teamUpAgent.IsTeamUpAgent)
+                                {
+                                    var teamUpBroadcast = Gazillion.CommunityMemberBroadcast.CreateBuilder()
+                                        .SetMemberPlayerDbId(phantom.DatabaseUniqueId)
+                                        .SetCurrentRegionRefId((ulong)(teamUpAgent.Region?.PrototypeDataRef ?? MHServerEmu.Games.GameData.PrototypeId.Invalid))
+                                        .SetCurrentAvatarRefId((ulong)teamUpAgent.PrototypeDataRef)
+                                        .SetCurrentCostumeRefId(0)
+                                        .SetCurrentCharacterLevel((ulong)teamUpAgent.CharacterLevel)
+                                        .SetCurrentPrestigeLevel(0)
+                                        .SetCurrentPlayerName(phantom.GetName())
+                                        .SetIsOnline(1)
+                                        .Build();
+                                    Community.ReceiveMemberBroadcast(teamUpBroadcast);
+                                    broadcast = true;
+                                }
+                                else
+                                {
+                                    broadcast = Community.RequestLocalBroadcast(member);
+                                }
+                            }
+                            PhantomHostLogger.Info($"[Phantom:Party48] community register '{phantom.GetName()}' 0x{phantom.DatabaseUniqueId:X}: added={added} memberFound={member != null} broadcasted={broadcast}");
+                        }
+                        else
+                        {
+                            PhantomHostLogger.Warn($"[Phantom:Party48] community register skipped — Community is null on {GetName()}");
+                        }
+                    }
+                    catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party48] community register failed: {ex.Message}"); }
+                }
+
+                _syncedPhantomMemberDbIds[_phantomPlayerIds[i]] = phantom.DatabaseUniqueId;
+            }
+
+            // Full snapshot every sync, in case the 1.48 client needs this to
+            // (re)render the roster rather than relying on the incremental
+            // Create/Join/Leave events alone -- unverified either way (see
+            // class-level note), so send both.
+            try
+            {
+                SendGroupingMessage(currentPartyInfoBuilder.Build());
+            }
+            catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom:Party48] snapshot failed: {ex.Message}"); }
 #endif
         }
 

@@ -745,6 +745,17 @@ namespace MHServerEmu.Games.GameData
         }
 
         /// <summary>
+        /// Returns <see langword="true"/> if the specified <see cref="PrototypeId"/> has a data ref record in this
+        /// data directory. Unlike <see cref="GetPrototypeDataRefRecord"/>, this does not log a warning on a miss --
+        /// use this to check for a ref's existence on this game version before calling GetPrototype() when a miss
+        /// is an expected, non-error outcome (e.g. patch/tuning data authored against a different version's content).
+        /// </summary>
+        public bool PrototypeExists(PrototypeId prototypeDataRef)
+        {
+            return prototypeDataRef != PrototypeId.Invalid && _prototypeDataRefRecords.ContainsKey(prototypeDataRef);
+        }
+
+        /// <summary>
         /// Retrieves a <see cref="PrototypeDataRefRecord"/> for the specified <see cref="PrototypeId"/>. Returns <see langword="null"/> if no record is found.
         /// </summary>
         private PrototypeDataRefRecord GetPrototypeDataRefRecord(PrototypeId prototypeDataRef)

@@ -512,7 +512,10 @@ namespace MHServerEmu.Games.GameData.Prototypes
         //---
 
         public override int GetRequiredLevel() => Level;
-        public override int GetStartingRank() => PowerAssignment != null ? PowerAssignment.Rank : 0;
+        // Every power's real starting rank is 1 if assigned at all, 0 otherwise --
+        // AbilityAssignmentPrototype.Rank is NOT a starting rank on any version (see
+        // that class's field comment) and must never be read here directly.
+        public override int GetStartingRank() => PowerAssignment != null ? 1 : 0;
 
         public override CurveId GetMaxRankForPowerAtCharacterLevel() => MaxRankForPowerAtCharacterLevel;
         public override PrototypeId[] GetPrerequisites() => Prerequisites;

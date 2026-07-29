@@ -167,6 +167,7 @@ namespace MHServerEmu.Games.GameData
         public static Curve GetCurve(CurveId curveId) => DataDirectory.CurveDirectory.GetCurve(curveId);
         public static Blueprint GetBlueprint(BlueprintId blueprintId) => DataDirectory.GetBlueprint(blueprintId);
         public static T GetPrototype<T>(PrototypeId prototypeId) where T: Prototype => DataDirectory.GetPrototype(prototypeId) as T;
+        public static bool PrototypeExists(PrototypeId prototypeId) => DataDirectory.PrototypeExists(prototypeId);
 
         public static string GetAssetName(AssetId assetId) => StringRefManager.GetReferenceName(assetId);
         public static string GetAssetTypeName(AssetTypeId assetTypeId) => AssetTypeRefManager.GetReferenceName(assetTypeId);

@@ -538,6 +538,21 @@ namespace MHServerEmu.Games.Network
             PostMessage(message);
         }
 
+        // Mux channel 2 is the GroupingManager protocol -- normally owned by the
+        // separate Grouping service (chat), but it's just a channel tag on the
+        // same underlying connection, not a different socket. Used by
+        // Player.PhantomHero.cs to drive 1.48's party HUD, which (unlike
+        // 1.52/1.53) is delivered over this channel instead of the game channel.
+        // Sent immediately (not queued via PostMessage/FlushMessages) since
+        // there's no periodic flush for this channel outside the Grouping
+        // service's own tick.
+        private const ushort GroupingMuxChannel = 2;
+
+        public void SendGroupingMessage(IMessage message)
+        {
+            FrontendClient.SendMessage(GroupingMuxChannel, message);
+        }
+
         /// <summary>
         /// Handles a <see cref="MailboxMessage"/>.
         /// </summary>

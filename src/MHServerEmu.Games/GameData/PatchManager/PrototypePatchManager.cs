@@ -259,10 +259,23 @@ namespace MHServerEmu.Games.GameData.PatchManager
                 }
                 entry.Patched = true;
             }
+            catch (PrototypeRefNotFoundException ex)
+            {
+                Logger.Trace($"Skipped UpdateValue: [{entry.Prototype}] [{entry.Path}] {ex.Message}");
+            }
             catch (Exception ex)
             {
                 Logger.WarnException(ex, $"Failed UpdateValue: [{entry.Prototype}] [{entry.Path}] {ex.Message}");
             }
+        }
+
+        // Thrown by GetElementValue() when a patch/tuning entry references a
+        // PrototypeId that doesn't resolve on this game version -- an expected,
+        // non-error skip (see GetElementValue), distinct from a genuine failure.
+        private class PrototypeRefNotFoundException : Exception
+        {
+            public PrototypeRefNotFoundException(PrototypeId dataRef)
+                : base($"DataRef {dataRef} does not exist on this game version") { }
         }
 
         private static void SetIndexValue(Prototype prototype, PropertyInfo fieldInfo, int index, ValueBase value)
@@ -355,6 +368,20 @@ namespace MHServerEmu.Games.GameData.PatchManager
         {
             if (elementType.IsClass && valueEntry is PrototypeId dataRef)
             {
+                // Patch/tuning data is authored against 1.52's content set, which
+                // is a superset of what 1.48/1.53 ship -- a ref that doesn't
+                // resolve on this version is an expected skip, not an error.
+                // MUST still throw (not return null) here: this value is about
+                // to be written into an array slot by AddElements/InsertValue,
+                // and a null entry surviving into that array crashes downstream
+                // code (e.g. LootTablePrototype.PostProcess() iterating Choices[]
+                // with no null guard) instead of the whole patch entry being
+                // cleanly dropped the way UpdateValue's catch expects. Use a
+                // dedicated exception type so UpdateValue can log this known,
+                // expected case at Trace instead of as a WarnException.
+                if (GameDatabase.PrototypeExists(dataRef) == false)
+                    throw new PrototypeRefNotFoundException(dataRef);
+
                 var prototype = GameDatabase.GetPrototype<Prototype>(dataRef)
                     ?? throw new InvalidOperationException($"DataRef {dataRef} is not Prototype.");
                 valueEntry = prototype;
