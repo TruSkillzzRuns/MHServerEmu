@@ -1277,23 +1277,6 @@ namespace MHServerEmu.Games.Entities
         }
 
         /// <summary>
-        /// Grants ownership of a costume the same way a real store purchase
-        /// would (PropertyEnum.CostumeUnlock keyed by the costume's ref) —
-        /// without going through the store/catalog/purchase flow at all.
-        /// </summary>
-        public bool UnlockCostume(PrototypeId costumeRef)
-        {
-            if (costumeRef == PrototypeId.Invalid) return false;
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
-            if ((int)Properties[PropertyEnum.CostumeUnlock, costumeRef] != 0) return true;
-            Properties[PropertyEnum.CostumeUnlock, costumeRef] = 1;
-            return true;
-#else
-            return false; // No CostumeUnlock property on 1.48.
-#endif
-        }
-
-        /// <summary>
         /// Force-equips a costume directly on THIS player's own live avatar,
         /// bypassing the item/store/closet flow entirely — same mechanism
         /// as the phantom costume commands above. Also grants CostumeUnlock
@@ -1309,7 +1292,9 @@ namespace MHServerEmu.Games.Entities
             Avatar avatar = CurrentAvatar;
             if (avatar == null) return "No current avatar in world.";
 
-            UnlockCostume(costumeRef);
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            UnlockCostume(costumeRef); // No CostumeUnlock property on 1.48.
+#endif
 
             if (avatar.ChangeCostume(costumeRef) == false)
                 return "ChangeCostume failed — check server log.";

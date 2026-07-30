@@ -379,7 +379,7 @@ namespace MHServerEmu.Games.Entities
             dialog.Message.LocaleString = (LocaleStringId)TrialDialogMessageStringId;
             dialog.Options = DialogOptionEnum.ScreenBottom;
             dialog.OnResponse = OnTrialDialogResponse;
-            dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary);
+            dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary, false);
             Game.GameDialogManager.ShowDialog(dialog);
         }
 

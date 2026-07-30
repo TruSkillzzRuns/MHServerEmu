@@ -414,7 +414,7 @@ namespace MHServerEmu.Games.Entities
             dialog.Message.LocaleString = (LocaleStringId)DrEndlessGuideDialogMessageStringId;
             dialog.Options = DialogOptionEnum.ScreenBottom;
             dialog.OnResponse = OnDrGuideDialogResponse;
-            dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary);
+            dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary, false);
             Game.GameDialogManager.ShowDialog(dialog);
         }
 
@@ -818,14 +818,14 @@ namespace MHServerEmu.Games.Entities
                 // handled by OnDrTerminalDifficultyAdvancedResponse below.
                 dialog.Options = DialogOptionEnum.MouseCenter;
                 dialog.Message.LocaleString = (LocaleStringId)DrEndlessDifficultyPromptStringId;
-                dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DrEndlessDifficultyRecruitStringId, ButtonStyle.Primary);
-                dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DrEndlessDifficultyMoreOptionsStringId, ButtonStyle.Primary);
+                dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DrEndlessDifficultyRecruitStringId, ButtonStyle.Primary, false);
+                dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DrEndlessDifficultyMoreOptionsStringId, ButtonStyle.Primary, false);
             }
             else
             {
                 dialog.Options = DialogOptionEnum.ScreenBottom;
                 dialog.Message.LocaleString = (LocaleStringId)DrEndlessTerminalDialogMessageStringId;
-                dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary);
+                dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary, false);
             }
 
             Game.GameDialogManager.ShowDialog(dialog);
@@ -940,8 +940,8 @@ namespace MHServerEmu.Games.Entities
             dialog.Options = DialogOptionEnum.MouseCenter;
             dialog.OnResponse = OnDrTerminalDifficultyAdvancedResponse;
             dialog.Message.LocaleString = (LocaleStringId)DrEndlessDifficultyAdvancedPromptStringId;
-            dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DrEndlessDifficultyVeteranStringId, ButtonStyle.Primary);
-            dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DrEndlessDifficultyOmegaStringId, ButtonStyle.Primary);
+            dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DrEndlessDifficultyVeteranStringId, ButtonStyle.Primary, false);
+            dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DrEndlessDifficultyOmegaStringId, ButtonStyle.Primary, false);
             Game.GameDialogManager.ShowDialog(dialog);
         }
 

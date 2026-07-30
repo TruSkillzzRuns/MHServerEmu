@@ -753,7 +753,7 @@ namespace MHServerEmu.Games.Network
                 case ClientToGameServerMessage.NetMessageAchievementMissionTrackerFilterChange: OnAchievementMissionTrackerFilterChange(message); break;
                 // case ClientToGameServerMessage.NetMessageBillingRoutedClientMessage:     OnBillingRoutedClientMessage(message); break;
                 // case ClientToGameServerMessage.NetMessagePlayerLookupByNameClientRequest:OnPlayerLookupByNameClientRequest(message); break;
-                // case ClientToGameServerMessage.NetMessageCostumeChange:                  OnCostumeChange(message); break;
+                case ClientToGameServerMessage.NetMessageCostumeChange:                     OnCostumeChange(message); break;
                 // case ClientToGameServerMessage.NetMessageLookForParty:                   OnLookForParty(message); break;
 #endif
 
@@ -1131,12 +1131,7 @@ namespace MHServerEmu.Games.Network
             if (result != InventoryResult.Success)
             {
                 if (result == InventoryResult.InventoryFull || result == InventoryResult.NoAvailableInventory)
-                {
-                    SendMessage(NetMessageInventoryFull.CreateBuilder()
-                        .SetPlayerID(Player.Id)
-                        .SetItemID(item.Id)
-                        .Build());
-                }
+                    Player.SendInventoryFullMessage(item.Id, inventory.PrototypeDataRef);
 
                 return;
             }
@@ -1206,11 +1201,7 @@ namespace MHServerEmu.Games.Network
                 uint freeSlot = generalInv.GetFreeSlot(item, true, true);
                 if (freeSlot == Inventory.InvalidSlot || Player.TryInventoryMove(itemId, playerId, generalInv.PrototypeDataRef, freeSlot) == false)
                 {
-                    SendMessage(NetMessageInventoryFull.CreateBuilder()
-                        .SetPlayerID(playerId)
-                        .SetItemID(Entity.InvalidId)
-                        .Build());
-
+                    Player.SendInventoryFullMessage(Entity.InvalidId, generalInv.PrototypeDataRef);
                     break;
                 }
             }
@@ -1959,11 +1950,7 @@ namespace MHServerEmu.Games.Network
                 // we are full
                 if (freeSlot == Inventory.InvalidSlot)
                 {
-                    SendMessage(NetMessageInventoryFull.CreateBuilder()
-                        .SetPlayerID(Player.Id)
-                        .SetItemID(item.Id)
-                        .Build());
-
+                    Player.SendInventoryFullMessage(item.Id, generalInventory.PrototypeDataRef);
                     return;
                 }
 
@@ -2606,6 +2593,19 @@ namespace MHServerEmu.Games.Network
             if (!Verify.IsTrue(achievementId != 0)) return;
 
             Player.Properties[PropertyEnum.MissionTrackerAchievements, achievementId] = isFiltered;
+        }
+#endif
+
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+        private void OnCostumeChange(in MailboxMessage message)
+        {
+            var costumeChange = message.As<NetMessageCostumeChange>();
+            if (!Verify.IsNotNull(costumeChange)) return;
+
+            Avatar avatar = Player.GetActiveAvatarById(costumeChange.AvatarId);
+            if (!Verify.IsNotNull(avatar)) return;
+
+            avatar.ChangeCostume((PrototypeId)costumeChange.CostumePrototypeId, true);
         }
 #endif
 
