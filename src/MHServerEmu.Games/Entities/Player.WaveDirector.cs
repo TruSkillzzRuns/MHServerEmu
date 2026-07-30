@@ -333,7 +333,7 @@ namespace MHServerEmu.Games.Entities
                 // raids/dummies, 2026-07-26) — one entry per recognizable
                 // named villain instead of every chapter/difficulty variant.
                 // See CuratedBossRoster.cs.
-                pool = CuratedBossRoster.SelectCanonical(pool, LeafHeroName);
+                pool = CuratedBossRoster.SelectCanonical(pool, LeafHeroName, r => GameDatabase.GetPrototypeName(r));
 
                 s_endlessBossPool = pool;
                 WaveLogger.Info($"[WaveDirector] Endless boss pool built: {pool.Count} boss(es)");

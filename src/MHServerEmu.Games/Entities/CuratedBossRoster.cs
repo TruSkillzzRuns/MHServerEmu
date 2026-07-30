@@ -30,42 +30,83 @@ namespace MHServerEmu.Games.Entities
     {
         private static readonly string[] s_rawNames =
         {
-            "Wolverine Clone", "Wizard", "Winter Soldier", "War X-Skrull", "War Machine", "Vulture",
+            // "Apocalypse" added 2026-07-30 then removed same day -- his real
+            // prototype (Entity/Characters/Bosses/Apocolypse/Apocalypse.prototype)
+            // has a Radius 400/HeightFromCenter 400 bounding capsule (~5x a normal
+            // large boss like Doctor Doom's 80/70), so standalone spawns fail with
+            // "no space found" in anything but a very large open region. Not
+            // practical for the Boss Roster/Endless Wave spawn tools as-is.
+            // Real prototype is "MidtownEventCloneWolverine" -- word order reversed
+            // vs. the display name. Same reversed-order issue affects every
+            // "X Clone" entry below (Cyclops/Colossus/Big Time/Back-in-Black).
+            "Clone Wolverine", "Wizard", "Winter Soldier", "War X-Skrull", "War Machine", "Vulture",
             "Very Tenacious Skrull Cmdr.", "Very Protective Skrull Cmdr.", "Very Dangerous Skrull Cmdr.",
             "Very Cold Skrull Cmdr.", "Very Bloodthirsty Skrull Cmdr.", "Very Agressive Skrull Cmdr.",
-            "Venom", "Ultron Prime", "Ulrik of Myrkvidr", "Tombstone", "The Hood", "The Deceiver",
-            // "Toad" removed 2026-07-27 — confirmed live doesn't render. Its
-            // only curated match resolves to Entity/Characters/Bosses/
-            // PVEInstances/EG01Toad.prototype — instance-exclusive content
-            // that apparently depends on scripted mission dressing to
-            // render, same category as Mole Man above. NOTE: "Venom" and
-            // "Sabretooth" below currently ALSO only resolve to PVEInstances
-            // variants (EG01Venom/EG01Sabretooth) — not yet confirmed broken
-            // live, but worth testing given this exact pattern.
+            // Real prototype is "HoodCH2"/"HoodCH8" etc. -- no "The" prefix internally.
+            // 2026-07-30: SelectCanonical now prefers non-/PVEInstances/ candidates
+            // (see its doc comment), so "Venom"/"Sabretooth" below no longer silently
+            // resolve to the broken EG01Venom/EG01Sabretooth variants -- they now
+            // pick VenomCH01/SabretoothOMCH7 and similar working candidates instead.
+            "Venom", "Ultron Prime", "Ulrik of Myrkvidr", "Tombstone", "Hood", "The Deceiver",
+#if GAME_VERSION_1_48
+            // Re-added 2026-07-30, 1.48-only, same reasoning as "Mole Man" above:
+            // 1.48 has a clean root-level Entity/Characters/Bosses/ToadOMCH6.prototype,
+            // not just the confirmed-broken PVEInstances/EG01Toad.prototype. Report back
+            // if it still doesn't render and this gets reverted.
+            "Toad",
+#endif
+            // "Toad" removed 2026-07-27 on 1.52/1.53 — confirmed live doesn't render there.
             "The \"Business\"", "Tenacious Skrull Commander", "Taskmaster", "Superior Spider-Clone",
-            "Stark Sentinel", "Skrull X-23", "Skrull Thor", "Skrull Punisher", "Skrull Psylocke",
+            // Real prototypes are "StarkTechSentinelBossA/B" -- "Tech" breaks the
+            // "Stark Sentinel" substring match.
+            "Starktech Sentinel", "Skrull X-23", "Skrull Thor", "Skrull Punisher", "Skrull Psylocke",
             "Skrull Nick Fury", "Skrull Ms Marvel", "Skrull Luke Cage", "Skrull Iron Fist", "Skrull Elektra",
             "Skrull Cyclops", "Skrull Captain America", "Sister of Magma", "Shooter McPackin", "Shocker",
             "Sauron", "Sabretooth", "Run-Gun", "Rock Troll Gladiator", "Rhino", "Red Skull", "Red Hjalmrun",
             "Pyro", "Protective Skrull Commander", "Predator X", "Overseer Pismis", "Overseer Orionis",
             "Overseer Cephei", "Njordlaugur Nightaim", "N'astirh", "Mr. Sinister", "Mr. Hyde",
-            // "Mole Man" removed 2026-07-26 — confirmed live doesn't render.
+#if GAME_VERSION_1_48
+            // Re-added 2026-07-30, 1.48-only. The 2026-07-26 exclusion below
+            // was based on Entity/Characters/Bosses/MoleMan.prototype not
+            // rendering when spawned standalone -- that test was on 1.52/1.53.
+            // On 1.48 this same-named prototype is a clean root-level /Bosses/
+            // entry (not under /PVEInstances/ like the confirmed-broken Toad
+            // variant), so it's kept enabled here pending live confirmation;
+            // report back if it still doesn't render and this gets reverted.
+            "Mole Man",
+#endif
+            // "Mole Man" removed 2026-07-26 on 1.52/1.53 — confirmed live doesn't render there.
             "Mindless Titan", "MGH Cook", "Megadactyl", "Mega-Sentinel", "Mandarin", "Man-Ape", "Malekith",
             "Magneto", "Madame HYDRA", "M.O.D.O.K.", "Loki", "Lizard", "Living Laser", "Lavaheart",
-            "Lady Deathstrike", "Kurse", "Krong the Mighty", "Kronan Arcanist", "Kraven", "Kirigi the Undying",
-            "Kingpin", "Kaecilius", "Juggernaut", "Iron Man", "Iron Legionnaire 05", "Iron Legionnaire 04",
-            "Iron Legionnaire 03", "Iron Legionnaire 02", "Iron Legionnaire 01", "Invading Mindless Titan",
+            // Real prototype is "HightownEventKirigi" -- "the Undying" suffix breaks the match.
+            "Lady Deathstrike", "Kurse", "Krong the Mighty", "Kronan Arcanist", "Kraven", "Kirigi",
+            // Real prototypes name Iron Legionnaires by weapon type, not a 01-05
+            // numbering scheme: IronLegionnaireBlasterBase/JackhammerBase/
+            // LauncherBase/MelterBase/ScrapperBase (5 distinct real bosses).
+            "Kingpin", "Kaecilius", "Juggernaut", "Iron Man",
+            "Iron Legionnaire Blaster", "Iron Legionnaire Jackhammer",
+            "Iron Legionnaire Launcher", "Iron Legionnaire Melter", "Iron Legionnaire Scrapper",
+            "Invading Mindless Titan",
             "Infernal War Skrull", "Hybrid Doctor Schramm", "Hybrid Agent Stephen Gay", "Hybrid Agent Shiue",
             "Hybrid Agent Donais", "Hulk", "High Commander Brevik", "Herald of Ash", "Grim Reaper",
             "Green Goblin", "Gorgon", "General Kl'rt", "Future Foundation Clone", "Frost Giant Glacial Lord",
             "Fist of N'astirh, Limbo Demon", "Falcon", "Extra-Dimensional Warlord", "Extra-Dimensional Overseer",
             "Extra-Dimensional Harbinger", "Extra-Dimensional Beast", "Ends of the Earth Clone", "Elektra",
-            "Electro", "Einvarr of the Hallows", "Doombot", "Doctor Octopus", "Doctor Doom",
-            "Dangerous Skrull Commander", "Cyclops Clone", "Crossbones", "Cosmic War Skrull", "Cosmic Doop",
-            "Colossus Clone", "Charlie Foxtrot", "Captain Torog", "Captain Sumac", "Captain Bolger",
+            "Electro", "Einvarr of the Hallows", "Doombot", "Doctor Octopus",
+            // Real prototypes abbreviate to "Dr" (DrDoomPhase1/2/3), not "Doctor" --
+            // "Doctor Doom" never matched on any version. Confirmed via live
+            // /webapi/bossroster/catalog: 0 Doom entries resolved on 1.48 or 1.53
+            // before this fix.
+            "Dr Doom",
+            // Reversed word order vs. real prototypes (MidtownEventCloneCyclops /
+            // MidtownEventCloneColossus) -- same issue as "Clone Wolverine" above.
+            "Dangerous Skrull Commander", "Clone Cyclops", "Crossbones", "Cosmic War Skrull", "Cosmic Doop",
+            "Clone Colossus", "Charlie Foxtrot", "Captain Torog", "Captain Sumac", "Captain Bolger",
             "Captain America", "Cable", "Bullseye", "Brood Ship Commander", "Bonebreaker", "Blob",
-            "Black Panther", "Black Cat", "Big Time Spider-Clone (Red)", "Big Time Spider-Clone (Green)",
-            "Big Time Spider-Clone (Blue)", "Batroc", "Back-in-Black Spider-Clone", "Avengers War Skrull",
+            // Real prototypes are "BrooklynEventCloneBigTimeRed/Green/Blue" and
+            // "BrooklynEventCloneBackInBlack" -- reversed order and no "Spider" segment.
+            "Black Panther", "Black Cat", "Clone Big Time Red", "Clone Big Time Green",
+            "Clone Big Time Blue", "Batroc", "Clone Back In Black", "Avengers War Skrull",
             "Ata-Boy", "Anglaugur Skulleater", "All-Father Brevik", "Agressive Skrull Commander",
         };
 
@@ -93,9 +134,20 @@ namespace MHServerEmu.Games.Entities
         /// phase/difficulty/event reskin in spot checks (KravenBase,
         /// GreenGoblinBase, DangerRoomMagneto, DrDoomPhase1, etc.).
         /// </summary>
-        public static List<T> SelectCanonical<T>(List<T> candidates, Func<T, string> leafSelector)
+        /// <param name="pathSelector">
+        /// Optional full-path accessor. When provided, candidates under
+        /// /PVEInstances/ are only picked as a last resort — confirmed live
+        /// (Toad, Mole Man) that content in that subtree depends on scripted
+        /// mission dressing and doesn't render when spawned standalone.
+        /// Without this the shortest-leaf rule alone can silently pick a
+        /// broken instance-locked variant just because its name happens to be
+        /// short (confirmed: "Sabretooth"/"Venom" were resolving to
+        /// EG01Sabretooth/EG01Venom over the working SabretoothOMCH7/VenomCH01
+        /// candidates for exactly this reason).
+        /// </param>
+        public static List<T> SelectCanonical<T>(List<T> candidates, Func<T, string> leafSelector, Func<T, string> pathSelector = null)
         {
-            var best = new Dictionary<string, (int LeafLength, T Item)>();
+            var best = new Dictionary<string, (int LeafLength, bool InstanceLocked, T Item)>();
             foreach (T candidate in candidates)
             {
                 string leaf = leafSelector(candidate);
@@ -109,8 +161,19 @@ namespace MHServerEmu.Games.Entities
                 }
                 if (bestCuratedMatch == null) continue;
 
-                if (best.TryGetValue(bestCuratedMatch, out var existing) == false || leaf.Length < existing.LeafLength)
-                    best[bestCuratedMatch] = (leaf.Length, candidate);
+                string path = pathSelector?.Invoke(candidate);
+                bool instanceLocked = path != null && path.IndexOf("/PVEInstances/", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                bool better;
+                if (best.TryGetValue(bestCuratedMatch, out var existing) == false)
+                    better = true;
+                else if (existing.InstanceLocked != instanceLocked)
+                    better = existing.InstanceLocked; // a non-instance-locked candidate always beats a locked one
+                else
+                    better = leaf.Length < existing.LeafLength;
+
+                if (better)
+                    best[bestCuratedMatch] = (leaf.Length, instanceLocked, candidate);
             }
             return best.Values.Select(v => v.Item).ToList();
         }

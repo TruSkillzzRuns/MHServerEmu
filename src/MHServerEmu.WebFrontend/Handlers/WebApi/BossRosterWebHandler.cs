@@ -85,7 +85,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             // raids/dummies, 2026-07-26) — narrows the raw /Bosses/ dump
             // (mostly per-event/per-chapter reskins) down to one entry per
             // recognizable named villain. See CuratedBossRoster.cs.
-            entries = MHServerEmu.Games.Entities.CuratedBossRoster.SelectCanonical(entries, e => e.Name);
+            entries = MHServerEmu.Games.Entities.CuratedBossRoster.SelectCanonical(entries, e => e.Name, e => e.Path);
 
             entries.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
             return new { Ok = true, Count = entries.Count, Bosses = entries };

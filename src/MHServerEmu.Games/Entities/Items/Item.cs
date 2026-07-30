@@ -93,10 +93,19 @@ namespace MHServerEmu.Games.Entities.Items
         {
             base.Initialize(settings);
 
-            // Apply ItemSpec if one was provided with entity settings
+            // Apply ItemSpec if one was provided with entity settings. ApplyItemSpec()'s
+            // result used to be silently discarded here -- a spec that failed to apply
+            // (e.g. an unresolvable RarityProtoRef) still left Initialize() returning true,
+            // so a genuinely broken item (still holding its default, never-populated
+            // ItemSpec) got placed in the world as if nothing was wrong. Confirmed root
+            // cause of a live NullReferenceException crash in Pet Tech Vacuum
+            // (DoPowerEventActionPetItemDonate), which assumes every nearby Item's
+            // ItemSpec.RarityProtoRef resolves to a real RarityPrototype. Now the failure
+            // is propagated so a broken item never gets created in the first place.
             if (settings.ItemSpec != null)
             {
-                ApplyItemSpec(settings.ItemSpec);
+                if (ApplyItemSpec(settings.ItemSpec) == false)
+                    return false;
 
                 // Initialize experience requiremenet for legendary items
                 if (Prototype is LegendaryPrototype)
@@ -116,8 +125,11 @@ namespace MHServerEmu.Games.Entities.Items
 
             if (settings.ArchiveData != null)
             {
-                // Serialized entities get their ItemSpec from serialized data rather than as a settings field
-                ApplyItemSpec(ItemSpec);
+                // Serialized entities get their ItemSpec from serialized data rather than as a
+                // settings field. Same failure-propagation fix as Initialize() above -- a
+                // corrupted saved ItemSpec should fail to restore, not silently succeed.
+                if (ApplyItemSpec(ItemSpec) == false)
+                    return false;
 
                 // Restore affix level from XP for legendary items
                 TryLevelUpAffix(true);

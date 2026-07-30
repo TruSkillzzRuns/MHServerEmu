@@ -1338,9 +1338,17 @@ namespace MHServerEmu.Games.Powers
                 if (dataDirectory.PrototypeIsChildOfBlueprint(item.PrototypeDataRef, donationBlueprint) == false)
                     continue;
 
-                // Check rarity
-                RarityPrototype itemRarityProto = item.ItemSpec.RarityProtoRef.As<RarityPrototype>();
-                if (itemRarityProto.Tier > rarityThresholdProto.Tier)
+                // Check rarity. Real root cause of a live crash report (reproducible
+                // NullReferenceException here on a clean 1.53 install while vacuuming)
+                // was traced to Item.Initialize() silently discarding ApplyItemSpec()'s
+                // result, letting an item with an unresolvable RarityProtoRef get placed
+                // in the world anyway -- fixed at the source there. This null check is
+                // now just defense-in-depth: even a well-formed item should never crash
+                // the whole game thread over a rarity lookup.
+                RarityPrototype itemRarityProto = item.ItemSpec?.RarityProtoRef.As<RarityPrototype>();
+                if (itemRarityProto == null)
+                    continue;
+                if (rarityThresholdProto != null && itemRarityProto.Tier > rarityThresholdProto.Tier)
                     continue;
 
                 // Add the item to the vacuum list
