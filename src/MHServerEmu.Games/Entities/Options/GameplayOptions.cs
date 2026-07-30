@@ -17,7 +17,11 @@ namespace MHServerEmu.Games.Entities.Options
         DisableHeroSynergyBonusXP,
         Setting3,
         EnableVaporizeCredits,
-        Setting5,
+        // Confirmed live 2026-07-30 on a 1.48 client: toggling "Enable
+        // Auto-Looting of Med Kits" in Options > Gameplay sends a
+        // NetMessageSetPlayerGameplayOptions with only this index (5)
+        // changing, independent of EnableVaporizeCredits (index 4).
+        EnableAutoLootMedKits,
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
         ShowPlayerFloatingDamageNumbers,
         ShowEnemyFloatingDamageNumbers,
