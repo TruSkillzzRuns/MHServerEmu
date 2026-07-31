@@ -21,6 +21,12 @@ namespace MHServerEmu.Games.Loot
     /// </summary>
     public static class LootVaporizer
     {
+#if GAME_VERSION_1_53
+        // TEMP DEBUG (2026-07-31) -- see the matching note in Player.cs's
+        // SetGameplayOptions. Remove both once diagnosed.
+        private static readonly Logger Logger = LogManager.CreateLogger();
+#endif
+
         /// <summary>
         /// Returns <see langword="true"/> if the provided <see cref="LootResult"/> should be vaporized.
         /// </summary>
@@ -29,8 +35,14 @@ namespace MHServerEmu.Games.Loot
             if (player == null)
                 return false;
 
-            if (LiveTuningManager.GetLiveGlobalTuningVar(GlobalTuningVar.eGTV_LootVaporizationEnabled) == 0f)
+            float globalTuningVar = LiveTuningManager.GetLiveGlobalTuningVar(GlobalTuningVar.eGTV_LootVaporizationEnabled);
+            if (globalTuningVar == 0f)
+            {
+#if GAME_VERSION_1_53
+                Logger.Info($"[VaporizeDebug] {player.GetName()}: blocked by global kill switch (eGTV_LootVaporizationEnabled={globalTuningVar})");
+#endif
                 return false;
+            }
 
             switch (lootResult.Type)
             {
@@ -43,7 +55,11 @@ namespace MHServerEmu.Games.Loot
                     if (IsMedKitItem(lootResult.ItemSpec))
                     {
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
-                        return player.GameplayOptions.GetOptionSetting(GameplayOptionSetting.EnableAutoLootMedKits) == 1;
+                        bool medKitResult = player.GameplayOptions.GetOptionSetting(GameplayOptionSetting.EnableAutoLootMedKits) == 1;
+#if GAME_VERSION_1_53
+                        Logger.Info($"[VaporizeDebug] {player.GetName()}: Med Kit '{lootResult.ItemSpec.ItemProtoRef.GetName()}' -- EnableAutoLootMedKits={player.GameplayOptions.GetOptionSetting(GameplayOptionSetting.EnableAutoLootMedKits)} -> vaporize={medKitResult}");
+#endif
+                        return medKitResult;
 #else
                         return player.GameplayOptions.GetOptionSetting(GameplayOptionSetting.EnableAutoLootMedKits);
 #endif
@@ -52,7 +68,12 @@ namespace MHServerEmu.Games.Loot
                     // Only armor slots should be vaporized
                     ArmorPrototype armorProto = lootResult.ItemSpec?.ItemProtoRef.As<ArmorPrototype>();
                     if (armorProto == null)
+                    {
+#if GAME_VERSION_1_53
+                        Logger.Info($"[VaporizeDebug] {player.GetName()}: item '{lootResult.ItemSpec?.ItemProtoRef.GetName()}' is not an ArmorPrototype -- not vaporizable");
+#endif
                         return false;
+                    }
 
                     AvatarPrototype avatarProto = avatarProtoRef.As<AvatarPrototype>();
                     if (!Verify.IsNotNull(avatarProto)) return false;
@@ -60,7 +81,12 @@ namespace MHServerEmu.Games.Loot
                     EquipmentInvUISlot slot = GameDataTables.Instance.EquipmentSlotTable.EquipmentUISlotForAvatar(armorProto, avatarProto);
                     PrototypeId vaporizeThresholdRarityProtoRef = player.GameplayOptions.GetArmorRarityVaporizeThreshold(slot);
                     if (vaporizeThresholdRarityProtoRef == PrototypeId.Invalid)
+                    {
+#if GAME_VERSION_1_53
+                        Logger.Info($"[VaporizeDebug] {player.GetName()}: armor '{armorProto.DataRef.GetName()}' slot={slot} -- no vaporize threshold set for this slot (Options > Gameplay > PetTech vacuum not configured for it) -- not vaporized");
+#endif
                         return false;
+                    }
 
                     RarityPrototype rarityProto = lootResult.ItemSpec.RarityProtoRef.As<RarityPrototype>();
                     if (!Verify.IsNotNull(rarityProto)) return false;
@@ -68,11 +94,19 @@ namespace MHServerEmu.Games.Loot
                     RarityPrototype vaporizeThresholdRarityProto = vaporizeThresholdRarityProtoRef.As<RarityPrototype>();
                     if (!Verify.IsNotNull(vaporizeThresholdRarityProto)) return false;
 
-                    return rarityProto.Tier <= vaporizeThresholdRarityProto.Tier;
+                    bool armorResult = rarityProto.Tier <= vaporizeThresholdRarityProto.Tier;
+#if GAME_VERSION_1_53
+                    Logger.Info($"[VaporizeDebug] {player.GetName()}: armor '{armorProto.DataRef.GetName()}' slot={slot} rarity={rarityProto.DataRef.GetName()} (tier={rarityProto.Tier}) vs threshold={vaporizeThresholdRarityProto.DataRef.GetName()} (tier={vaporizeThresholdRarityProto.Tier}) -> vaporize={armorResult}");
+#endif
+                    return armorResult;
 
                 case LootType.Credits:
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
-                    return player.GameplayOptions.GetOptionSetting(GameplayOptionSetting.EnableVaporizeCredits) == 1;
+                    bool creditsResult = player.GameplayOptions.GetOptionSetting(GameplayOptionSetting.EnableVaporizeCredits) == 1;
+#if GAME_VERSION_1_53
+                    Logger.Info($"[VaporizeDebug] {player.GetName()}: Credits -- EnableVaporizeCredits={player.GameplayOptions.GetOptionSetting(GameplayOptionSetting.EnableVaporizeCredits)} -> vaporize={creditsResult}");
+#endif
+                    return creditsResult;
 #else
                     return player.GameplayOptions.GetOptionSetting(GameplayOptionSetting.EnableVaporizeCredits);
 #endif
