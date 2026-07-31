@@ -25,10 +25,53 @@ namespace MHServerEmu.Games.Entities
     /// ("Doctor Doom", "M.O.D.O.K."). Some entries may not resolve if the
     /// internal leaf name differs more substantially from the display name
     /// (e.g. numbered/versioned variants) — not verified exhaustively.
+    ///
+    /// Not every real, recognizable boss works identically on every client
+    /// version — some only have a clean, non-broken prototype on one version
+    /// (see Mole Man/Toad below). Restructured 2026-07-30 (was previously a
+    /// single array with #if blocks scattered inline per name) into three
+    /// pieces so "what's different about version X" is answerable by reading
+    /// this top section alone, without touching the big shared list:
+    ///   - s_sharedNames: names confirmed working the same way on every version.
+    ///   - s_versionAdditions: names that ONLY work on a specific version (a
+    ///     clean prototype exists there but not elsewhere).
+    ///   - s_versionExclusions: names in s_sharedNames that need to be REMOVED
+    ///     for a specific version (the reverse case — currently unused, kept
+    ///     as a ready slot for when a shared name breaks on just one version).
+    /// A universal fix (a naming/matching bug affecting all versions, e.g. the
+    /// "Doctor Doom" vs "Dr Doom" fix) only ever needs to touch s_sharedNames
+    /// once — it's not duplicated per version.
     /// </summary>
     public static class CuratedBossRoster
     {
-        private static readonly string[] s_rawNames =
+        // ---- Version-specific additions ----
+        // A name here means: a real, clean, non-broken prototype for this
+        // villain ONLY exists on this specific version. Not in s_sharedNames.
+#if GAME_VERSION_1_48
+        private static readonly string[] s_versionAdditions =
+        {
+            // Confirmed live 2026-07-30: 1.48 has a clean root-level
+            // Entity/Characters/Bosses/MoleMan.prototype, not just the
+            // confirmed-broken PVEInstances/EG01MoleMan.prototype that's the
+            // only variant on 1.52/1.53.
+            "Mole Man",
+            // Same reasoning, confirmed live 2026-07-30: 1.48 has a clean
+            // root-level Entity/Characters/Bosses/ToadOMCH6.prototype, not
+            // just the confirmed-broken PVEInstances/EG01Toad.prototype.
+            "Toad",
+        };
+#else
+        private static readonly string[] s_versionAdditions = Array.Empty<string>();
+#endif
+
+        // ---- Version-specific exclusions ----
+        // A name here means: it's in s_sharedNames below, but must be removed
+        // for this specific version because it's confirmed broken there.
+        // Currently empty on every version -- kept as a ready slot.
+        private static readonly HashSet<string> s_versionExclusions = new();
+
+        // ---- Everyone else: confirmed working the same way on every version ----
+        private static readonly string[] s_sharedNames =
         {
             // "Apocalypse" added 2026-07-30 then removed same day -- his real
             // prototype (Entity/Characters/Bosses/Apocolypse/Apocalypse.prototype)
@@ -48,14 +91,6 @@ namespace MHServerEmu.Games.Entities
             // resolve to the broken EG01Venom/EG01Sabretooth variants -- they now
             // pick VenomCH01/SabretoothOMCH7 and similar working candidates instead.
             "Venom", "Ultron Prime", "Ulrik of Myrkvidr", "Tombstone", "Hood", "The Deceiver",
-#if GAME_VERSION_1_48
-            // Re-added 2026-07-30, 1.48-only, same reasoning as "Mole Man" above:
-            // 1.48 has a clean root-level Entity/Characters/Bosses/ToadOMCH6.prototype,
-            // not just the confirmed-broken PVEInstances/EG01Toad.prototype. Report back
-            // if it still doesn't render and this gets reverted.
-            "Toad",
-#endif
-            // "Toad" removed 2026-07-27 on 1.52/1.53 — confirmed live doesn't render there.
             "The \"Business\"", "Tenacious Skrull Commander", "Taskmaster", "Superior Spider-Clone",
             // Real prototypes are "StarkTechSentinelBossA/B" -- "Tech" breaks the
             // "Stark Sentinel" substring match.
@@ -65,17 +100,6 @@ namespace MHServerEmu.Games.Entities
             "Sauron", "Sabretooth", "Run-Gun", "Rock Troll Gladiator", "Rhino", "Red Skull", "Red Hjalmrun",
             "Pyro", "Protective Skrull Commander", "Predator X", "Overseer Pismis", "Overseer Orionis",
             "Overseer Cephei", "Njordlaugur Nightaim", "N'astirh", "Mr. Sinister", "Mr. Hyde",
-#if GAME_VERSION_1_48
-            // Re-added 2026-07-30, 1.48-only. The 2026-07-26 exclusion below
-            // was based on Entity/Characters/Bosses/MoleMan.prototype not
-            // rendering when spawned standalone -- that test was on 1.52/1.53.
-            // On 1.48 this same-named prototype is a clean root-level /Bosses/
-            // entry (not under /PVEInstances/ like the confirmed-broken Toad
-            // variant), so it's kept enabled here pending live confirmation;
-            // report back if it still doesn't render and this gets reverted.
-            "Mole Man",
-#endif
-            // "Mole Man" removed 2026-07-26 on 1.52/1.53 — confirmed live doesn't render there.
             "Mindless Titan", "MGH Cook", "Megadactyl", "Mega-Sentinel", "Mandarin", "Man-Ape", "Malekith",
             "Magneto", "Madame HYDRA", "M.O.D.O.K.", "Loki", "Lizard", "Living Laser", "Lavaheart",
             // Real prototype is "HightownEventKirigi" -- "the Undying" suffix breaks the match.
@@ -109,6 +133,11 @@ namespace MHServerEmu.Games.Entities
             "Clone Big Time Blue", "Batroc", "Clone Back In Black", "Avengers War Skrull",
             "Ata-Boy", "Anglaugur Skulleater", "All-Father Brevik", "Agressive Skrull Commander",
         };
+
+        private static readonly string[] s_rawNames =
+            s_sharedNames.Where(n => s_versionExclusions.Contains(n) == false)
+                         .Concat(s_versionAdditions)
+                         .ToArray();
 
         private static readonly List<string> s_normalized = s_rawNames.Select(Normalize).ToList();
 
