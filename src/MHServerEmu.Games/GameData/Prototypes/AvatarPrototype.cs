@@ -512,10 +512,28 @@ namespace MHServerEmu.Games.GameData.Prototypes
         //---
 
         public override int GetRequiredLevel() => Level;
-        // Every power's real starting rank is 1 if assigned at all, 0 otherwise --
-        // AbilityAssignmentPrototype.Rank is NOT a starting rank on any version (see
-        // that class's field comment) and must never be read here directly.
+#if GAME_VERSION_1_48
+        // Confirmed live 2026-07-30 via real client Prototypes.cs and a full dump of
+        // Storm's power progression table: AbilityAssignmentPrototype.Rank on 1.48 IS
+        // a real, per-power starting rank (0 or 1), not a meaningless/dangerous value --
+        // it correctly varies per power (e.g. LightningBolt=1, ChainLightning=0,
+        // Typhoon=0) and matches what's shown in-game before spending any points.
+        // A prior attempt (2026-07-28, see AbilityAssignmentPrototype.Rank's own
+        // comment) concluded this field was unsafe to read because it "sent every
+        // power in at rank ~20" -- that could not be reproduced from this field's
+        // actual values now (clean 0/1 spread across 25 powers checked), so that
+        // failure was very likely a bug in that specific implementation attempt, not
+        // a problem with the field itself. The previous flat "always 1" rule caused a
+        // real, confirmed lockout: powers with a true starting rank of 0 (the
+        // majority, e.g. ElementalStorm) got a phantom +1, which silently inflated
+        // their computed rank enough to match their max-rank curve one point early,
+        // permanently blocking the final spendable point.
+        public override int GetStartingRank() => PowerAssignment?.Rank ?? 0;
+#else
+        // 1.52/1.53 have no equivalent per-power data -- every assigned power gets
+        // a flat +1, which is correct and already verified for those versions.
         public override int GetStartingRank() => PowerAssignment != null ? 1 : 0;
+#endif
 
         public override CurveId GetMaxRankForPowerAtCharacterLevel() => MaxRankForPowerAtCharacterLevel;
         public override PrototypeId[] GetPrerequisites() => Prerequisites;

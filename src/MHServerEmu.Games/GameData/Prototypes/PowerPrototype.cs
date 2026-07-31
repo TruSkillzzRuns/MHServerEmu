@@ -816,14 +816,16 @@ namespace MHServerEmu.Games.GameData.Prototypes
         // setter entirely). On 1.52/1.53 the field doesn't exist in the data
         // at all, hence no setter there.
         //
-        // Despite being real 1.48 data, this value is NOT a starting rank --
-        // upstream's own pre-multiversion code already knew this and
-        // hardcoded 1 unconditionally rather than trust it. Confirmed live
-        // 2026-07-28: trusting this raw value sent every avatar's entire
-        // power progression table in at rank ~20 regardless of character
-        // level or points spent. Don't read this property for gameplay --
-        // see AvatarPrototype.GetStartingRank(), which ignores it and always
-        // returns 1 (matching what 1.52/1.53 always did here).
+        // This IS the real per-power starting rank -- confirmed live 2026-07-30
+        // via a full dump of Storm's power progression table against the real
+        // client's Prototypes.cs: values are a clean, sane 0/1 spread that
+        // matches what's shown in-game before spending any points (e.g.
+        // LightningBolt=1, ChainLightning=0, Typhoon=0). A 2026-07-28 attempt to
+        // read this concluded it was unsafe ("sent every power in at rank ~20"),
+        // but that could not be reproduced from this field's actual values --
+        // that was very likely a bug in that specific implementation, not a
+        // problem with the field. See AvatarPrototype.GetStartingRank(), which
+        // now reads this directly on 1.48.
 #if GAME_VERSION_1_48
         public int Rank { get; protected set; }
 #endif
