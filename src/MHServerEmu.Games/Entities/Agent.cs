@@ -1494,9 +1494,6 @@ namespace MHServerEmu.Games.Entities
                 UpdatePowerRank(ref powerInfo, forceUnassign);
             }
 
-#if GAME_VERSION_1_48
-            UpdatePowerPointsUnspent(GetPowerSpecIndexActive());
-#endif
             return true;
         }
 
@@ -1581,6 +1578,7 @@ namespace MHServerEmu.Games.Entities
                 Properties.AdjustProperty((int)kvp.Value, kvp.Key);
 
             UpdatePowerProgressionPowers(false);
+            UpdatePowerPointsUnspent();
 
         End:
             PowerPointAllocationClearTemporary(powerSpecIndex);
@@ -1626,7 +1624,7 @@ namespace MHServerEmu.Games.Entities
 #endif
 
 #if GAME_VERSION_1_48
-        protected void UpdatePowerPointsUnspent(int powerSpecIndex)
+        protected void UpdatePowerPointsUnspent()
         {
             AdvancementGlobalsPrototype advancementGlobals = GameDatabase.AdvancementGlobalsPrototype;
             if (!Verify.IsNotNull(advancementGlobals)) return;
@@ -1636,11 +1634,17 @@ namespace MHServerEmu.Games.Entities
             if (this is Avatar)
                 numPowerPoints += Properties[PropertyEnum.AvatarPowerPointsBonus];
 
-            foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.PowerSpec, powerSpecIndex))
-                numPowerPoints -= kvp.Value;
+            int unlockedPowerSpecIndex = GetPowerSpecIndexUnlocked();
+            for (int i = 0; i <= unlockedPowerSpecIndex; i++)
+            {
+                int powerPointsUnspent = numPowerPoints;
 
-            numPowerPoints = Math.Max(numPowerPoints, 0);
-            Properties[PropertyEnum.PowerPointsUnspent, powerSpecIndex] = numPowerPoints;
+                foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.PowerSpec, i))
+                    powerPointsUnspent -= kvp.Value;
+
+                powerPointsUnspent = Math.Max(powerPointsUnspent, 0);
+                Properties[PropertyEnum.PowerPointsUnspent, i] = powerPointsUnspent;
+            }
         }
 #endif
 
@@ -1693,6 +1697,10 @@ namespace MHServerEmu.Games.Entities
             // Lock powers
             if (specIndex == GetPowerSpecIndexActive())
                 UpdatePowerProgressionPowers(true);
+
+#if GAME_VERSION_1_48
+            UpdatePowerPointsUnspent();
+#endif
 
             // Clean up previous respecs
             foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.PowersRespecResult, specIndex))
@@ -1898,6 +1906,10 @@ namespace MHServerEmu.Games.Entities
             // Unlock new powers
             if (TeamUpOwner != null)
                 UpdatePowerProgressionPowers(false);
+
+#if GAME_VERSION_1_48
+            UpdatePowerPointsUnspent();
+#endif
 
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
             // Update player owner property if reached level cap

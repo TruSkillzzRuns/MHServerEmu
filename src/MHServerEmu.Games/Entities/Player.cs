@@ -2391,7 +2391,7 @@ namespace MHServerEmu.Games.Entities
             if (!Verify.IsNotNull(region)) return CanSwitchAvatarResult.NotAllowedUnknown;
 
             // Region lock
-            if (region.AvatarSwapEnabled == false && CurrentHUDTutorial?.HighlightAvatars.HasValue() == false)
+            if (region.AvatarSwapEnabled == false && CurrentHUDTutorial?.HighlightAvatars.HasValue() != true)
                 return CanSwitchAvatarResult.NotAllowedInRegion;
 
             RegionPrototype regionProto = region.Prototype;

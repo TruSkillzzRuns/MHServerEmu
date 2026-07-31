@@ -295,6 +295,12 @@ namespace MHServerEmu.Games.Entities.Avatars
         {
             _playerName.Set(player.GetName());
             _ownerPlayerDbId = player.DatabaseUniqueId;
+
+#if GAME_VERSION_1_48
+            // Avatars don't have a player in ApplyInitialReplicationState() to get unlocked spec index from,
+            // so we need to do it here too. There is probably a more appropriate way to handle this.
+            UpdatePowerPointsUnspent();
+#endif
         }
 
         public void SetTutorialProps(HUDTutorialPrototype hudTutorialProto)
@@ -4404,6 +4410,10 @@ namespace MHServerEmu.Games.Entities.Avatars
 #endif
             }
 
+#if GAME_VERSION_1_48
+            UpdatePowerPointsUnspent();
+#endif
+
             // Remove items that are no longer equippable (e.g. if we are leveling down via prestige)
             CheckEquipmentRestrictions();
 
@@ -6931,7 +6941,7 @@ namespace MHServerEmu.Games.Entities.Avatars
 
 #if GAME_VERSION_1_48
                 case PropertyEnum.AvatarPowerPointsBonus:
-                    UpdatePowerPointsUnspent(GetPowerSpecIndexActive());
+                    UpdatePowerPointsUnspent();
                     break;
 #endif
 
