@@ -1,4 +1,4 @@
-﻿using MHServerEmu.Core.Logging;
+using MHServerEmu.Core.Logging;
 using MHServerEmu.Games.GameData.Prototypes;
 
 namespace MHServerEmu.Games.GameData.Tables
@@ -27,7 +27,7 @@ namespace MHServerEmu.Games.GameData.Tables
                     foreach (PowerProgressionEntryPrototype powerProgEntry in powerProgTableProto.PowerProgressionEntries)
                     {
                         AbilityAssignmentPrototype abilityAssignmentProto = powerProgEntry.PowerAssignment;
-                            
+
                         _powerOwnerDict[abilityAssignmentProto.Ability] = avatarProto.DataRef;
                         _powerProgressionTabDict[(avatarProto.DataRef, abilityAssignmentProto.Ability)] = powerProgTableProto.PowerProgTableTabRef;
                         _powerProgressionEntryDict[(avatarProto.DataRef, abilityAssignmentProto.Ability)] = powerProgEntry;
@@ -47,7 +47,7 @@ namespace MHServerEmu.Games.GameData.Tables
                         _powerOwnerDict[talentEntry.Talent] = avatarProto.DataRef;
 
                         (PrototypeId, PrototypeId) avatarTalent = (avatarProto.DataRef, talentEntry.Talent);
-                        
+
                         _talentEntryDict[avatarTalent] = (talentEntry, talentIndex++);
                         _talentGroupDict[avatarTalent] = (talentGroupProto, talentGroupIndex);
                     }

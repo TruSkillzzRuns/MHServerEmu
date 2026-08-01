@@ -232,9 +232,10 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/currency/set",  new MHServerEmu.WebFrontend.Handlers.WebApi.CurrencySetWebHandler());
 
             // OmegaDev2 Live Events (real live-tuning event toggle).
-            _webService.RegisterHandler("/webapi/livetuning/events",          new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventsListWebHandler());
-            _webService.RegisterHandler("/webapi/livetuning/events/activate", new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventActivateWebHandler());
-            _webService.RegisterHandler("/webapi/livetuning/events/clear",    new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventClearWebHandler());
+            _webService.RegisterHandler("/webapi/livetuning/events",            new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventsListWebHandler());
+            _webService.RegisterHandler("/webapi/livetuning/events/activate",   new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventActivateWebHandler());
+            _webService.RegisterHandler("/webapi/livetuning/events/deactivate", new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventDeactivateWebHandler());
+            _webService.RegisterHandler("/webapi/livetuning/events/clear",      new MHServerEmu.WebFrontend.Handlers.WebApi.LiveTuningEventClearWebHandler());
 
             // OmegaDev2 icon/portrait pipeline. Reads textures from the
             // USER'S OWN client install ([ClientAssets] in Config.ini —

@@ -1,6 +1,46 @@
-﻿[
+[
   {
-    "Prototype": "Loot/Tables/Mob/Bosses/PatrolMidtown/Subtable/SharedMidtownMADNESS.prototype",
+    "Prototype": "Loot/Tables/Mob/Bosses/PatrolMidtown/Subtable/BossSharedCMM.prototype",
+    "Setting": "eLTTV_Enabled",
+    "Value": 2.0
+  },
+  {
+    "Prototype": "Loot/Tables/Mob/Bosses/PatrolMidtown/Subtable/MidtownMadnessChestLoot.prototype",
+    "Setting": "eLTTV_Enabled",
+    "Value": 2.0
+  },
+  {
+    "Prototype": "Loot/Tables/Mob/Bosses/PatrolMidtown/Subtable/MidtownMadnessChestRev2Loot.prototype",
+    "Setting": "eLTTV_Enabled",
+    "Value": 2.0
+  },
+  {
+    "Prototype": "Entity/Items/Consumables/Prototypes/Events/MasterConsoleMidtownMADNESS.prototype",
+    "Setting": "eLTTV_Enabled",
+    "Value": 2.0
+  },
+  {
+    "Prototype": "Entity/Items/Consumables/Prototypes/Events/MasterConsoleMidtownMadnessD1Loot.prototype",
+    "Setting": "eLTTV_Enabled",
+    "Value": 2.0
+  },
+  {
+    "Prototype": "Entity/Items/Consumables/Prototypes/Events/MasterConsoleMidtownMadnessD2Loot.prototype",
+    "Setting": "eLTTV_Enabled",
+    "Value": 2.0
+  },
+  {
+    "Prototype": "Entity/Items/Consumables/Prototypes/Events/MasterConsoleMidtownMadnessD3Loot.prototype",
+    "Setting": "eLTTV_Enabled",
+    "Value": 2.0
+  },
+  {
+    "Prototype": "Entity/Items/Consumables/Prototypes/Events/MasterConsoleMidtownMadnessD4Loot.prototype",
+    "Setting": "eLTTV_Enabled",
+    "Value": 2.0
+  },
+  {
+    "Prototype": "Entity/Items/Consumables/Prototypes/Events/MasterConsoleMidtownMadnessD5Loot.prototype",
     "Setting": "eLTTV_Enabled",
     "Value": 2.0
   }

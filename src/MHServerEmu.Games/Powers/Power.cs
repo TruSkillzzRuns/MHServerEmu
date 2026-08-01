@@ -265,6 +265,12 @@ namespace MHServerEmu.Games.Powers
         {
             if (IsNormalPower() == false || Owner == null) return;
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            // Unverified against a real 1.48 client -- gated here because this is the only
+            // control-power/action-bar interaction in this file with no version branch at all
+            // (contrast SlotAbility/UnslotAbility, which are explicitly split per version), and
+            // was added in a single commit (7ab553234) with no version consideration. Best guess
+            // based on that inconsistency, not confirmed 1.48 behavior -- needs playtest.
             if (IsControlPower && Owner is Avatar avatar)
             {
                 var controlledAgent = avatar.ControlledAgent;
@@ -274,6 +280,7 @@ namespace MHServerEmu.Games.Powers
                     controlledAgent.ExitWorld();
                 }
             }
+#endif
         }
 
         public void OnOwnerEnteredWorld()

@@ -40,7 +40,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                                 ? typeof(HotspotPrototype)
                                 : baseType.Equals("Rank", StringComparison.OrdinalIgnoreCase)
                                     ? typeof(RankPrototype)
-                                    : typeof(MetaGamePrototype);
+                                    : baseType.Equals("LootTable", StringComparison.OrdinalIgnoreCase)
+                                        ? typeof(LootTablePrototype)
+                                        : baseType.Equals("Any", StringComparison.OrdinalIgnoreCase)
+                                            ? typeof(Prototype)
+                                            : typeof(MetaGamePrototype);
 
             var results = new List<object>();
             foreach (PrototypeId protoRef in DataDirectory.Instance.IteratePrototypesInHierarchy(iterateType, PrototypeIterateFlags.NoAbstract))

@@ -733,6 +733,8 @@ namespace MHServerEmu.Games.Network
                 case ClientToGameServerMessage.NetMessageUISystemLockState:                 OnUISystemLockState(message); break;
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
                 case ClientToGameServerMessage.NetMessageEnableTalentPower:                 OnEnableTalentPower(message); break;
+#elif GAME_VERSION_1_48
+                case ClientToGameServerMessage.NetMessageEnableSpecializationPower:         OnEnableTalentPower(message); break;
 #endif
                 case ClientToGameServerMessage.NetMessageStashInventoryViewed:              OnStashInventoryViewed(message); break;
                 case ClientToGameServerMessage.NetMessageStashCurrentlyOpen:                OnStashCurrentlyOpen(message); break;
@@ -2466,10 +2468,18 @@ namespace MHServerEmu.Games.Network
         }
 
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
-        // V48_FIXME (Specialization power)
         private void OnEnableTalentPower(in MailboxMessage message)
         {
             var enableTalentPower = message.As<NetMessageEnableTalentPower>();
+#elif GAME_VERSION_1_48
+        // 1.48 sent this same request as NetMessageEnableSpecializationPower rather than
+        // NetMessageEnableTalentPower -- renamed in 1.52+, but the field set is identical
+        // (AvatarId, PrototypeId, Enable, Spec), so the handler body below is shared.
+        private void OnEnableTalentPower(in MailboxMessage message)
+        {
+            var enableTalentPower = message.As<NetMessageEnableSpecializationPower>();
+#endif
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
             if (!Verify.IsNotNull(enableTalentPower)) return;
 
             Avatar avatar = Game.EntityManager.GetEntity<Avatar>(enableTalentPower.AvatarId);

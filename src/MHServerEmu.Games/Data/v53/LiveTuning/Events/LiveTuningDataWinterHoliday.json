@@ -1,6 +1,6 @@
 ﻿[
   {
-    "Prototype": "Loot/Tables/Mob/Bosses/XMasGiftSpecialEventTable.prototype",
+    "Prototype": "Loot/Tables/Events/WinterEventLoot.prototype",
     "Setting": "eLTTV_Enabled",
     "Value": 2.0
   },

@@ -39,9 +39,8 @@ namespace MHServerEmu.Games.Entities.Avatars
     public partial class Avatar : Agent
     {
         private const int MaxNumTransientAbilityKeyMappings = 1;
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
         private const uint TalentGroupIndexInvalid = 0;
-#else
+#if GAME_VERSION_1_48
         private const int NumAbilityKeyMappings = 3;
         private const int SlottableTransformKeyMappingIndex = 2;
 #endif
@@ -2333,7 +2332,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Refresh powers
             if (IsInWorld)
             {
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
                 UpdateTalentPowers();
 #endif
                 UpdatePowerProgressionPowers(true);
@@ -2396,9 +2395,7 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         #region Talents (Specialization Powers)
 
-// V48_TODO: specialization powers
-
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         public void GetTalentPowersForSpec(int specIndex, List<PrototypeId> talentPowerList)
         {
             foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.AvatarSpecializationPower, specIndex))
@@ -2409,14 +2406,14 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         public bool IsTalentPowerEnabledForSpec(PrototypeId talentPowerRef, int specIndex)
         {
             return Properties[PropertyEnum.AvatarSpecializationPower, specIndex, talentPowerRef];
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         public bool EnableTalentPower(PrototypeId talentPowerRef, int specIndex, bool enable)
         {
             if (!Verify.IsTrue(talentPowerRef != PrototypeId.Invalid)) return false;
@@ -2426,6 +2423,11 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             if (enable)
             {
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+                // Talent groups (mutual-exclusion within a group) are a 1.52+ data concept -- 1.48's
+                // client schema has no TalentGroupPrototype/TalentGroups at all, so this whole check
+                // is skipped there and a 1.48 avatar can simply have multiple specialization powers
+                // enabled at once with no group-exclusivity enforcement.
                 if (Game.CustomGameOptions.AllowSameGroupTalents == false)
                 {
                     // Turn off mutually exclusive talents (belonging to the same group)
@@ -2444,6 +2446,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                             UnassignTalentPower(talentPowerRefToCheck, specIndex);
                     }
                 }
+#endif
 
                 // Enable
                 AssignTalentPower(talentPowerRef, specIndex);
@@ -2458,7 +2461,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         public CanToggleTalentResult CanToggleTalentPower(PrototypeId talentPowerRef, int specIndex, bool enteringWorld, bool enable)
         {
             SpecializationPowerPrototype talentPowerProto = talentPowerRef.As<SpecializationPowerPrototype>();
@@ -2477,9 +2480,12 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (CharacterLevel < talentPowerInfo.GetRequiredLevel())
                 return CanToggleTalentResult.LevelRequirement;
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            // Talent groups don't exist in 1.48's client schema -- see EnableTalentPower for the same gate.
             uint talentGroupIndex = GameDataTables.Instance.PowerOwnerTable.GetTalentGroupIndex(PrototypeDataRef, talentPowerRef);
             if (!Verify.IsTrue(talentGroupIndex != TalentGroupIndexInvalid, $"Talent missing its talent group index for some reason!\nTalent: {talentPowerProto}\nOwner: [{this}]\nenteringWorld: {enteringWorld}"))
                 return CanToggleTalentResult.GenericError;
+#endif
 
             // Skip eval check if this avatar is entering the world
             if (enable && enteringWorld == false && talentPowerProto.EvalCanEnable.HasValue())
@@ -2500,7 +2506,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         private bool AssignTalentPower(PrototypeId talentPowerRef, int specIndex)
         {
             if (!Verify.IsTrue(talentPowerRef != PrototypeId.Invalid)) return false;
@@ -2525,7 +2531,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         private bool UnassignTalentPower(PrototypeId talentPowerRef, int specIndex, bool isSwitchingSpec = false)
         {
             if (!Verify.IsTrue(talentPowerRef != PrototypeId.Invalid)) return false;
@@ -2552,7 +2558,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         private void UpdateTalentPowers()
         {
             int specIndex = GetPowerSpecIndexActive();
@@ -4401,7 +4407,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Unlock new powers
             if (IsInWorld)
             {
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
                 UpdateTalentPowers();
 #endif
                 UpdatePowerProgressionPowers(false);
@@ -7471,7 +7477,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                         player.UnlockWaypoint(waypointUnlockRef);
             }
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
             UpdateTalentPowers();
 #endif
 
