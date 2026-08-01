@@ -568,6 +568,7 @@ namespace MHServerEmu.Games.Entities
             UnsubscribeTerminalRunTracking();
             UnsubscribeTrialTracking();
             UnsubscribeDangerRoomEndlessTracking();
+            UnsubscribeBountyHuntTracking();
 
             MissionManager.Deallocate();
             AchievementManager.Deallocate();

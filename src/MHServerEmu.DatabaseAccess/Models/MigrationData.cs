@@ -98,6 +98,25 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// </summary>
         public bool PendingDangerRoomEndlessWarp { get; set; }
 
+        /// <summary>
+        /// Bounty Hunt (Player.BountyHunt.cs) — same shape as
+        /// PendingTrialWarp, but the target can't be recomputed after
+        /// landing the way Trial's arena/roster can (Trial just needs to
+        /// know "warp was intentional" and rebuilds everything fresh via
+        /// StartTrialGauntlet; Bounty Hunt needs the SPECIFIC nemesis and its
+        /// ephemeral rank to still be known once the new Game instance
+        /// exists), so those two values are snapshotted here too, not just
+        /// the flag. Set right before
+        /// TeleportToRegionFromWeb warps the player to a random arena.
+        /// Snapshotted by Player.SnapshotBountyHuntForTransfer() at
+        /// BeginRegionTransfer, consumed by
+        /// Player.OnAvatarEnteredRegionForBountyHunt() from the new Avatar's
+        /// OnEnteredWorld once it's actually standing in the arena.
+        /// </summary>
+        public bool PendingBountyHuntWarp { get; set; }
+        public ulong BountyHuntHeroRef { get; set; }
+        public int BountyHuntRank { get; set; }
+
         public MigrationData() { }
 
         public List<(ulong, ulong)> GetOrCreatePropertyList(ulong entityDbId)
@@ -136,6 +155,9 @@ namespace MHServerEmu.DatabaseAccess.Models
             PendingWaveRun = null;
             PendingTrialWarp = false;
             PendingDangerRoomEndlessWarp = false;
+            PendingBountyHuntWarp = false;
+            BountyHuntHeroRef = 0;
+            BountyHuntRank = 0;
         }
     }
 

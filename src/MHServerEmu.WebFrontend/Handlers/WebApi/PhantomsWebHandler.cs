@@ -760,6 +760,15 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         //   body: { playerName, action: "banish", heroRef: 0x... }
         //   body: { playerName, action: "banish-oldest" }
         //   body: { playerName, action: "clear" }
+        //   body: { playerName, action: "spawn", heroRef: 0x... }
+        //   body: { playerName, action: "spare", heroRef: 0x... }
+        //   body: { playerName, action: "bounty-set", heroRef: 0x..., rewardLootTableRef?: 0x... }
+        //   body: { playerName, action: "bounty-hunt-start", heroRef: 0x..., rank: 1-10 }
+        //     → warps the player to a random arena; the target ambushes them
+        //       there 30-60s after arrival. Reward = the existing Bounty
+        //       Board table payout + rank-scaled currency (+ a guaranteed
+        //       BiS piece at rank 9-10). See Player.BountyHunt.cs.
+        //   body: { playerName, action: "bounty-clear" }
         protected override async Task Get(WebRequestContext context)
         {
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
@@ -815,6 +824,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             string action = null;
             string heroRefStr = null;
             string rewardLootTableRefStr = null;
+            int rank = 0;
             try
             {
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
@@ -823,6 +833,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (root.TryGetProperty("action",     out var ac)) action = ac.GetString();
                 if (root.TryGetProperty("heroRef",    out var hr)) heroRefStr = hr.GetString();
                 if (root.TryGetProperty("rewardLootTableRef", out var rl)) rewardLootTableRefStr = rl.GetString();
+                if (root.TryGetProperty("rank",       out var rk)) rank = rk.GetInt32();
             }
             catch (System.Exception ex)
             {
@@ -906,6 +917,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         id = p.SpawnCuratedBoss(avatar, (PrototypeId)nemesis.HeroRef, out spawnErr,
                             MHServerEmu.Games.Entities.Player.BossNemesisExtraHealthMultForRank(nemesis.Rank),
                             MHServerEmu.Games.Entities.Player.BossNemesisExtraDamageMultForRank(nemesis.Rank));
+                        // Boss-type nemeses aren't covered by the phantom
+                        // corpse-cleanup tick's auto-retire -- wire kill
+                        // detection manually so this revenge fight actually
+                        // retires the roster entry / pays out a bounty.
+                        if (id != 0) p.TrackBossNemesisForRetire(id, nemesis.HeroRef, avatar.Region);
                     }
                     else
                     {
@@ -930,12 +946,19 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     string msg = p.SetBountyTarget(heroRef, rewardRef);
                     return (object)new { Ok = true, Message = msg };
                 }
+                if (string.Equals(action, "bounty-hunt-start", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (PhantomsWebUtil.TryParseRef(heroRefStr, out ulong heroRef) == false)
+                        return (object)new { Ok = false, Error = "heroRef required for bounty-hunt-start" };
+                    string msg = p.StartBountyHunt(heroRef, rank);
+                    return (object)new { Ok = true, Message = msg };
+                }
                 if (string.Equals(action, "bounty-clear", System.StringComparison.OrdinalIgnoreCase))
                 {
                     string msg = p.SetBountyTarget(0);
                     return (object)new { Ok = true, Message = msg };
                 }
-                return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear|spawn|spare|bounty-set|bounty-clear)" };
+                return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear|spawn|spare|bounty-set|bounty-hunt-start|bounty-clear)" };
             });
             await context.SendJsonAsync(result);
         }

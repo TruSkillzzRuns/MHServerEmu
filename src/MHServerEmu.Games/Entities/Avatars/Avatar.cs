@@ -7375,6 +7375,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             player.OnAvatarEnteredRegion(region, this);
             try { player.OnAvatarEnteredRegionForTrial(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[TrialOfImpossible] OnAvatarEnteredRegionForTrial threw: {ex.Message}"); }
             try { player.OnAvatarEnteredRegionForDangerRoomEndless(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[DangerRoomEndless] OnAvatarEnteredRegionForDangerRoomEndless threw: {ex.Message}"); }
+            try { player.OnAvatarEnteredRegionForBountyHunt(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[BountyHunt] OnAvatarEnteredRegionForBountyHunt threw: {ex.Message}"); }
 
             var teamUpAgent = CurrentTeamUpAgent;
             if (teamUpAgent != null)

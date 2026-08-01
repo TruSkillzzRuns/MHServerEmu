@@ -205,6 +205,13 @@ namespace MHServerEmu.Games.Entities
                         ? SpawnCuratedBoss(avatar, (PrototypeId)nemesis.HeroRef, out err,
                             BossNemesisExtraHealthMultForRank(nemesis.Rank), BossNemesisExtraDamageMultForRank(nemesis.Rank))
                         : avatar.SpawnNemesisPhantomHero((PrototypeId)nemesis.HeroRef, 0, displayName, nemesis.Rank, out err, nemesis.EscapeCount);
+                    // Boss-type nemeses aren't covered by the phantom
+                    // corpse-cleanup tick's auto-retire (see
+                    // TrackBossNemesisForRetire's doc comment) -- wire it
+                    // manually here so a boss-nemesis revenge kill actually
+                    // retires the roster entry and pays out any bounty.
+                    if (id != 0 && nemesis.IsBoss)
+                        TrackBossNemesisForRetire(id, nemesis.HeroRef, avatar.Region);
                     if (id != 0)
                     {
                         nemesisSpawnedCount++;
