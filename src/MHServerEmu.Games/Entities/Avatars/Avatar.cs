@@ -4921,6 +4921,15 @@ namespace MHServerEmu.Games.Entities.Avatars
             // NOTE: Avatar mode is hardcoded to 0 since hardcore and ladder avatars never got implemented
             owner.Properties[PropertyEnum.AvatarLibraryCostume, 0, PrototypeDataRef] = costumeProtoRef;
 
+#if GAME_VERSION_1_53
+            // Costume powers (PowerProgressionEntryPrototype.CostumeRequired) become available or
+            // unavailable as the costume changes, so their ranks have to be recomputed here --
+            // nothing else observes CostumeCurrent. Powers not gated on a costume are unaffected
+            // because their computed rank does not change.
+            if (IsInWorld && TestStatus(EntityStatus.ExitingWorld) == false)
+                UpdatePowerProgressionPowers(false);
+#endif
+
             return true;
         }
 
