@@ -1701,6 +1701,13 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             UpdatePowerProgressionPowers(false);
 
+#if GAME_VERSION_1_53
+            // Forced, because set entries commonly grant proc powers and those cannot be assigned
+            // while out of world -- equipment changes made in the library would otherwise leave the
+            // tiers looking up to date with no procs actually assigned.
+            UpdateEquipmentSetBonuses(true);
+#endif
+
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
             UpdateTravelPower();
 #endif
@@ -6963,6 +6970,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                     break;
 #endif
 
+#if GAME_VERSION_1_53
+                // Equipped item properties aggregate onto the avatar, so equipping or unequipping
+                // a piece carrying a set affix lands here as an EquipmentSetLevel change.
+                case PropertyEnum.EquipmentSetLevel:
+                case PropertyEnum.EquipmentSetLevelBonus:
+                    UpdateEquipmentSetBonuses();
+                    break;
+#endif
+
                 case PropertyEnum.AvatarMappedPower:
                     Property.FromParam(id, 0, out PrototypeId originalPowerRef);
                     PowerPrototype originalPowerProto = originalPowerRef.As<PowerPrototype>();
@@ -7574,6 +7590,11 @@ namespace MHServerEmu.Games.Entities.Avatars
         public override void OnExitedWorld()
         {
             base.OnExitedWorld();
+
+#if GAME_VERSION_1_53
+            // Drop set bonuses so their proc powers go away with everything else
+            ClearEquipmentSetBonuses();
+#endif
 
             // Cancel the phantom-hero follow/attack tick — it drove itself
             // off this Avatar's position, so it must not fire on a torn-down

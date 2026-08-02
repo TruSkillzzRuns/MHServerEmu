@@ -25,6 +25,14 @@
   },
   {
     "Enabled": true,
+    "Prototype": "Resource/Cells/DistrictCells/Avengers_Tower/AvengersTowerNPE_HUB.cell",
+    "Path": "MarkerSet.Markers[28].Position",
+    "Description": "Move Cloak next to Dagger (Dagger is Markers[27] at -694.76, 2003.63, 160.97)",
+    "ValueType": "Vector3",
+    "Value": [ -754.75, 2037.75, 179.0 ]
+  },
+  {
+    "Enabled": true,
     "Prototype": "Loot/Tables/Achievements/StarkTechPowerCube.prototype",
     "Path": "Choices[0].Item",
     "Description": "Set Bifrost Visual in LootTable",

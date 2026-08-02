@@ -275,18 +275,17 @@ namespace MHServerEmu.Games.Entities.Avatars
 
                 s_phantomReattachGraceSinceMs.Remove(id);
 
-                // Level sync: if the human has levelled since the last tick,
-                // bring phantoms up to match so a lvl-15 hero doesn't drag
-                // lvl-15 phantoms into a lvl-60 mission. Runs every 500ms;
-                // InitializeLevel is a no-op internally when the new level
-                // equals the current level, so this is cheap on stable
-                // ticks. Only levels UP — we don't downlevel phantoms when
-                // the human hero-swaps to a lower-level character.
+                // Level sync: keep phantoms at the caller's level in BOTH
+                // directions, so a lvl-15 hero doesn't drag lvl-15 phantoms
+                // into a lvl-60 mission and, equally, swapping down to a
+                // low-level hero doesn't leave a squad of lvl-60 phantoms
+                // trivialising its content. Runs every 500ms, but the whole
+                // block is skipped unless the level actually differs.
                 //
                 // Phantoms spawned with an explicit level lock
                 // (`!phantom spawn N L`) are skipped — the user asked for
                 // a specific level and we honour it forever.
-                if (callerLevel > 0 && phantom.CharacterLevel < callerLevel && host.IsPhantomLevelLocked(phantom.Id) == false)
+                if (callerLevel > 0 && phantom.CharacterLevel != callerLevel && host.IsPhantomLevelLocked(phantom.Id) == false)
                 {
                     try
                     {
@@ -301,6 +300,14 @@ namespace MHServerEmu.Games.Entities.Avatars
                         // migration re-spawns at the new level, not the
                         // stale spawn-time value.
                         host.UpdatePhantomLevel(phantom.Id, callerLevel);
+                        // Gear has to be re-rolled for the new level. Levelling
+                        // DOWN runs Avatar.OnLevelUp -> CheckEquipmentRestrictions(),
+                        // which unequips everything the phantom no longer meets
+                        // the level requirement for and would otherwise leave it
+                        // stripped; levelling back UP then has to re-roll or the
+                        // phantom would be stuck in whatever low-level gear the
+                        // downlevel gave it.
+                        RegearPhantomForLevel(host, phantom, callerLevel);
                     }
                     catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] level sync {phantom.Id:X} → {callerLevel} failed: {ex.Message}"); }
                 }
@@ -3944,6 +3951,49 @@ namespace MHServerEmu.Games.Entities.Avatars
             t *= t;
             float floorMult = fullMult * NemesisHealthMultLevelFloorFactor;
             return floorMult + t * (fullMult - floorMult);
+        }
+
+        /// <summary>
+        /// Re-rolls a phantom's equipment for <paramref name="level"/> after its level changed.
+        /// </summary>
+        /// <remarks>
+        /// Levelling a phantom DOWN goes through <see cref="Avatar.OnLevelUp"/>, which calls
+        /// CheckEquipmentRestrictions() and unequips every item whose level requirement the
+        /// phantom no longer meets — phantoms have a real (headless) Player owner, so that path
+        /// runs for them exactly as it does for a player levelling down via prestige. Without a
+        /// re-roll the phantom would be left stripped. The same applies in reverse: once a
+        /// phantom can level down it can also level back up, and it would otherwise be stuck in
+        /// whatever low-level gear the downlevel gave it.
+        ///
+        /// Gear is rolled fresh rather than recreated from the stored descriptor refs, because
+        /// ApplyPhantomGear() consumes an override list positionally while skipping slots whose
+        /// UnlocksAtCharacterLevel is above the target level — a stored list captured at level 60
+        /// would misalign against the smaller slot set of a low-level phantom. A BiS loadout
+        /// applied via `!phantom gear bis` therefore needs re-applying after a level change.
+        /// </remarks>
+        private static void RegearPhantomForLevel(Player host, Agent phantom, int level)
+        {
+            Player phantomOwner = phantom.GetOwnerOfType<Player>();
+            if (phantomOwner == null) return;
+
+            AvatarEquipInventoryAssignmentPrototype[] equipmentInventories = phantom is Avatar phantomAvatar
+                ? phantomAvatar.AvatarPrototype?.EquipmentInventories
+                : phantom.PrototypeDataRef.As<AgentTeamUpPrototype>()?.EquipmentInventories;
+            if (equipmentInventories == null) return;
+
+            // Strip what's there. The costume slot belongs to the phantom costume system and
+            // must not be touched (team-ups have no costume slot at all).
+            foreach (AvatarEquipInventoryAssignmentPrototype assignment in equipmentInventories)
+            {
+                InventoryPrototype invProto = assignment.Inventory;
+                if (invProto == null || invProto.ConvenienceLabel == InventoryConvenienceLabel.Costume)
+                    continue;
+
+                phantom.GetInventoryByRef(invProto.DataRef)?.DestroyContained();
+            }
+
+            List<ulong> applied = ApplyPhantomGear(phantomOwner, phantom, level, null);
+            host.UpdatePhantomGear(phantom.Id, applied);
         }
 
         private static void ApplyPhantomDamageScaling(Agent phantom, int level, bool enemy = false)

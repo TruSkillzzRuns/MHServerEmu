@@ -217,6 +217,28 @@ namespace MHServerEmu.Games.Entities.Items
             using LootResultSummary lootResultSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
             resolver.FillLootResultSummary(lootResultSummary);
 
+            // ReplaceSelfLootTable means "replace this item with the loot it rolled", so the
+            // rewards land in the inventory slot the box occupied -- the action type has no ground
+            // option at all, unlike the power-driven SpawnLootTable path used by other boxes
+            // (PowerEventContextLootTablePrototype.PlaceLootInGeneralInventory). Every console-era
+            // MasterConsole*Box, including all five Midtown Madness difficulty chests, is authored
+            // this way. This option routes them through the normal ground-drop path instead.
+            if (Game.CustomGameOptions.MysteryChestLootDropsOnGround)
+            {
+                // SpawnLootFromSummary() resolves the drop origin from the recipient avatar when
+                // there is no source entity, so the loot lands at the player's feet. It verifies
+                // the avatar and region itself and returns false if either is missing, in which
+                // case the box is left unconsumed rather than eaten for nothing.
+                if (Game.LootManager.SpawnLootFromSummary(lootResultSummary, inputSettings) == false)
+                    return false;
+
+                // Consume one box, the same way ReplaceSelfHelper() finishes up. No loot reward
+                // report is sent: that popup reports items placed into inventory, and these are on
+                // the ground waiting to be picked up.
+                DecrementStack();
+                return true;
+            }
+
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
             NetMessageLootRewardReport.Builder reportBuilder = NetMessageLootRewardReport.CreateBuilder();
 
