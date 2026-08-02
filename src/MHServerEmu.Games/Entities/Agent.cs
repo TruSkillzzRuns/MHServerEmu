@@ -1203,6 +1203,21 @@ namespace MHServerEmu.Games.Entities
             PrototypeId powerProtoRef = powerProto.DataRef;
 
             int rankOldBest = GetPowerRank(powerProtoRef);
+
+            // A granted-power affix (PowerGrantRank) can put a power at an active,
+            // non-zero rankCurrentBest even though the character never naturally
+            // unlocked it (rankBase == PowerProgressionInfo.RankLocked, i.e. -1).
+            // Persisting/replicating a Locked base underneath an active ranked Power
+            // is a self-contradictory state -- the client isn't expecting a power it
+            // considers nonexistent to be running, and this was what locked up the
+            // whole ability bar the moment a below-level granted power went active.
+            // The grant is supposed to make the power usable regardless of level, so
+            // fix the contradiction by unlocking the base (0, not -1) rather than by
+            // blocking the grant -- 0 unspent points is exactly what a legitimately
+            // unlocked-but-uninvested power looks like.
+            if (rankBase == PowerProgressionInfo.RankLocked && rankCurrentBest > 0)
+                rankBase = 0;
+
             Properties[PropertyEnum.PowerRankBase, powerProtoRef] = rankBase;
 
             // Unassign if needed
@@ -1391,12 +1406,29 @@ namespace MHServerEmu.Games.Entities
             PowerPrototype powerProto = powerInfo.PowerPrototype;
             if (!Verify.IsNotNull(powerProto)) return false;
 
+#if !GAME_VERSION_1_48
             int rankBefore = GetPowerRank(powerInfo.PowerRef);
-            
+#endif
+
             if (UpdatePowerRank(ref powerInfo, false) == false)
                 return false;
 
-            // Show HUD tutorial for power-granting items if needed
+#if !GAME_VERSION_1_48
+            // Show HUD tutorial for power-granting items if needed.
+            //
+            // Skipped on 1.48: UIGlobals.PowerGrantItemTutorialTip is declared as a
+            // HUDTutorialPrototype, but on 1.48 it resolves to Tutorial/Tips/PowerGrantItem,
+            // which is a TipPrototype -- part of the separate tip system (see the
+            // "V48_TODO: TutorialSystem::ShowTip() for TipPrototype separate from
+            // ShowHUDTutorial" note in Player.cs) and unimplemented here. Feeding it to
+            // ShowHUDTutorial anyway meant SetTutorialProps read AllowMovement /
+            // AllowPowerUsage / AllowTakingDamage, none of which exist on a TipPrototype,
+            // so AllowPowerUsage defaulted to false and set PropertyEnum.TutorialPowerLock.
+            // That locks every power on the ability bar, and nothing clears it until another
+            // HUD tutorial replaces it or the avatar re-enters the world -- which is why
+            // equipping a power-granting item greyed out the whole bar until a region change.
+            // Confirmed live 2026-08-02 (TutorialPowerLock=true, CurrentHUDTutorial=
+            // Tutorial/Tips/PowerGrantItem after equipping such an item).
             if (rankBefore <= 0 && powerProto.Activation != PowerActivationType.Passive)
             {
                 Player player = GetOwnerOfType<Player>();
@@ -1404,6 +1436,7 @@ namespace MHServerEmu.Games.Entities
 
                 player.ShowHUDTutorial(GameDatabase.UIGlobalsPrototype.PowerGrantItemTutorialTip);
             }
+#endif
 
             return true;
         }

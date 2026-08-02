@@ -62,6 +62,8 @@ namespace MHServerEmu.Games.Achievements
             JsonSerializerOptions options = new();
             options.Converters.Add(new TimeSpanJsonConverter());
 
+            AchievementContext.ResetUnresolvedCount();
+
             foreach (string filePath in achievementInfoMapFiles)
             {            
                 try
@@ -82,6 +84,12 @@ namespace MHServerEmu.Games.Achievements
                     Logger.Warn($"Initialize(): Achievement info map deserialization failed - {e.Message}");
                 }
             }
+
+            // Achievement data is shared across game versions, so an older client can be
+            // missing prototypes that newer achievements reference. Report the total once
+            // instead of warning per reference (see AchievementContext.GetPrototype).
+            if (AchievementContext.UnresolvedCount > 0)
+                Logger.Info($"Initialize(): {AchievementContext.UnresolvedCount} achievement prototype reference(s) did not resolve on this game version (expected for older clients)");
 
             // Build string buffer
             BuildStringBuffers();

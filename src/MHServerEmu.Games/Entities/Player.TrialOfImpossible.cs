@@ -185,7 +185,6 @@ namespace MHServerEmu.Games.Entities
         // /webapi/prototypes/search, used only for the finale's lootsplosion
         // (regular stages drop nothing; they're not the point).
         private const ulong TrialFinaleLootTableRef = 0x0520D1A142CA23CD; // Loot/Tables/Mob/Bosses/EndgameDailies/Subtables/SharedEndgameDailiesCosmicBUFFED.prototype
-        private const int TrialFinaleLootRolls = 10;
         private const int TrialFinaleGrudgeScale = 80; // bigger than Kaiju Mode's (40) or the old single-nemesis Trial's (60) — "a lot more HP", "damage increase"
 
         private const int TrialHazardMinDelayMs = 15_000;
@@ -217,6 +216,79 @@ namespace MHServerEmu.Games.Entities
         private const ulong TrialHealOrbRef = 925659119519994384;       // HealOrbItem
         private const ulong TrialEnduranceOrbRef = 9607833165236212779; // EnduranceOrbItem
         private const int TrialOrbLifespanSec = 20;
+
+        // ---- Finale reward chest ----
+        // Mirrors Player.WaveDirector.cs's endless chest pattern: loot only
+        // spawns when the player interacts with a chest at the boss's death
+        // spot, not directly at kill time or straight into inventory (user
+        // request 2026-07-31: "nothing should go directly in the players
+        // inventory... use the loot chest like we use in endless wave mode").
+        // Guaranteed BiS pieces are spawned as real ground items
+        // (LootManager.SpawnItem) so they go through the normal pickup flow.
+        private const string TrialChestProtoPath = "Entity/Props/Chests/DangerRoomChestTutorialRewardEntity.prototype";
+        // Floor guarantee ("nothing less than 30 pieces of loot") -- table
+        // rolls alone hit this; the guaranteed BiS pieces below are bonus on
+        // top, not counted against the floor.
+        private const int TrialFinaleTableRolls = 30;
+        // At least 4 heroes represented: the player's own hero plus this many
+        // other random heroes, drawn from the full playable avatar roster --
+        // each can drop more than 1 BiS piece (user request 2026-07-31).
+        private const int TrialFinaleOtherHeroCount = 3;
+        private const int TrialFinaleOwnHeroMaxExtraPieces = 2;   // 1 guaranteed + up to 2 more
+        private const int TrialFinaleOtherHeroMaxExtraPieces = 1; // 1 guaranteed + up to 1 more
+        private const double TrialFinaleExtraPieceChance = 0.35;
+
+        // Flat per-completion currency grant. Eternity Splinters (50) and
+        // Cube Shards (25) are the exact amounts requested 2026-07-31; the
+        // other three currencies were requested by name only ("some other
+        // high tier currency") -- these amounts are a reasonable pick, not
+        // measured against anything in-game, and can be retuned freely.
+        private const int TrialFinaleEternitySplinters = 50;
+        private const int TrialFinaleCubeShards = 25;
+        private const int TrialFinaleLegendaryMarks = 10;
+        private const int TrialFinaleResearchDrives = 15;
+        private const int TrialFinaleOmegaFiles = 15;
+
+        private ulong _trialChestId;
+        private Region _trialChestRegion;
+        private Event<PlayerInteractGameEvent>.Action _trialChestInteractAction;
+        private List<PrototypeId> _pendingTrialChestBisItems;
+
+        // Confirmed live 2026-07-31: Avatar.PhantomHero.cs's natural per-kill
+        // gear drop is suppressed by checking the LIVE IsTrialGauntletActive
+        // flag on a periodic corpse-cleanup tick, not synchronously on the
+        // EntityDeadGameEvent. The finale kill flow is: OnTrialStageEntityDead
+        // fires -> DropTrialFinaleLoot (spawns the reward chest) -> EndTrialRun
+        // (clears _trialArenaRegion, so IsTrialGauntletActive goes false
+        // immediately) -- all synchronous, before the NEXT corpse-cleanup tick
+        // ever runs. That tick then sees the finale phantom's fresh corpse for
+        // the first time with IsTrialGauntletActive already false, so the
+        // suppression check passes and the phantom's own natural gear rolls
+        // and drops anyway, on top of (and burying) the real reward chest.
+        // Fix: track suppression per-phantom-id instead of via the live flag,
+        // so it can't race against when the trial state gets cleared.
+        private readonly HashSet<ulong> _trialSuppressedPhantomIds = new();
+
+        /// <summary>True if this phantom id was spawned as part of a Trial of the Impossible run and should never get Avatar.PhantomHero.cs's automatic per-kill gear drop (see _trialSuppressedPhantomIds doc comment).</summary>
+        internal bool IsTrialSuppressedPhantom(ulong id) => _trialSuppressedPhantomIds.Contains(id);
+
+        /// <summary>
+        /// Registers a newly-spawned trial phantom's id in whichever tracking
+        /// sets it needs -- always suppresses its natural gear drop
+        /// (_trialSuppressedPhantomIds, run-scoped, cleared only at
+        /// StartTrialGauntlet), and optionally counts it toward "is this
+        /// stage cleared" (_trialStageAliveIds, stage-scoped, cleared every
+        /// stage). One call site instead of two hand-synced .Add()s per spawn
+        /// -- audited 2026-08-01: SpawnTrialFinale used to add the SAME id to
+        /// both sets 18 lines apart, exactly the kind of manual bookkeeping a
+        /// future spawn path could add to one set and silently forget the
+        /// other, with nothing catching it at compile time.
+        /// </summary>
+        private void RegisterTrialPhantom(ulong id, bool countsForStageAlive)
+        {
+            _trialSuppressedPhantomIds.Add(id);
+            if (countsForStageAlive) _trialStageAliveIds.Add(id);
+        }
 
         private ulong _trialGuideNpcId;
         private Region _trialGuideRegion;
@@ -251,6 +323,15 @@ namespace MHServerEmu.Games.Entities
         private readonly EventGroup _trialHazardEvents = new();
         private readonly EventPointer<TrialHazardTickEvent> _trialHazardTick = new();
         private readonly EventPointer<TrialStageAdvanceTickEvent> _trialStageAdvanceTick = new();
+
+        // Retry for the finale reward grant when the avatar isn't live at
+        // the exact kill instant (see OnTrialStageEntityDead) -- capped so a
+        // permanently-gone avatar (e.g. the player fully disconnected) can't
+        // retry forever.
+        private const int TrialFinaleLootRetryDelayMs = 2_000;
+        private const int TrialFinaleLootMaxRetries = 5;
+        private int _trialFinaleLootRetryCount;
+        private readonly EventPointer<TrialFinaleLootRetryTickEvent> _trialFinaleLootRetryTick = new();
 
         /// <summary>
         /// True for the whole gauntlet, every stage including the finale —
@@ -427,6 +508,10 @@ namespace MHServerEmu.Games.Entities
             _trialStageNumber = 0;
             _trialRosterIndex = 0;
             _trialRoster = BuildTrialRoster(avatar.PrototypeDataRef);
+            // Safe to clear here (not on every run-end) -- by the time a NEW
+            // run starts, the previous run's phantom corpses were long since
+            // ticked past and removed, so nothing still needs their ids.
+            _trialSuppressedPhantomIds.Clear();
             _trialDeathCount = 0;
             _trialKillCount = 0;
             _trialTotalEnemies = _trialRoster.Count + 1; // + the finale mirror
@@ -492,24 +577,42 @@ namespace MHServerEmu.Games.Entities
 
             _trialIsFinaleStage = false;
             int spawned = 0;
-            for (int i = 0; i < count; i++)
+            int failed = 0;
+            // A single hero occasionally failing to spawn (bad luck on the
+            // ambush position search, a broken prototype on this version)
+            // shouldn't end an otherwise-fine run — confirmed live 2026-07-31
+            // that a lone stage-2 (count=1) spawn failure aborted the whole
+            // gauntlet. Keep pulling the next roster hero into the failed
+            // slot instead, capped so a systemically broken region can't
+            // spin through the entire remaining roster in one tick.
+            const int MaxExtraAttempts = 5;
+            int extraAttempts = 0;
+            while (spawned < count && _trialRosterIndex < _trialRoster.Count)
             {
                 PrototypeId heroRef = _trialRoster[_trialRosterIndex++];
                 string display = $"{new string('★', rank)} {FriendlyNameFromRef(heroRef)} {NemesisSuffixForRank(rank)}";
                 ulong id = avatar.SpawnNemesisPhantomHero(heroRef, 0, display, rank, out string err);
-                if (id != 0) { _trialStageAliveIds.Add(id); spawned++; }
-                else TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: stage {_trialStageNumber} spawn failed for {heroRef.GetName()}: {err}");
+                if (id != 0)
+                {
+                    RegisterTrialPhantom(id, countsForStageAlive: true);
+                    spawned++;
+                    continue;
+                }
+
+                failed++;
+                TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: stage {_trialStageNumber} spawn failed for {heroRef.GetName()}: {err}");
+                if (++extraAttempts > MaxExtraAttempts) break;
             }
 
             if (spawned == 0)
             {
-                TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: stage {_trialStageNumber} — every spawn failed, aborting run");
+                TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: stage {_trialStageNumber} — every spawn attempt failed, aborting run");
                 EndTrialRun(completed: false);
                 return;
             }
 
             try { SendBannerLines($"⚔ Trial Stage {_trialStageNumber} — {spawned} nemesis phantom(s), rank {rank}"); } catch { }
-            TrialLogger.Info($"[TrialOfImpossible] {GetName()}: stage {_trialStageNumber} — {spawned}/{count} spawned, rank {rank}, {remaining - count} hero(es) left in roster");
+            TrialLogger.Info($"[TrialOfImpossible] {GetName()}: stage {_trialStageNumber} — {spawned}/{count} spawned ({failed} failed attempt(s)), rank {rank}, {_trialRoster.Count - _trialRosterIndex} hero(es) left in roster");
         }
 
         /// <summary>The finale: a heavily buffed mirror of the player's own hero, periodic hazard adds, lootsplosion on death.</summary>
@@ -525,6 +628,7 @@ namespace MHServerEmu.Games.Entities
                 EndTrialRun(completed: false);
                 return;
             }
+            RegisterTrialPhantom(id, countsForStageAlive: true);
 
             // Spawned at real nemesis rank 5 (NemesisMaxRank) so its gear/
             // BiS/loot-tier gating all key off the tested, existing rank-5
@@ -542,7 +646,6 @@ namespace MHServerEmu.Games.Entities
                 finaleAvatar.ResetResources(false);
             }
 
-            _trialStageAliveIds.Add(id);
             ScheduleTrialHazardTick();
 
             try { SendBannerLines("☠ THE FINAL TRIAL — YOUR OWN REFLECTION AWAITS"); } catch { }
@@ -571,7 +674,25 @@ namespace MHServerEmu.Games.Entities
                 CancelTrialHazardTick();
                 Avatar avatar = CurrentAvatar;
                 if (avatar != null && avatar.IsInWorld)
+                {
                     DropTrialFinaleLoot(avatar);
+                }
+                else
+                {
+                    // Confirmed live 2026-08-01: reachable if the player's own
+                    // near-simultaneous death/respawn-teleport (DoDeathRelease's
+                    // ExitWorld/re-entry) lands in the same synchronous window
+                    // as the finale phantom's death event. Previously this
+                    // silently skipped the ENTIRE reward (chest, BiS, currency)
+                    // with no log trail, while EndTrialRun(completed: true)
+                    // below still unconditionally committed a full completion
+                    // to the leaderboard -- the player beat the whole gauntlet
+                    // and got nothing, with nothing to diagnose why. Retry
+                    // shortly instead of giving up outright; the avatar is
+                    // normally back in-world within a tick or two of a respawn.
+                    TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: finale kill landed with no live avatar ({(avatar == null ? "avatar null" : "avatar out of world")}) — retrying reward grant");
+                    ScheduleTrialFinaleLootRetry();
+                }
                 TrialLogger.Info($"[TrialOfImpossible] {GetName()}: finale defeated — trial complete");
                 EndTrialRun(completed: true);
                 return;
@@ -582,22 +703,239 @@ namespace MHServerEmu.Games.Entities
             ScheduleAdvanceTrialStage();
         }
 
-        /// <summary>Huge multi-roll drop at the player's position — only the finale kill triggers this.</summary>
+        /// <summary>Spawns a reward chest at the finale kill spot instead of dropping loot directly — opening it (OnTrialChestInteract) is what actually grants the BiS gear, cosmic-tier table rolls, and currency. Mirrors Player.WaveDirector.cs's endless chest pattern.</summary>
         private void DropTrialFinaleLoot(Avatar avatar)
         {
             try
             {
-                using LootInputSettings inputSettings = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<LootInputSettings>();
-                inputSettings.Initialize(LootContext.Drop, this, avatar);
-                for (int i = 0; i < TrialFinaleLootRolls; i++)
-                    Game.LootManager.SpawnLootFromTable((PrototypeId)TrialFinaleLootTableRef, inputSettings, 1);
-                try { SendBannerLines($"💰 LOOTSPLOSION — {TrialFinaleLootRolls} rolls!"); } catch { }
-                TrialLogger.Info($"[TrialOfImpossible] {GetName()}: finale lootsplosion — {TrialFinaleLootRolls} roll(s)");
+                Vector3 fallbackPos = avatar.RegionLocation.Position + avatar.Forward * 150f;
+                WorldEntity chest = SpawnRewardChestEntity(avatar, TrialChestProtoPath, fallbackPos, out string chestErr);
+                if (chest == null)
+                {
+                    TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: finale reward chest spawn failed: {chestErr} — no chest, no loot");
+                    return;
+                }
+
+                // Destroy a previous finale's chest if it was never opened --
+                // confirmed live 2026-08-01 that nothing destroyed it
+                // otherwise (DetachTrialChest only ever cleared tracking,
+                // never the world entity itself), permanently orphaning it
+                // with its BiS loot unobtainable.
+                DestroyAbandonedTrialChest();
+                Region region = avatar.Region;
+                DetachTrialChest();
+                _pendingTrialChestBisItems = BuildTrialFinaleBisLoot(avatar);
+                _trialChestId = chest.Id;
+                _trialChestRegion = region;
+                _trialChestInteractAction ??= OnTrialChestInteract;
+                region.PlayerInteractEvent.AddActionBack(_trialChestInteractAction);
+
+                try { SendBannerLines("💰 A reward chest appears — go claim your loot!"); } catch { }
+                TrialLogger.Info($"[TrialOfImpossible] {GetName()}: finale reward chest spawned (id={chest.Id:X}), {_pendingTrialChestBisItems.Count} guaranteed BiS piece(s) queued");
             }
             catch (Exception ex)
             {
-                TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: finale loot drop failed: {ex.Message}");
+                TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: finale reward chest spawn failed: {ex.Message}");
             }
+        }
+
+        /// <summary>Picks the player's own hero plus TrialFinaleOtherHeroCount random other heroes from the full playable avatar roster, and rolls how many BiS slots each contributes — built once at kill time so the interact handler just spawns whatever was already decided.</summary>
+        private List<PrototypeId> BuildTrialFinaleBisLoot(Avatar avatar)
+        {
+            var result = new List<PrototypeId>();
+            PrototypeId ownAvatarRef = avatar.AvatarPrototype?.DataRef ?? PrototypeId.Invalid;
+            if (ownAvatarRef == PrototypeId.Invalid) return result;
+
+            AddRandomBisPieces(ownAvatarRef, 1 + RollExtraPieces(TrialFinaleOwnHeroMaxExtraPieces), result);
+
+            // Same source BuildTrialRoster uses (Avatar.GetAllPlayableHeroRefs),
+            // NOT a raw IteratePrototypesInHierarchy<AvatarPrototype> scan --
+            // confirmed live 2026-08-01 that the raw scan lets through
+            // deprecated/test avatar prototypes (e.g. "zzzBrevikOLD") that
+            // GetAllPlayableHeroRefs's IsDeprecatedTestContent filter
+            // excludes. Those have no real EquipmentInventories setup, so
+            // PhantomBiSData silently returns 0 items for them, undershooting
+            // the "at least 4 heroes represented" guarantee with no warning.
+            var otherRoster = new List<PrototypeId>(Avatar.GetAllPlayableHeroRefs());
+            otherRoster.RemoveAll(r => r == ownAvatarRef);
+
+            for (int i = 0; i < TrialFinaleOtherHeroCount && otherRoster.Count > 0; i++)
+            {
+                int idx = Game.Random.Next(otherRoster.Count);
+                PrototypeId heroRef = otherRoster[idx];
+                otherRoster.RemoveAt(idx);
+                AddRandomBisPieces(heroRef, 1 + RollExtraPieces(TrialFinaleOtherHeroMaxExtraPieces), result);
+            }
+
+            return result;
+        }
+
+        private int RollExtraPieces(int max)
+        {
+            int extra = 0;
+            for (int i = 0; i < max; i++)
+                if (Game.Random.NextDouble() < TrialFinaleExtraPieceChance) extra++;
+            return extra;
+        }
+
+        private void AddRandomBisPieces(PrototypeId avatarRef, int count, List<PrototypeId> result)
+        {
+            if (PhantomBiSData.TryGetLoadout(avatarRef, Game, out var slots) == false || slots.Count == 0)
+                return;
+
+            var pool = new List<PrototypeId>(slots.Values);
+            for (int i = 0; i < count && pool.Count > 0; i++)
+            {
+                int idx = Game.Random.Next(pool.Count);
+                result.Add(pool[idx]);
+                pool.RemoveAt(idx);
+            }
+        }
+
+        /// <summary>Fires on ANY player interaction in the arena region — filters down to the tracked finale reward chest. Rolls the guaranteed BiS gear (spawned as real ground items via LootManager.SpawnItem, never force-added to inventory), a cosmic-tier-only table loot floor, and currency.</summary>
+        private void OnTrialChestInteract(in PlayerInteractGameEvent evt)
+        {
+            if (evt.Player != this) return;
+            if (evt.InteractableObject == null || evt.InteractableObject.Id != _trialChestId) return;
+
+            WorldEntity chest = evt.InteractableObject;
+            Avatar avatar = CurrentAvatar;
+            List<PrototypeId> bisItems = _pendingTrialChestBisItems ?? new List<PrototypeId>();
+            DetachTrialChest();
+
+            if (avatar == null)
+            {
+                if (chest.IsInWorld) chest.ExitWorld();
+                chest.Destroy();
+                return;
+            }
+
+            try
+            {
+                // Guaranteed BiS gear -- real ground items at the chest, same
+                // pickup flow as any other drop, never force-added to inventory.
+                int bisSpawned = 0;
+                foreach (PrototypeId itemRef in bisItems)
+                {
+                    if (Game.LootManager.SpawnItem(itemRef, LootContext.Drop, this, chest))
+                        bisSpawned++;
+                }
+
+                // Cosmic-tier-only table rolls -- the reward floor ("nothing
+                // less than 30 pieces of loot"); BiS gear above is bonus on
+                // top. Rarity is force-restricted to Cosmic/Unique so no
+                // normal/uncommon/rare/epic gear can roll here.
+                using LootInputSettings inputSettings = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<LootInputSettings>();
+                inputSettings.Initialize(LootContext.Drop, this, avatar, chest.RegionLocation.Position);
+
+                var lootGlobals = GameDatabase.LootGlobalsPrototype;
+                if (lootGlobals.RarityCosmic != PrototypeId.Invalid) inputSettings.LootRollSettings.Rarities.Add(lootGlobals.RarityCosmic);
+                if (lootGlobals.RarityUnique != PrototypeId.Invalid) inputSettings.LootRollSettings.Rarities.Add(lootGlobals.RarityUnique);
+
+                for (int i = 0; i < TrialFinaleTableRolls; i++)
+                    Game.LootManager.SpawnLootFromTable((PrototypeId)TrialFinaleLootTableRef, inputSettings, 1);
+
+                // Currency -- granted directly, same as every other currency
+                // grant in the codebase (a stat, not a physical pickup).
+                var currencyGlobals = GameDatabase.CurrencyGlobalsPrototype;
+                Properties.AdjustProperty(TrialFinaleEternitySplinters, new(PropertyEnum.Currency, currencyGlobals.EternitySplinters));
+                Properties.AdjustProperty(TrialFinaleCubeShards, new(PropertyEnum.Currency, currencyGlobals.CubeShards));
+                Properties.AdjustProperty(TrialFinaleLegendaryMarks, new(PropertyEnum.Currency, currencyGlobals.LegendaryMarks));
+                Properties.AdjustProperty(TrialFinaleResearchDrives, new(PropertyEnum.Currency, currencyGlobals.ResearchDrives));
+                Properties.AdjustProperty(TrialFinaleOmegaFiles, new(PropertyEnum.Currency, currencyGlobals.OmegaFiles));
+
+                try { SendBannerLines($"💰 LOOTSPLOSION — {bisSpawned} BiS piece(s) + {TrialFinaleTableRolls} cosmic roll(s)!"); } catch { }
+                TrialLogger.Info($"[TrialOfImpossible] {GetName()}: finale chest opened — {bisSpawned} BiS piece(s), {TrialFinaleTableRolls} cosmic table roll(s), currency granted");
+            }
+            catch (Exception ex)
+            {
+                TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: finale chest open failed: {ex.Message}");
+            }
+            finally
+            {
+                if (chest.IsInWorld) chest.ExitWorld();
+                chest.Destroy();
+            }
+        }
+
+        /// <summary>
+        /// Spawns a generic interactable reward-chest WorldEntity near the
+        /// avatar -- shared by Endless Wave's periodic milestone chests
+        /// (Player.WaveDirector.cs's SpawnOneEndlessChest) and Trial of the
+        /// Impossible's finale chest, which this method was originally
+        /// copy-pasted from (audited 2026-08-01: they were byte-for-byte
+        /// identical for the lookup/position/entity-creation portion). Each
+        /// caller still registers its own PlayerInteractEvent hook and reward
+        /// logic separately, since those genuinely differ (multi-chest
+        /// tracking + loot-table rolls vs. single chest + BiS/currency grant).
+        /// </summary>
+        private WorldEntity SpawnRewardChestEntity(Avatar avatar, string chestProtoPath, Vector3 fallbackPos, out string error)
+        {
+            error = null;
+            PrototypeId chestRef = GameDatabase.GetPrototypeRefByName(chestProtoPath);
+            if (chestRef == PrototypeId.Invalid)
+            {
+                error = $"chest prototype not found ({chestProtoPath})";
+                return null;
+            }
+
+            var chestProto = chestRef.As<WorldEntityPrototype>();
+            if (chestProto == null)
+            {
+                error = "chest prototype did not resolve to a WorldEntityPrototype";
+                return null;
+            }
+
+            Vector3 pos;
+            if (EntityHelper.GetSpawnPositionNearAvatar(avatar, avatar.Region, chestProto.Bounds, 250f, out pos) == false)
+                pos = fallbackPos;
+
+            using EntitySettings settings = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<EntitySettings>();
+            settings.EntityRef = chestRef;
+            settings.Position = pos;
+            settings.Orientation = avatar.RegionLocation.Orientation;
+            settings.RegionId = avatar.Region.Id;
+
+            WorldEntity chest = Game.EntityManager.CreateEntity(settings) as WorldEntity;
+            if (chest == null)
+            {
+                error = "CreateEntity failed";
+                return null;
+            }
+
+            chest.Properties[PropertyEnum.Interactable] = true;
+            return chest;
+        }
+
+        /// <summary>Unregisters the finale chest's interact hook and clears the queued BiS loot. Safe to call even if no chest is pending. Every call site immediately either assigns a fresh _pendingTrialChestBisItems (DropTrialFinaleLoot) or is done with it for good (interact/logout), so there's no case that actually needs to keep the old pending list around -- unlike an earlier version of this method, which took a bool for that and never had a real use for the "keep it" branch.</summary>
+        private void DetachTrialChest()
+        {
+            if (_trialChestRegion != null && _trialChestInteractAction != null)
+                _trialChestRegion.PlayerInteractEvent.RemoveAction(_trialChestInteractAction);
+            _trialChestRegion = null;
+            _trialChestId = 0;
+            _pendingTrialChestBisItems = null;
+        }
+
+        /// <summary>
+        /// Destroys the currently-tracked finale chest WorldEntity (if any)
+        /// without granting its reward -- used when the chest is being
+        /// abandoned (a new finale chest is about to replace it, or the
+        /// player is logging out) rather than opened via OnTrialChestInteract
+        /// (which destroys the chest itself, after granting the reward, in
+        /// its own finally block). Confirmed live 2026-08-01: without this,
+        /// an unopened chest was never destroyed at all -- DetachTrialChest
+        /// only ever cleared tracking fields, never the entity -- so it sat
+        /// in the world forever, un-interactable and un-obtainable, the
+        /// instant the player moved on without clicking it.
+        /// </summary>
+        private void DestroyAbandonedTrialChest()
+        {
+            if (_trialChestId == 0) return;
+            WorldEntity chest = Game?.EntityManager?.GetEntity<WorldEntity>(_trialChestId);
+            if (chest == null) return;
+            if (chest.IsInWorld) chest.ExitWorld();
+            chest.Destroy();
         }
 
         /// <summary>Health + Endurance(mana) orb at a defeated phantom's position — a small breather reward for regular-stage kills, distinct from the finale's own lootsplosion.</summary>
@@ -687,6 +1025,7 @@ namespace MHServerEmu.Games.Entities
                     ulong id = avatar.SpawnEnemyPhantomHero(hazardHeroRef, 0, out _, ambush: true);
                     if (id != 0)
                     {
+                        RegisterTrialPhantom(id, countsForStageAlive: false);
                         try { SendBannerLines("⚠ A hazard emerges to aid your reflection!"); } catch { }
                         TrialLogger.Info($"[TrialOfImpossible] {GetName()}: finale hazard spawned ({FriendlyNameFromRef(hazardHeroRef)})");
                     }
@@ -707,6 +1046,55 @@ namespace MHServerEmu.Games.Entities
         private sealed class TrialHazardTickEvent : CallMethodEvent<Player>
         {
             protected override CallbackDelegate GetCallback() => static (player) => player.OnTrialHazardTick();
+        }
+
+        // ---------------- Finale reward retry ----------------
+
+        /// <summary>See OnTrialStageEntityDead's no-live-avatar branch. Schedules one retry attempt; caps at TrialFinaleLootMaxRetries so a permanently-gone avatar (full disconnect) doesn't retry forever.</summary>
+        private void ScheduleTrialFinaleLootRetry()
+        {
+            var scheduler = Game?.GameEventScheduler;
+            if (scheduler == null) return;
+            if (_trialFinaleLootRetryTick.IsValid) scheduler.CancelEvent(_trialFinaleLootRetryTick);
+            scheduler.ScheduleEvent(_trialFinaleLootRetryTick, TimeSpan.FromMilliseconds(TrialFinaleLootRetryDelayMs), _trialHazardEvents);
+            _trialFinaleLootRetryTick.Get().Initialize(this);
+        }
+
+        private void OnTrialFinaleLootRetryTick()
+        {
+            Avatar avatar = CurrentAvatar;
+            if (avatar != null && avatar.IsInWorld)
+            {
+                // DropTrialFinaleLoot only needs the avatar itself (region,
+                // position, gear data) -- it doesn't depend on any trial-run
+                // state that EndTrialRun already cleared by this point, so
+                // it's safe to call here even though the run is long "over".
+                DropTrialFinaleLoot(avatar);
+                TrialLogger.Info($"[TrialOfImpossible] {GetName()}: finale reward grant succeeded on retry");
+                _trialFinaleLootRetryCount = 0;
+                return;
+            }
+
+            if (++_trialFinaleLootRetryCount >= TrialFinaleLootMaxRetries)
+            {
+                TrialLogger.Warn($"[TrialOfImpossible] {GetName()}: finale reward grant gave up after {TrialFinaleLootMaxRetries} retries — no live avatar available");
+                _trialFinaleLootRetryCount = 0;
+                return;
+            }
+
+            ScheduleTrialFinaleLootRetry();
+        }
+
+        private void CancelTrialFinaleLootRetry()
+        {
+            var scheduler = Game?.GameEventScheduler;
+            if (scheduler != null && _trialFinaleLootRetryTick.IsValid) scheduler.CancelEvent(_trialFinaleLootRetryTick);
+            _trialFinaleLootRetryCount = 0;
+        }
+
+        private sealed class TrialFinaleLootRetryTickEvent : CallMethodEvent<Player>
+        {
+            protected override CallbackDelegate GetCallback() => static (player) => player.OnTrialFinaleLootRetryTick();
         }
 
         // ---------------- Shared helpers ----------------
@@ -781,6 +1169,15 @@ namespace MHServerEmu.Games.Entities
 
             CancelTrialHazardTick();
             CancelTrialStageAdvance();
+            // Deliberately NOT detaching the finale reward chest here --
+            // confirmed live 2026-07-31: EndTrialRun runs synchronously right
+            // after DropTrialFinaleLoot on a successful finale kill (same
+            // call in OnTrialStageEntityDead), so detaching here tore down
+            // the chest's interact handler and wiped its queued BiS items
+            // before the player could ever click it -- the "run" is over for
+            // tracking purposes, but the chest is a standalone world prop
+            // that should stay interactable until actually opened (or the
+            // player logs out -- see UnsubscribeTrialTracking).
 
             Avatar avatar = CurrentAvatar;
             if (avatar != null) ClearTrialKillWidget(avatar);
@@ -802,6 +1199,9 @@ namespace MHServerEmu.Games.Entities
             DetachTrialGuideNpc();
             CancelTrialHazardTick();
             CancelTrialStageAdvance();
+            CancelTrialFinaleLootRetry();
+            DestroyAbandonedTrialChest();
+            DetachTrialChest();
 
             if (_trialArenaRegion != null && _trialStageDeadAction != null)
                 _trialArenaRegion.EntityDeadEvent.RemoveAction(_trialStageDeadAction);

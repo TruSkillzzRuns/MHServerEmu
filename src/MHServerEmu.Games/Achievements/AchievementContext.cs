@@ -26,13 +26,37 @@ namespace MHServerEmu.Games.Achievements
         public List<AchievementEventData> EventData { get; set; }
         public List<AchievementEventContext> EventContext { get; set; }
 
+        /// <summary>
+        /// Number of achievement prototype references that failed to resolve since the last
+        /// <see cref="ResetUnresolvedCount"/>. Achievement data is shared across game versions,
+        /// so older clients legitimately lack prototypes referenced by newer achievements --
+        /// these are counted and reported once by AchievementDatabase.Initialize() rather than
+        /// logged individually, which produced hundreds of warnings per startup on 1.48.
+        /// </summary>
+        public static int UnresolvedCount { get; private set; }
+
+        public static void ResetUnresolvedCount()
+        {
+            UnresolvedCount = 0;
+        }
+
         public static Prototype GetPrototype(long prototypeGuid)
         {
             if (prototypeGuid == 0) return null;
             PrototypeId protoRef = GameDatabase.GetDataRefByPrototypeGuid((PrototypeGuid)prototypeGuid);
-            if (protoRef == PrototypeId.Invalid) return Logger.WarnReturn((Prototype)null, $"GetPrototype Guid {prototypeGuid} have not DataRef");
+            if (protoRef == PrototypeId.Invalid)
+            {
+                UnresolvedCount++;
+                Logger.Trace($"GetPrototype Guid {prototypeGuid} have not DataRef");
+                return null;
+            }
             Prototype proto = GameDatabase.GetPrototype<Prototype>(protoRef);
-            if (proto == null) return Logger.WarnReturn((Prototype)null, $"GetPrototype DataRef {protoRef} have not Prototype");
+            if (proto == null)
+            {
+                UnresolvedCount++;
+                Logger.Trace($"GetPrototype DataRef {protoRef} have not Prototype");
+                return null;
+            }
             return proto;
         }
 

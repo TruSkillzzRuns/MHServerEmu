@@ -458,16 +458,43 @@ namespace MHServerEmu.Games.Entities.Avatars
                             // Skipped entirely during an Endless Challenge run
                             // — that mode's only reward is the chest spawned
                             // every few waves, not per-kill gear drops. Also
-                            // skipped for the whole Trial of the Impossible
-                            // gauntlet (every stage, including the finale) —
-                            // confirmed live 2026-07-23: regular stages were
-                            // dropping gear when they shouldn't, and the
-                            // finale would otherwise double-drop (this
-                            // automatic roll PLUS the explicit
-                            // DropTrialFinaleLoot lootsplosion). Only that
-                            // explicit call should pay out, and only on the
-                            // finale kill.
-                            if (host.IsEndlessChallengeActive == false && host.IsTrialGauntletActive == false)
+                            // skipped for every phantom spawned by the Trial
+                            // of the Impossible gauntlet (stages, finale, and
+                            // finale hazards) — confirmed live 2026-07-23:
+                            // regular stages were dropping gear when they
+                            // shouldn't, and the finale would otherwise
+                            // double-drop (this automatic roll PLUS the
+                            // explicit DropTrialFinaleLoot lootsplosion).
+                            //
+                            // Checked by per-phantom id (Player.IsTrialSuppressedPhantom),
+                            // NOT the live IsTrialGauntletActive flag —
+                            // confirmed live 2026-07-31 that checking the live
+                            // flag here raced against this same corpse-cleanup
+                            // tick: the finale kill's own handler
+                            // (OnTrialStageEntityDead) calls EndTrialRun
+                            // synchronously right after spawning the reward
+                            // chest, clearing IsTrialGauntletActive BEFORE
+                            // this tick ever sees the fresh corpse, so the old
+                            // flag-based check let the finale phantom's own
+                            // gear drop through anyway, burying the real
+                            // reward chest under an unwanted extra loot pile.
+                            //
+                            // IsEndlessChallengeActive below is STILL a live
+                            // flag, unlike the per-id check next to it -- audited
+                            // 2026-08-01 and confirmed this doesn't currently
+                            // race, because nothing in Player.WaveDirector.cs
+                            // clears it synchronously off an EntityDeadGameEvent
+                            // (its wipe-check runs on an independent polling
+                            // tick, not a kill handler). If a future change
+                            // adds a synchronous "last kill ends the Endless
+                            // run" path here (mirroring Trial's
+                            // OnTrialStageEntityDead -> EndTrialRun chain),
+                            // this line reintroduces the EXACT bug just fixed
+                            // for Trial -- give it the same per-id-snapshot
+                            // treatment (an IsEndlessSuppressedPhantom-style
+                            // set populated at spawn time) instead of trusting
+                            // the live flag here, same as IsTrialSuppressedPhantom.
+                            if (host.IsEndlessChallengeActive == false && host.IsTrialSuppressedPhantom(foe.Id) == false)
                             {
                                 try { DropPhantomGear(foe, host); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] drop failed on {foe.Id:X}: {ex.Message}"); }
                             }
@@ -2182,7 +2209,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                 float radius = 150f + (float)(rng.NextDouble() * 250f);
                 Vector3 candidate = callerPos + new Vector3((float)Math.Cos(angle) * radius, (float)Math.Sin(angle) * radius, 0f);
                 candidate = RegionLocation.ProjectToFloor(region, candidate);
-                if (region.NaviMesh.Contains(candidate, MathF.Max(20f, avatarRadius), walkCheck))
+                // Same InvalidCell check the ambush-spawn candidate loop
+                // needed (confirmed live 2026-07-31/08-01) -- NaviMesh.Contains
+                // alone can pass a point with no backing Cell, which makes
+                // ChangeRegionPosition silently no-op (no exception, so the
+                // caller's try/catch never fires) while still recording the
+                // never-applied position into s_phantomStuckTrack, delaying
+                // the next stuck-rescue attempt by a full detection cycle.
+                if (region.NaviMesh.Contains(candidate, MathF.Max(20f, avatarRadius), walkCheck)
+                    && region.GetCellAtPosition(candidate) != null)
                     return candidate;
             }
             // Fallback: caller's exact position. Guaranteed walkable since
@@ -2206,7 +2241,9 @@ namespace MHServerEmu.Games.Entities.Avatars
                 float radius = 150f + (float)(rng.NextDouble() * 200f);
                 Vector3 candidate = fromPos + new Vector3((float)Math.Cos(angle) * radius, (float)Math.Sin(angle) * radius, 0f);
                 candidate = RegionLocation.ProjectToFloor(region, candidate);
-                if (region.NaviMesh.Contains(candidate, MathF.Max(20f, avatarRadius), walkCheck))
+                // Same InvalidCell check as ChoosePhantomLeashPos above.
+                if (region.NaviMesh.Contains(candidate, MathF.Max(20f, avatarRadius), walkCheck)
+                    && region.GetCellAtPosition(candidate) != null)
                     return candidate;
             }
             return fromPos;
@@ -2632,13 +2669,30 @@ namespace MHServerEmu.Games.Entities.Avatars
             if ((rank == 3 || rank == 4) && PhantomBiSData.TryGetLoadout(avatarProto.DataRef, game, out var bisLoadout) && bisLoadout.Count > 0)
             {
                 int want = rank == 3 ? (rng.NextFloat() < 0.5f ? 1 : 0) : rng.Next(0, 3);
-                bonus = AddDownTierBiSInto(summary, bisLoadout, killer, lootMgr, rng, level, want);
+                bonus = AddDownTierBiSInto(summary, bisLoadout, avatarProto, killer, lootMgr, rng, level, want);
             }
 
-            if (wornDropped + bonus + costumeDropped > 0)
+            // Baseline splosion bonus, scaling with rank -- worn gear alone can
+            // be as few as 1-2 pieces (low character level = few unlocked
+            // equip slots, or a costume-heavy loadout), which felt underwhelming
+            // for an ambush kill. Guaranteed random level-band items on top,
+            // growing with rank so higher-rank encounters feel meaningfully
+            // more rewarding than a plain rank-0 rogue.
+            int splosionWant = rank switch
+            {
+                0 => 2,
+                1 => 3,
+                2 => 4,
+                3 => 5,
+                4 => 6,
+                _ => 0
+            };
+            int splosion = splosionWant > 0 ? RollSplosionInto(summary, avatarProto, killer, lootMgr, rng, level, splosionWant) : 0;
+
+            if (wornDropped + bonus + splosion + costumeDropped > 0)
             {
                 lootMgr.SpawnLootFromSummary(summary, inputSettings);
-                PhantomLogger.Info($"[PhantomHero:Loot] dropped {wornDropped} worn + {bonus} down-tier BiS item(s) (rank {rank}) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
+                PhantomLogger.Info($"[PhantomHero:Loot] dropped {wornDropped} worn + {bonus} down-tier BiS + {splosion} splosion item(s) (rank {rank}) from '{avatarProto.DataRef.GetName()}' (killer={killer.GetName()})");
             }
         }
 
@@ -2744,7 +2798,12 @@ namespace MHServerEmu.Games.Entities.Avatars
                 while (spec == null && picker.Empty() == false)
                 {
                     if (picker.PickRemove(out Prototype proto) == false || proto == null) break;
-                    var s = lootMgr.CreateItemSpec(proto.DataRef, LootContext.Drop, killer, level);
+                    // The picker above was built from avatarProto's own equipment inventory
+                    // (the phantom's, not the killer's), so some candidates may be exclusive
+                    // to that avatar (e.g. a boss's signature gear). Resolve the item spec
+                    // against that same avatar or GetInventorySlotForAgent comes back Invalid
+                    // for the killer and affix generation fails outright.
+                    var s = lootMgr.CreateItemSpec(proto.DataRef, LootContext.Drop, killer, level, rollForAvatarProtoOverride: avatarProto);
                     if (s == null) continue;
                     if (bannedUltimateRef != PrototypeId.Invalid && s.RarityProtoRef == bannedUltimateRef) continue;
                     spec = s;
@@ -2766,7 +2825,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// "down-tier" version). Used for the rank 3/4 bonus drop.
         /// </summary>
         private static int AddDownTierBiSInto(Loot.LootResultSummary summary,
-            IReadOnlyDictionary<EquipmentInvUISlot, PrototypeId> bisLoadout,
+            IReadOnlyDictionary<EquipmentInvUISlot, PrototypeId> bisLoadout, AvatarPrototype avatarProto,
             Player killer, LootManager lootMgr, MHServerEmu.Core.System.Random.GRandom rng, int level, int want)
         {
             if (want <= 0) return 0;
@@ -2788,8 +2847,11 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // Build the BiS item at the down-tier rarity; if the item can't
                 // exist at that rarity, fall back to its natural roll so the
                 // drop still lands.
-                ItemSpec spec = lootMgr.CreateItemSpec(itemRef, LootContext.Drop, killer, level, downTierRarity)
-                             ?? lootMgr.CreateItemSpec(itemRef, LootContext.Drop, killer, level);
+                // bisLoadout is keyed to avatarProto's own gear (see PhantomBiSData.TryGetLoadout
+                // above), so this needs the same rollForAvatarProtoOverride as RollSplosionInto --
+                // otherwise avatar-exclusive BiS pieces fail affix generation against the killer.
+                ItemSpec spec = lootMgr.CreateItemSpec(itemRef, LootContext.Drop, killer, level, downTierRarity, avatarProto)
+                             ?? lootMgr.CreateItemSpec(itemRef, LootContext.Drop, killer, level, rollForAvatarProtoOverride: avatarProto);
                 if (spec == null) continue;
                 try { spec.SetBindingState(false); }
                 catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] down-tier unbind failed: {ex.Message}"); }
@@ -5587,7 +5649,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                 candidate = origin + new Vector3((float)Math.Cos(ang) * radius, (float)Math.Sin(ang) * radius, 0f);
                 Vector3 floored = RegionLocation.ProjectToFloor(region, candidate);
 
-                bool isWalkable = region.NaviMesh.Contains(floored, navRadius, walkCheck);
+                // Confirmed live 2026-07-31 (Trial of the Impossible, 1.48,
+                // NightclubRegion): the navmesh alone isn't enough -- a point
+                // can be NaviMesh.Contains()-walkable yet have no backing
+                // Cell at all (region.GetCellAtPosition returns null), which
+                // makes EnterWorld's ChangeRegionPosition fail with
+                // Result=InvalidCell. That aborted the whole run because
+                // early stages only try a single hero. Require both checks.
+                bool isWalkable = region.NaviMesh.Contains(floored, navRadius, walkCheck)
+                    && region.GetCellAtPosition(floored) != null;
                 if (isWalkable && foundWalkableCandidate == false)
                 {
                     bestWalkableCandidate = floored;
@@ -5639,7 +5709,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                                 float shrinkAng = (float)(rng.NextDouble() * Math.PI * 2.0);
                                 Vector3 shrinkCandidate = origin + new Vector3((float)Math.Cos(shrinkAng) * shrinkRadius, (float)Math.Sin(shrinkAng) * shrinkRadius, 0f);
                                 Vector3 shrinkFloored = RegionLocation.ProjectToFloor(region, shrinkCandidate);
-                                if (region.NaviMesh.Contains(shrinkFloored, navRadius, walkCheck))
+                                if (region.NaviMesh.Contains(shrinkFloored, navRadius, walkCheck)
+                                    && region.GetCellAtPosition(shrinkFloored) != null)
                                 {
                                     candidate = shrinkFloored;
                                     shrunkCandidateFound = true;

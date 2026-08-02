@@ -502,7 +502,15 @@ namespace MHServerEmu.Games.Loot
         /// <summary>
         /// Creates an <see cref="ItemSpec"/> for the provided <see cref="PrototypeId"/>.
         /// </summary>
-        public ItemSpec CreateItemSpec(PrototypeId itemProtoRef, LootContext lootContext, Player player, int level = 1, PrototypeId rarityProtoRef = default)
+        /// <param name="rollForAvatarProtoOverride">
+        /// Resolve RollFor/Slot against this avatar instead of <paramref name="player"/>'s current
+        /// one. Needed when the item pool was built for a specific avatar's own equipment
+        /// inventory (e.g. a phantom boss's signature gear) rather than for the receiving player --
+        /// without this, avatar-exclusive items (GetInventorySlotForAgent only resolves for their
+        /// owning avatar) always fail affix generation when rolled against a mismatched player.
+        /// </param>
+        public ItemSpec CreateItemSpec(PrototypeId itemProtoRef, LootContext lootContext, Player player, int level = 1,
+            PrototypeId rarityProtoRef = default, AvatarPrototype rollForAvatarProtoOverride = null)
         {
             ItemPrototype itemProto = itemProtoRef.As<ItemPrototype>();
             if (!Verify.IsNotNull(itemProto)) return null;
@@ -512,7 +520,7 @@ namespace MHServerEmu.Games.Loot
 
             _resolver.SetContext(lootContext, player);
 
-            AvatarPrototype avatarProto = player?.CurrentAvatar?.AvatarPrototype;
+            AvatarPrototype avatarProto = rollForAvatarProtoOverride ?? player?.CurrentAvatar?.AvatarPrototype;
 
             using DropFilterArguments filterArgs = ObjectPoolManager.Instance.Get<DropFilterArguments>();
             filterArgs.ItemProto = itemProto;

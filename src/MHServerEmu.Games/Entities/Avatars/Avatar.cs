@@ -2724,6 +2724,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             return true;
         }
 
+
         public void UnassignAllMappedPowers()
         {
             while (Properties.HasProperty(PropertyEnum.AvatarMappedPower))
@@ -4763,9 +4764,9 @@ namespace MHServerEmu.Games.Entities.Avatars
                 PowerIndexProperties indexProps = new(0, characterLevel, combatLevel, itemLevel, itemVariation);
 
                 Power itemPower = AssignPower(powerProtoRef, indexProps);
-                Verify.IsNotNull(itemPower, $"Failed to assign item power {powerProtoRef.GetName()} to avatar {this}");            
+                Verify.IsNotNull(itemPower, $"Failed to assign item power {powerProtoRef.GetName()} to avatar {this}");
             }
-            
+
             OnChangeInventory(item);
         }
 
