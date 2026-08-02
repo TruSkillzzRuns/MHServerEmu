@@ -6,6 +6,7 @@ using MHServerEmu.Core.Memory;
 using MHServerEmu.Core.System.Time;
 using MHServerEmu.Core.VectorMath;
 using MHServerEmu.Games.Behavior;
+using MHServerEmu.Games.Common;
 using MHServerEmu.Games.Dialog;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.Entities.Inventories;
@@ -1406,37 +1407,28 @@ namespace MHServerEmu.Games.Entities
             PowerPrototype powerProto = powerInfo.PowerPrototype;
             if (!Verify.IsNotNull(powerProto)) return false;
 
-#if !GAME_VERSION_1_48
             int rankBefore = GetPowerRank(powerInfo.PowerRef);
-#endif
 
             if (UpdatePowerRank(ref powerInfo, false) == false)
                 return false;
 
-#if !GAME_VERSION_1_48
-            // Show HUD tutorial for power-granting items if needed.
-            //
-            // Skipped on 1.48: UIGlobals.PowerGrantItemTutorialTip is declared as a
-            // HUDTutorialPrototype, but on 1.48 it resolves to Tutorial/Tips/PowerGrantItem,
-            // which is a TipPrototype -- part of the separate tip system (see the
-            // "V48_TODO: TutorialSystem::ShowTip() for TipPrototype separate from
-            // ShowHUDTutorial" note in Player.cs) and unimplemented here. Feeding it to
-            // ShowHUDTutorial anyway meant SetTutorialProps read AllowMovement /
-            // AllowPowerUsage / AllowTakingDamage, none of which exist on a TipPrototype,
-            // so AllowPowerUsage defaulted to false and set PropertyEnum.TutorialPowerLock.
-            // That locks every power on the ability bar, and nothing clears it until another
-            // HUD tutorial replaces it or the avatar re-enters the world -- which is why
-            // equipping a power-granting item greyed out the whole bar until a region change.
-            // Confirmed live 2026-08-02 (TutorialPowerLock=true, CurrentHUDTutorial=
-            // Tutorial/Tips/PowerGrantItem after equipping such an item).
+            // Show the power-granting item tutorial if needed. On 1.48 this has to go through
+            // TutorialSystem.ShowTip: UIGlobals.PowerGrantItemTutorialTip is a TipPrototype
+            // there, not a HUDTutorialPrototype, and routing it into ShowHUDTutorial made
+            // SetTutorialProps read AllowPowerUsage -- a field TipPrototype doesn't have, so it
+            // defaulted to false and set PropertyEnum.TutorialPowerLock, locking every power on
+            // the ability bar until the avatar re-entered the world. Confirmed live 2026-08-02.
             if (rankBefore <= 0 && powerProto.Activation != PowerActivationType.Passive)
             {
                 Player player = GetOwnerOfType<Player>();
                 if (!Verify.IsNotNull(player)) return false;
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                 player.ShowHUDTutorial(GameDatabase.UIGlobalsPrototype.PowerGrantItemTutorialTip);
-            }
+#else
+                TutorialSystem.ShowTip(player, GameDatabase.UIGlobalsPrototype.PowerGrantItemTutorialTip);
 #endif
+            }
 
             return true;
         }

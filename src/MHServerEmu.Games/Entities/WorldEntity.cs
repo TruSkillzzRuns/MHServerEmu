@@ -572,14 +572,17 @@ namespace MHServerEmu.Games.Entities
             if (newOnServer)
             {
                 settings.OptionFlags |= EntitySettingsOptionFlags.IsNewOnServer;
-                // Previously also set IsClientEntityHidden here for team-ups, expecting the client's
-                // own "materialize" entrance sequence (PlayDramaticEntrance) to reveal it -- nothing
-                // server-side ever clears this flag, so it's entirely dependent on that client-side
-                // reveal trigger firing. On 1.48, that trigger doesn't fire for at least BetaRayBill
-                // and DeadpoolTheKid (works fine for them on 1.52, and for other team-ups on 1.48),
-                // leaving them stuck in the hidden/materializing state permanently. A fresh login never
-                // sets this flag at all (newOnServer=false there) and always renders correctly, so drop
-                // it here too rather than depend on a per-character, per-client-build reveal sequence.
+                // Hiding a team-up here relies entirely on the client's own "materialize"
+                // entrance sequence (PlayDramaticEntrance) to reveal it -- nothing server-side
+                // ever clears this flag. On 1.48 that reveal doesn't fire for at least
+                // BetaRayBill and DeadpoolTheKid, leaving them permanently invisible on live
+                // summon (a fresh login passes newOnServer=false, never sets the flag, and
+                // always rendered fine). Excluded for 1.48 for that reason; 1.52/1.53 reveal
+                // correctly and keep the entrance.
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+                if (IsTeamUpAgent)
+                    settings.OptionFlags |= EntitySettingsOptionFlags.IsClientEntityHidden;
+#endif
             }
 
             EnterWorld(region, position, orientation, settings);
