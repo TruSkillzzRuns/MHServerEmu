@@ -21,24 +21,27 @@ namespace MHServerEmu.Games.Missions.Conditions
 
         public override bool OnReset()
         {
-            bool isActive = false;
+            SetCompletion(IsAvatarActiveForAnyParticipant());
+            return true;
+        }
 
+        /// <summary>
+        /// Whether any mission participant currently has the tracked avatar active.
+        /// </summary>
+        private bool IsAvatarActiveForAnyParticipant()
+        {
             using var participantsHandle = ListPool<Player>.Instance.Get(out List<Player> participants);
-            if (Mission.GetParticipants(participants))
+            if (Mission.GetParticipants(participants) == false)
+                return false;
+
+            foreach (var player in participants)
             {
-                foreach (var player in participants)
-                {
-                    var avatar = player.CurrentAvatar;
-                    if (avatar != null && avatar.PrototypeDataRef == _proto.AvatarPrototype)
-                    {
-                        isActive = true;
-                        break;
-                    }
-                }
+                var avatar = player.CurrentAvatar;
+                if (avatar != null && avatar.PrototypeDataRef == _proto.AvatarPrototype)
+                    return true;
             }
 
-            SetCompletion(isActive);
-            return true;
+            return false;
         }
 
         private void OnPlayerSwitchedToAvatar(in PlayerSwitchedToAvatarGameEvent evt)
@@ -47,10 +50,23 @@ namespace MHServerEmu.Games.Missions.Conditions
             var avatarRef = evt.AvatarRef;
 
             if (player == null || IsMissionPlayer(player) == false) return;
-            if (_proto.AvatarPrototype != avatarRef) return;
 
-            UpdatePlayerContribution(player);
-            SetCompleted();
+            if (_proto.AvatarPrototype == avatarRef)
+            {
+                UpdatePlayerContribution(player);
+                SetCompleted();
+                return;
+            }
+
+            // Switching AWAY from the tracked avatar. This previously just returned, so the
+            // condition stayed completed for a hero the player was no longer playing and the
+            // client's mission tracker kept showing it -- OnReset() was the only thing that
+            // ever cleared it, and that only runs on mission/objective state transitions.
+            // Re-evaluate across all participants rather than clearing outright, so a party
+            // member swapping heroes doesn't invalidate the condition while someone else
+            // still has the tracked avatar active. Player.SwitchAvatar() fires this event
+            // after EnableCurrentAvatar(), so CurrentAvatar already reflects the new hero.
+            SetCompletion(IsAvatarActiveForAnyParticipant());
         }
 
         public override void RegisterEvents(Region region)

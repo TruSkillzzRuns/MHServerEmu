@@ -460,6 +460,27 @@ namespace MHServerEmu.Games.GameData.Prototypes
             PopulatePopulationForZoneLookups(_populationRegions, _populationAreas);
 
             MissionPrototypeEnumValue = GetEnumValueFromBlueprint(LiveTuningData.GetMissionBlueprintDataRef());
+
+#if GAME_VERSION_1_48
+            // Chaptered story missions ship with ShowInMissionTracker = Never, so the current
+            // story step never appears in the tracker box -- its objectives only surface on the
+            // map/HUD via PlayerHUDShowObjs. Challenge and daily content ships as Always, so on
+            // a fresh character the tracker shows e.g. a Legendary Quest challenge
+            // (LQICPWavesElites, "Location: Challenges") while CH1Main1CleaningtheKitchen is
+            // Active and invisible. Promote those to IfObjectivesVisible -- the value
+            // CH00RaftTutorial already uses, so it is known-good on this client -- which shows
+            // the mission only while it actually has visible objectives. SortOrder then puts
+            // story (10) above challenges (99).
+            //
+            // Deliberately only upgrades Never: a mission that explicitly asks for Always keeps
+            // it, so this cannot suppress anything that already displays.
+            if (ShowInMissionTracker == MissionShowInTracker.Never
+                && Chapter != PrototypeId.Invalid
+                && PlayerHUDShowObjs)
+            {
+                ShowInMissionTracker = MissionShowInTracker.IfObjectivesVisible;
+            }
+#endif
         }
 
         public override bool ApprovedForUse()

@@ -126,8 +126,22 @@ namespace MHServerEmu.Games.Achievements
         {
             if (Context == null) return;
             RewardPrototype = AchievementContext.GetPrototype(Context.RewardPrototype);
+
+            // Achievement data is shared across game versions, so an older client can be missing
+            // prototypes that an achievement filters on. AchievementContext.GetPrototype returns
+            // null for those, and ScoringEvents.FilterPrototype treats a null filter as "match
+            // anything" (it is how a deliberately unset filter is expressed). The result is that
+            // an achievement whose filter does not exist here silently matches every qualifying
+            // event and completes instantly -- e.g. on 1.48 "Complete the Daily Bugle on Cosmic"
+            // unlocked on a brand new account because DailyBugle has no prototype on that
+            // version. Treat a failed resolve as unsatisfiable rather than unfiltered and disable
+            // the achievement, so it can never be awarded instead of being awarded for free.
+            AchievementContext.ClearLastResolveFailed();
             EventData = Context.GetScoringEventData();
             EventContext = Context.GetScoringEventContext();
+
+            if (AchievementContext.LastResolveFailed)
+                Enabled = false;
         }
 
         public static AchievementVisibleState GetAchievementVisibleStateFromInt(uint state)

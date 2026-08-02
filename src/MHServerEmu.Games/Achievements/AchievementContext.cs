@@ -40,6 +40,19 @@ namespace MHServerEmu.Games.Achievements
             UnresolvedCount = 0;
         }
 
+        /// <summary>
+        /// Set by <see cref="GetPrototype"/> when a non-zero prototype guid fails to resolve on
+        /// this game version. Callers building an achievement's filters check this to tell an
+        /// intentionally-absent filter (guid 0, "match anything") apart from one that is simply
+        /// missing from this client's data.
+        /// </summary>
+        public static bool LastResolveFailed { get; private set; }
+
+        public static void ClearLastResolveFailed()
+        {
+            LastResolveFailed = false;
+        }
+
         public static Prototype GetPrototype(long prototypeGuid)
         {
             if (prototypeGuid == 0) return null;
@@ -47,6 +60,7 @@ namespace MHServerEmu.Games.Achievements
             if (protoRef == PrototypeId.Invalid)
             {
                 UnresolvedCount++;
+                LastResolveFailed = true;
                 Logger.Trace($"GetPrototype Guid {prototypeGuid} have not DataRef");
                 return null;
             }
@@ -54,6 +68,7 @@ namespace MHServerEmu.Games.Achievements
             if (proto == null)
             {
                 UnresolvedCount++;
+                LastResolveFailed = true;
                 Logger.Trace($"GetPrototype DataRef {protoRef} have not Prototype");
                 return null;
             }

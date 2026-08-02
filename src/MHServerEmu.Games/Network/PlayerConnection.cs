@@ -1591,7 +1591,14 @@ namespace MHServerEmu.Games.Network
             PrototypeId bodysliderPowerRef = region.GetBodysliderPowerRef();
             if (!Verify.IsTrue(bodysliderPowerRef != PrototypeId.Invalid)) return;
 
+            // Bodyslide arrives as NetMessageReturnToHub (a UI request), not as a power
+            // activation, so unlike a normal power the client never activated anything
+            // locally and has nothing to predict. Power.ActivateInternal() excludes the
+            // owner from the activation broadcast unless NotifyOwner is set, so without
+            // this flag the client is never told the power started and plays no bodyslide
+            // animation -- the avatar just stands still for the 1.5s charge and teleports.
             PowerActivationSettings settings = new(avatar.Id, avatar.RegionLocation.Position, avatar.RegionLocation.Position);
+            settings.Flags |= PowerActivationSettingsFlags.NotifyOwner;
             avatar.ActivatePower(bodysliderPowerRef, ref settings);
         }
 
