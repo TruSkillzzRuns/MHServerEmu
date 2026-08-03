@@ -23,12 +23,14 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         private static readonly Logger Logger = LogManager.CreateLogger();
 
-        protected override Task Get(WebRequestContext context)
+        protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             var regions = RegionsRuntime.ListAllRegions();
             // Return both OmegaDev's expected shape (totalRegions/regions[*]{protoRef,name,path,isSafe})
             // and my Teleport Pad's original fields (id/shortName/displayName), so both consumers work.
-            return context.SendJsonAsync(new
+            await context.SendJsonAsync(new
             {
                 ok = true,
                 count = regions.Count,
@@ -44,6 +46,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
             string? regionRefStr = null;
             try

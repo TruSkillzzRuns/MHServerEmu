@@ -13,18 +13,26 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 {
     public class VanityTitleDebugWebHandler : WebHandler
     {
-        protected override Task Get(WebRequestContext context)
+        protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             ulong refVal = PhantomsWebUtil.ParseRef(PhantomsWebUtil.QueryParam(context, "protoRef"));
             if (refVal == 0)
-                return context.SendJsonAsync(new { Ok = false, Error = "missing/invalid protoRef" });
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "missing/invalid protoRef" });
+                return;
+            }
 
             var titleProto = GameDatabase.GetPrototype<VanityTitlePrototype>((PrototypeId)refVal);
             if (titleProto == null)
-                return context.SendJsonAsync(new { Ok = false, Error = "protoRef did not resolve to a VanityTitlePrototype" });
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "protoRef did not resolve to a VanityTitlePrototype" });
+                return;
+            }
 
             var locale = LocaleManager.Instance.CurrentLocale;
-            return context.SendJsonAsync(new
+            await context.SendJsonAsync(new
             {
                 Ok = true,
                 TextId = (long)titleProto.Text,

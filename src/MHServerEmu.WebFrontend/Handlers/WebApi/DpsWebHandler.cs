@@ -19,6 +19,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string playerParam = PhantomsWebUtil.QueryParam(context, "player");
 
             ulong ownerFilter = 0;
@@ -50,6 +52,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             DpsMeter.Reset();
             await context.SendJsonAsync(new { Ok = true, Message = "DPS meter reset." });
         }

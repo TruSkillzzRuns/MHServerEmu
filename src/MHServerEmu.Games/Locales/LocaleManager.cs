@@ -21,15 +21,31 @@ namespace MHServerEmu.Games.Locales
 
         private LocaleManager() { }
 
-        public bool Initialize(bool loadLocaleFiles)
+        public bool Initialize(bool loadLocaleFiles, string localeDirectoryOverride = null)
         {
             if (loadLocaleFiles)
             {
-                string localeDirectory = Path.Combine(FileHelper.DataDirectory, "Game", "Loco");
+                // An explicit override points at the player's own game install
+                // (GameDataConfig.LocaleDirectory) so real in-game names can be
+                // resolved WITHOUT copying any game data into this repo or the
+                // companion app. Falls back to the server's own Data\Game\Loco.
+                string localeDirectory = string.IsNullOrWhiteSpace(localeDirectoryOverride)
+                    ? Path.Combine(FileHelper.DataDirectory, "Game", "Loco")
+                    : localeDirectoryOverride;
+
                 if (Directory.Exists(localeDirectory))
                 {
+                    int loaded = 0;
                     foreach (string filePath in Directory.GetFiles(localeDirectory, "*.locale"))
+                    {
                         LoadLocaleFile(filePath);
+                        loaded++;
+                    }
+                    Logger.Info($"Loaded {loaded} locale file(s) from {localeDirectory}");
+                }
+                else
+                {
+                    Logger.Warn($"LoadLocaleFiles is enabled but locale directory does not exist: {localeDirectory}");
                 }
             }
 

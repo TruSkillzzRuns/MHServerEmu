@@ -17,22 +17,33 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 {
     public class DialogTextDebugWebHandler : WebHandler
     {
-        protected override Task Get(WebRequestContext context)
+        protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             ulong refVal = PhantomsWebUtil.ParseRef(PhantomsWebUtil.QueryParam(context, "protoRef"));
             if (refVal == 0)
-                return context.SendJsonAsync(new { Ok = false, Error = "missing/invalid protoRef" });
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "missing/invalid protoRef" });
+                return;
+            }
 
             var meta = GameDatabase.GetPrototype<MetaStateShutdownPrototype>((PrototypeId)refVal);
             if (meta == null)
-                return context.SendJsonAsync(new { Ok = false, Error = "protoRef did not resolve to a MetaStateShutdownPrototype" });
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "protoRef did not resolve to a MetaStateShutdownPrototype" });
+                return;
+            }
 
             var dialog = meta.TeleportDialog;
             if (dialog == null)
-                return context.SendJsonAsync(new { Ok = false, Error = "resolved, but TeleportDialog is not set on this instance" });
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = "resolved, but TeleportDialog is not set on this instance" });
+                return;
+            }
 
             var locale = LocaleManager.Instance.CurrentLocale;
-            return context.SendJsonAsync(new
+            await context.SendJsonAsync(new
             {
                 Ok = true,
                 TextId = (long)dialog.Text,

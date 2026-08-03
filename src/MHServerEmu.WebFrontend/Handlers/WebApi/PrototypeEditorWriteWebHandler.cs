@@ -21,6 +21,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
 
             string protoRefStr = null, path = null, valueTypeStr = null;
@@ -86,6 +88,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
 
             string sourceProtoRefStr = null, targetProtoRefStr = null, path = null, targetPath = null;

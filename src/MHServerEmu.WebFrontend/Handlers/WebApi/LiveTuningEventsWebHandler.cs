@@ -20,6 +20,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             GameDataConfig config = ConfigManager.Instance.GetConfig<GameDataConfig>();
             if (config.EnableLiveTuningEvents == false)
             {
@@ -45,6 +47,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
             string eventName = null;
             try
@@ -77,6 +81,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
             string eventName = null;
             try
@@ -109,6 +115,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             if (LiveTuningEventOverrideWriter.ClearOverride(out string error) == false)
             {
                 await context.SendJsonAsync(new { Ok = false, Error = error });

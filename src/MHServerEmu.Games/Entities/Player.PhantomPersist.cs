@@ -10,20 +10,30 @@ using MHServerEmu.DatabaseAccess.Models;
 namespace MHServerEmu.Games.Entities
 {
     // Cross-session persistence for our phantom-heroes fork's per-player
-    // state: nemesis roster, preferred-power map, and the Rogue Encounter
-    // toggle. Stored as a JSON sidecar per DbGuid under Data/PhantomPersist
-    // so we don't have to touch the SQLite schema (which would need a
-    // migration for every fork user).
+    // state: nemesis roster, Bounty Board, preferred-power map, and the
+    // Rogue Encounter toggle. Stored as a JSON sidecar per DbGuid under
+    // Data/PhantomPersist so we don't have to touch the SQLite schema
+    // (which would need a migration for every fork user).
     //
     // Save fires on Player.ExitGame; load fires on Player.OnLoadingScreenFinished
     // once the DbGuid is known. Idempotent — safe to call multiple times.
     public partial class Player
     {
         private static readonly Logger PersistLogger = LogManager.CreateLogger();
+        // IncludeFields is REQUIRED here — NemesisEntry/BountyBoardEntry are
+        // plain public-field classes (no properties), and System.Text.Json
+        // only handles properties by default. Without this, every entry
+        // silently round-trips as "{}" (Serialize writes nothing, Deserialize
+        // gives back a blank default-constructed instance) — confirmed live
+        // 2026-08-02: a saved-then-reloaded board came back as 6 slots with
+        // HeroRef=0/Rank=0, since a region transfer (not just a full
+        // disconnect) also runs a Save+Load cycle via Player.ExitGame/
+        // OnLoadingScreenFinished.
         private static readonly JsonSerializerOptions s_persistJsonOptions = new()
         {
             WriteIndented = false,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            IncludeFields = true,
         };
 
         private bool _phantomPersistLoaded;
@@ -67,6 +77,23 @@ namespace MHServerEmu.Games.Entities
                     foreach (var n in blob.Nemeses) _nemeses.Add(n);
                 }
 
+                // Bounty Board — same "must survive a real logout, not just
+                // a same-session region hop" requirement as Nemeses. It
+                // also rides MigrationData.BountyBoard for region-transfer
+                // continuity (Player.BountyBoard.cs's Snapshot/Restore), but
+                // that's a separate, session-only relay — this JSON sidecar
+                // is what actually makes it outlive a disconnect.
+                _bountyBoard.Clear();
+                if (blob.BountyBoard != null)
+                {
+                    foreach (var b in blob.BountyBoard) _bountyBoard.Add(b);
+                }
+                // Theme the saved board was rolled under (Bounty Board mode
+                // only) — without this a board restored after a full logout
+                // would keep its themed roster but lose the arena/costume/
+                // power/repopulation theming that goes with it.
+                _bountyThemeIndex = blob.BountyThemeIndex;
+
                 // Preferred powers
                 _preferredPowers.Clear();
                 if (blob.PreferredPowers != null)
@@ -80,7 +107,7 @@ namespace MHServerEmu.Games.Entities
                 if (blob.RogueEncounterEnabled)
                     RogueEncounterEnabled = true;
 
-                PersistLogger.Info($"[PhantomPersist] {GetName()}: loaded {_nemeses.Count} nemesis entries, {_preferredPowers.Count} preferred powers");
+                PersistLogger.Info($"[PhantomPersist] {GetName()}: loaded {_nemeses.Count} nemesis entries, {_bountyBoard.Count} bounty board slots, {_preferredPowers.Count} preferred powers");
             }
             catch (Exception ex)
             {
@@ -101,6 +128,7 @@ namespace MHServerEmu.Games.Entities
             // point littering the folder with empty stubs for players who
             // never engaged with the phantom systems.
             bool hasData = _nemeses.Count > 0
+                        || _bountyBoard.Count > 0
                         || _preferredPowers.Count > 0
                         || _rogueEncounterEnabled;
             string path = PhantomPersistPath(dbGuid);
@@ -116,6 +144,8 @@ namespace MHServerEmu.Games.Entities
                 {
                     Version = 1,
                     Nemeses = new List<NemesisEntry>(_nemeses),
+                    BountyBoard = new List<BountyBoardEntry>(_bountyBoard),
+                    BountyThemeIndex = _bountyThemeIndex,
                     PreferredPowers = new Dictionary<ulong, ulong>(_preferredPowers),
                     RogueEncounterEnabled = _rogueEncounterEnabled,
                 };
@@ -127,7 +157,7 @@ namespace MHServerEmu.Games.Entities
                 if (File.Exists(path)) File.Delete(path);
                 File.Move(tempPath, path);
 
-                PersistLogger.Info($"[PhantomPersist] {GetName()}: saved {_nemeses.Count} nemesis entries, {_preferredPowers.Count} preferred powers");
+                PersistLogger.Info($"[PhantomPersist] {GetName()}: saved {_nemeses.Count} nemesis entries, {_bountyBoard.Count} bounty board slots, {_preferredPowers.Count} preferred powers");
             }
             catch (Exception ex)
             {
@@ -139,6 +169,8 @@ namespace MHServerEmu.Games.Entities
         {
             public int Version { get; set; }
             public List<NemesisEntry> Nemeses { get; set; }
+            public List<BountyBoardEntry> BountyBoard { get; set; }
+            public int BountyThemeIndex { get; set; } = -1;
             public Dictionary<ulong, ulong> PreferredPowers { get; set; }
             public bool RogueEncounterEnabled { get; set; }
         }

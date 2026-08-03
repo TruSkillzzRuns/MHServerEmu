@@ -22,6 +22,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
             string? regionRef = null;
             string? difficultyTierRef = null;

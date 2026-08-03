@@ -27,6 +27,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             object payload = _cached;
             if (payload == null)
             {
@@ -122,6 +124,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null;
@@ -215,6 +219,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
             PhantomsWebUtil.ParseTarget(body, out string playerName, out string playerDbId);
 

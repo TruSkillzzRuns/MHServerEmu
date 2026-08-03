@@ -17,8 +17,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 {
     public class UiWidgetScanDebugWebHandler : WebHandler
     {
-        protected override Task Get(WebRequestContext context)
+        protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             var locale = LocaleManager.Instance.CurrentLocale;
             var results = new List<object>();
 
@@ -45,7 +47,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 });
             }
 
-            return context.SendJsonAsync(new { Ok = true, Count = results.Count, Widgets = results });
+            await context.SendJsonAsync(new { Ok = true, Count = results.Count, Widgets = results });
         }
     }
 }

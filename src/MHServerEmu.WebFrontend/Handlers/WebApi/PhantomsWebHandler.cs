@@ -27,6 +27,7 @@ using MHServerEmu.Games.Entities;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
+using MHServerEmu.Games.Locales;
 using MHServerEmu.Games.Powers;
 
 namespace MHServerEmu.WebFrontend.Handlers.WebApi
@@ -38,6 +39,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string heroParam = PhantomsWebUtil.QueryParam(context, "hero");
             if (string.IsNullOrWhiteSpace(heroParam) == false)
             {
@@ -174,6 +176,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -213,6 +216,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null;
@@ -306,6 +310,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
             PhantomsWebUtil.ParseTarget(body, out string playerName, out string playerDbId);
 
@@ -325,6 +330,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null, phantomQuery = null, costume = null;
@@ -367,6 +373,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null, phantomQuery = null;
@@ -403,6 +410,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -417,6 +425,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null, op = null, name = null;
@@ -494,6 +503,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         //   body: { playerName, trigger: true }         — fire one now
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -512,6 +522,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null;
@@ -584,6 +595,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         //     Omit combatRange to leave the existing preference untouched.
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string playerQ = PhantomsWebUtil.QueryParam(context, "player");
             string heroQ = PhantomsWebUtil.QueryParam(context, "hero");
 
@@ -682,6 +694,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null;
@@ -760,8 +773,18 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         //   body: { playerName, action: "banish", heroRef: 0x... }
         //   body: { playerName, action: "banish-oldest" }
         //   body: { playerName, action: "clear" }
+        //   body: { playerName, action: "spawn", heroRef: 0x... }
+        //   body: { playerName, action: "spare", heroRef: 0x... }
+        //   body: { playerName, action: "bounty-set", heroRef: 0x..., rewardLootTableRef?: 0x... }
+        //   body: { playerName, action: "bounty-hunt-start", heroRef: 0x..., rank: 1-10 }
+        //     → warps the player to a random arena; the target ambushes them
+        //       there 30-60s after arrival. Reward = the existing Bounty
+        //       Board table payout + rank-scaled currency (+ a guaranteed
+        //       BiS piece at rank 9-10). See Player.BountyHunt.cs.
+        //   body: { playerName, action: "bounty-clear" }
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -777,6 +800,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 foreach (var n in p.Nemeses)
                 {
                     string heroName = ((PrototypeId)n.HeroRef).GetName() ?? string.Empty;
+                    var portraitCandidates = ResolveNemesisPortraitCandidates(n.HeroRef, n.IsBoss);
                     list.Add(new
                     {
                         HeroRef = "0x" + n.HeroRef.ToString("X"),
@@ -794,27 +818,209 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         GrudgeScore = MHServerEmu.Games.Entities.Player.GrudgeScore(n),
                         IsBountyTarget = bountyTarget != null && bountyTarget.HeroRef == n.HeroRef,
                         IsPublicEnemyOne = publicEnemyOne != null && publicEnemyOne.HeroRef == n.HeroRef,
+                        PortraitPath = portraitCandidates.Count > 0 ? portraitCandidates[0] : null,
+                        PortraitCandidates = portraitCandidates,
                     });
                 }
+
+                int playerCredits = p.Properties[MHServerEmu.Games.Properties.PropertyEnum.Currency, GameDatabase.CurrencyGlobalsPrototype.Credits];
+
                 return new
                 {
                     Ok = true,
                     Nemeses = list,
                     BountyTargetHeroRef = bountyTarget != null ? "0x" + bountyTarget.HeroRef.ToString("X") : null,
                     PublicEnemyOneHeroRef = publicEnemyOne != null ? "0x" + publicEnemyOne.HeroRef.ToString("X") : null,
+                    // Bounty Board pricing — sent as raw per-tier rates rather
+                    // than a precomputed value per nemesis so the client can
+                    // recompute live as the tier picker moves, without a
+                    // round-trip per tick. See Player.BountyHunt.cs (the
+                    // single source of truth these mirror).
+                    PlayerCredits = playerCredits,
+                    BountyAcceptCostCreditsPerTier = MHServerEmu.Games.Entities.Player.BountyHuntAcceptCostCreditsPerTier,
+                    BountyRewardEternitySplintersPerTier = MHServerEmu.Games.Entities.Player.BountyHuntEternitySplintersPerTier,
+                    BountyRewardCubeShardsPerTier = MHServerEmu.Games.Entities.Player.BountyHuntCubeShardsPerTier,
+                    BountyRewardLegendaryMarksPerTier = MHServerEmu.Games.Entities.Player.BountyHuntLegendaryMarksPerTier,
+                    BountyGuaranteedBisTier = MHServerEmu.Games.Entities.Player.BountyHuntGuaranteedBisTier,
+                    CurrencyIcons = new
+                    {
+                        Credits = ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.Credits),
+                        EternitySplinters = ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.EternitySplinters),
+                        CubeShards = ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.CubeShards),
+                        LegendaryMarks = ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.LegendaryMarks),
+                    },
                 };
             });
             await context.SendJsonAsync(result);
         }
 
+        /// <summary>HeroRef -> portrait asset candidates, resolved directly from loaded client data (AvatarPrototype for a hero nemesis, AgentPrototype's icon for a boss nemesis) rather than by name match — nemesis entries already carry the exact PrototypeId, so no lookup-by-shortname ambiguity like ResolveHeroPortraitCandidates elsewhere has to deal with.</summary>
+        internal static List<string> ResolveNemesisPortraitCandidates(ulong heroRef, bool isBoss)
+        {
+            var candidates = new List<string>(4);
+            var protoRef = (PrototypeId)heroRef;
+
+            void AddCandidate(AssetId assetId)
+            {
+                if (assetId == 0) return;
+                string assetName = GameDatabase.GetAssetName(assetId);
+                if (string.IsNullOrEmpty(assetName) == false && candidates.Contains(assetName) == false)
+                    candidates.Add(assetName);
+            }
+
+            if (isBoss)
+            {
+                var agentProto = protoRef.As<AgentPrototype>();
+                if (agentProto != null)
+                {
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+                    AddCandidate(agentProto.IconPathHiRes != 0 ? agentProto.IconPathHiRes : agentProto.IconPath);
+#else
+                    AddCandidate(agentProto.IconPath);
+#endif
+                }
+            }
+            else
+            {
+                var avatarProto = protoRef.As<AvatarPrototype>();
+                if (avatarProto != null)
+                {
+                    AddCandidate(avatarProto.PortraitPath);
+                    AddCandidate(avatarProto.CharacterSelectIconPortraitSmall);
+                    AddCandidate(avatarProto.SocialIconPath);
+                    AddCandidate(avatarProto.CharacterSelectIconPath);
+                }
+            }
+
+            return candidates;
+        }
+
+        /// <summary>
+        /// Costume ref -> portrait asset candidates. A themed Bounty Board
+        /// target wears a specific costume (e.g. Thing/FearItself = Angrir),
+        /// and the avatar's own PortraitPath always shows the DEFAULT look —
+        /// so the card would show plain Thing while the thing you actually
+        /// fight is Angrir. CostumePrototype carries its own portrait art, so
+        /// these are tried first and the avatar portrait stays as the fallback.
+        /// </summary>
+        internal static List<string> ResolveCostumePortraitCandidates(ulong costumeRef)
+        {
+            var candidates = new List<string>(4);
+            if (costumeRef == 0) return candidates;
+
+            var proto = ((PrototypeId)costumeRef).As<CostumePrototype>();
+            if (proto == null) return candidates;
+
+            void AddCandidate(AssetId assetId)
+            {
+                if (assetId == 0) return;
+                string assetName = GameDatabase.GetAssetName(assetId);
+                if (string.IsNullOrEmpty(assetName) == false && candidates.Contains(assetName) == false)
+                    candidates.Add(assetName);
+            }
+
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            AddCandidate(proto.PortraitIconPathHiRes);
+#endif
+            AddCandidate(proto.PortraitIconPath);
+            AddCandidate(proto.PartyPortraitIconPath);
+            AddCandidate(proto.IconPath);
+            AddCandidate(proto.StoreIconPath);
+
+            return candidates;
+        }
+
+        /// <summary>
+        /// Item ref -> the name the player actually sees in game, resolved
+        /// through the current locale. Falls back to the prototype leaf name
+        /// (e.g. "Legendary013") only when the item has no localized string,
+        /// which is what the Bounty Board card was showing before this.
+        /// </summary>
+        internal static string ResolveItemDisplayName(ulong itemRef)
+        {
+            if (itemRef == 0) return null;
+
+            var protoRef = (PrototypeId)itemRef;
+            var proto = protoRef.As<ItemPrototype>();
+            if (proto != null && proto.DisplayName != LocaleStringId.Invalid)
+            {
+                var locale = LocaleManager.Instance.CurrentLocale;
+                if (locale != null)
+                {
+                    string localized = locale.GetLocaleString(proto.DisplayName);
+                    if (string.IsNullOrWhiteSpace(localized) == false)
+                        return localized;
+                }
+            }
+
+            string path = GameDatabase.GetPrototypeName(protoRef);
+            if (string.IsNullOrEmpty(path)) return null;
+            return path.Split('/')[^1].Replace(".prototype", string.Empty);
+        }
+
+        /// <summary>
+        /// Item ref -> inventory icon asset candidates. Used by the Bounty
+        /// Board to show the exact guaranteed BiS piece a rank 9-10 bounty
+        /// will drop, so the player can see what they are hunting for.
+        /// </summary>
+        internal static List<string> ResolveItemIconCandidates(ulong itemRef)
+        {
+            var candidates = new List<string>(3);
+            if (itemRef == 0) return candidates;
+
+            var proto = ((PrototypeId)itemRef).As<ItemPrototype>();
+            if (proto == null) return candidates;
+
+            void AddCandidate(AssetId assetId)
+            {
+                if (assetId == 0) return;
+                string assetName = GameDatabase.GetAssetName(assetId);
+                if (string.IsNullOrEmpty(assetName) == false && candidates.Contains(assetName) == false)
+                    candidates.Add(assetName);
+            }
+
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            // ItemPrototype.IconPathHiRes doesn't exist on 1.48.
+            AddCandidate(proto.IconPathHiRes);
+#endif
+            AddCandidate(proto.IconPath);
+            AddCandidate(proto.StoreIconPath);
+            return candidates;
+        }
+
+        /// <summary>Currency ref (Credits/EternitySplinters/etc.) -> icon asset candidates, same Icon/IconHiRes/IconSmall fields the vendor/inventory UI reads off CurrencyPrototype — lets the Bounty Board show a real currency icon next to its cost/reward numbers instead of a generic glyph.</summary>
+        internal static List<string> ResolveCurrencyIconCandidates(PrototypeId currencyRef)
+        {
+            var candidates = new List<string>(3);
+            var proto = currencyRef.As<CurrencyPrototype>();
+            if (proto == null) return candidates;
+
+            void AddCandidate(AssetId assetId)
+            {
+                if (assetId == 0) return;
+                string assetName = GameDatabase.GetAssetName(assetId);
+                if (string.IsNullOrEmpty(assetName) == false && candidates.Contains(assetName) == false)
+                    candidates.Add(assetName);
+            }
+
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            AddCandidate(proto.IconHiRes);
+#endif
+            AddCandidate(proto.Icon);
+            AddCandidate(proto.IconSmall);
+            return candidates;
+        }
+
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null;
             string action = null;
             string heroRefStr = null;
             string rewardLootTableRefStr = null;
+            int rank = 0;
             try
             {
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
@@ -823,6 +1029,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (root.TryGetProperty("action",     out var ac)) action = ac.GetString();
                 if (root.TryGetProperty("heroRef",    out var hr)) heroRefStr = hr.GetString();
                 if (root.TryGetProperty("rewardLootTableRef", out var rl)) rewardLootTableRefStr = rl.GetString();
+                if (root.TryGetProperty("rank",       out var rk)) rank = rk.GetInt32();
             }
             catch (System.Exception ex)
             {
@@ -906,6 +1113,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         id = p.SpawnCuratedBoss(avatar, (PrototypeId)nemesis.HeroRef, out spawnErr,
                             MHServerEmu.Games.Entities.Player.BossNemesisExtraHealthMultForRank(nemesis.Rank),
                             MHServerEmu.Games.Entities.Player.BossNemesisExtraDamageMultForRank(nemesis.Rank));
+                        // Boss-type nemeses aren't covered by the phantom
+                        // corpse-cleanup tick's auto-retire -- wire kill
+                        // detection manually so this revenge fight actually
+                        // retires the roster entry / pays out a bounty.
+                        if (id != 0) p.TrackBossNemesisForRetire(id, nemesis.HeroRef, avatar.Region);
                     }
                     else
                     {
@@ -930,12 +1142,188 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     string msg = p.SetBountyTarget(heroRef, rewardRef);
                     return (object)new { Ok = true, Message = msg };
                 }
+                if (string.Equals(action, "bounty-hunt-start", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (PhantomsWebUtil.TryParseRef(heroRefStr, out ulong heroRef) == false)
+                        return (object)new { Ok = false, Error = "heroRef required for bounty-hunt-start" };
+                    string msg = p.StartBountyHunt(heroRef, rank);
+                    return (object)new { Ok = true, Message = msg };
+                }
                 if (string.Equals(action, "bounty-clear", System.StringComparison.OrdinalIgnoreCase))
                 {
                     string msg = p.SetBountyTarget(0);
                     return (object)new { Ok = true, Message = msg };
                 }
-                return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear|spawn|spare|bounty-set|bounty-clear)" };
+                return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear|spawn|spare|bounty-set|bounty-hunt-start|bounty-clear)" };
+            });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    // GET  /webapi/phantoms/bountyboard?player=
+    //   → { Ok, Slots:[{ SlotIndex, HeroRef, HeroName, IsBoss, Rank,
+    //       LossCount, Defeated, Fled, AcceptCost, PortraitPath,
+    //       PortraitCandidates }], PlayerCredits, MaxLosses, CurrencyIcons,
+    //       BountyRewardEternitySplintersPerTier, BountyRewardCubeShardsPerTier,
+    //       BountyRewardLegendaryMarksPerTier, BountyGuaranteedBisTier }
+    //   Generates a fresh 6-slot board on first call, and again any time
+    //   every current slot is Resolved (Defeated or Fled) — see
+    //   Player.BountyBoard.cs.GetBountyBoard.
+    //
+    // POST /webapi/phantoms/bountyboard
+    //   body: { playerName, action: "start", slotIndex: 0-5 }
+    //     → pays that slot's rank-scaled Credits cost and warps the player
+    //       to a random arena, same ambush pipeline as a personal-nemesis
+    //       Bounty Hunt. See Player.BountyBoard.cs's StartBountyBoardHunt.
+    public class BountyBoardWebHandler : WebHandler
+    {
+        protected override async Task Get(WebRequestContext context)
+        {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+            Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                var board = p.GetBountyBoard();
+                var slots = new System.Collections.Generic.List<object>(board.Count);
+                for (int i = 0; i < board.Count; i++)
+                {
+                    var e = board[i];
+                    // LastKillerName holds the friendly display name rolled
+                    // at generation time (curated boss display name, or the
+                    // avatar's localized DisplayName) — the raw prototype
+                    // leaf ((PrototypeId)e.HeroRef).GetName() is only a
+                    // fallback for entries rolled before this existed.
+                    string heroName = string.IsNullOrEmpty(e.LastKillerName)
+                        ? (((PrototypeId)e.HeroRef).GetName() ?? string.Empty)
+                        : e.LastKillerName;
+                    var portraitCandidates = NemesisWebHandler.ResolveNemesisPortraitCandidates(e.HeroRef, e.IsBoss);
+
+                    // Themed board: the target actually spawns wearing the
+                    // theme's costume, so show THAT art (and its themed alias)
+                    // rather than the avatar's default portrait/name. Costume
+                    // portraits go first, with the avatar portraits kept after
+                    // them as fallbacks so a costume with no art of its own
+                    // still renders something.
+                    var (themedCostumeRef, themedAlias) = p.GetBountyBoardThemedPresentation(e.HeroRef, e.IsBoss);
+                    if (themedCostumeRef != 0)
+                    {
+                        var costumeCandidates = NemesisWebHandler.ResolveCostumePortraitCandidates(themedCostumeRef);
+                        if (costumeCandidates.Count > 0)
+                        {
+                            costumeCandidates.AddRange(portraitCandidates);
+                            portraitCandidates = costumeCandidates;
+                        }
+                    }
+
+                    slots.Add(new
+                    {
+                        SlotIndex = i,
+                        HeroRef = "0x" + e.HeroRef.ToString("X"),
+                        HeroName = heroName,
+                        ThemedName = themedAlias,
+                        CostumeRef = themedCostumeRef != 0 ? "0x" + themedCostumeRef.ToString("X") : null,
+                        // Rank 9-10 nemesis slots lock in one specific BiS
+                        // piece from their own hero's loadout; surface it so
+                        // the card can show exactly what will drop.
+                        GuaranteedBisRef = e.GuaranteedBisRef != 0 ? "0x" + e.GuaranteedBisRef.ToString("X") : null,
+                        GuaranteedBisName = NemesisWebHandler.ResolveItemDisplayName(e.GuaranteedBisRef),
+                        GuaranteedBisIconCandidates = NemesisWebHandler.ResolveItemIconCandidates(e.GuaranteedBisRef),
+                        e.IsBoss,
+                        e.Rank,
+                        e.LossCount,
+                        e.Defeated,
+                        e.Fled,
+                        e.RewardCollected,
+                        AcceptCost = MHServerEmu.Games.Entities.Player.BountyBoardAcceptCost(e.Rank),
+                        PortraitPath = portraitCandidates.Count > 0 ? portraitCandidates[0] : null,
+                        PortraitCandidates = portraitCandidates,
+                    });
+                }
+
+                int playerCredits = p.Properties[MHServerEmu.Games.Properties.PropertyEnum.Currency, GameDatabase.CurrencyGlobalsPrototype.Credits];
+
+                int themeIndex = p.BountyBoardThemeIndex;
+
+                return new
+                {
+                    Ok = true,
+                    Slots = slots,
+                    PlayerCredits = playerCredits,
+                    // Theme this board was rolled under (Bounty Board mode
+                    // only). Null on an untheme(d)/legacy board so the client
+                    // can just hide the banner rather than special-casing.
+                    ThemeName = MHServerEmu.Games.Entities.Player.BountyThemeName(themeIndex),
+                    ThemeFlavor = MHServerEmu.Games.Entities.Player.BountyThemeFlavor(themeIndex),
+                    MaxLosses = MHServerEmu.Games.Entities.Player.BountyBoardMaxLosses,
+                    CurrencyIcons = new
+                    {
+                        Credits = NemesisWebHandler.ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.Credits),
+                        EternitySplinters = NemesisWebHandler.ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.EternitySplinters),
+                        CubeShards = NemesisWebHandler.ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.CubeShards),
+                        LegendaryMarks = NemesisWebHandler.ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.LegendaryMarks),
+                    },
+                    BountyRewardEternitySplintersPerTier = MHServerEmu.Games.Entities.Player.BountyHuntEternitySplintersPerTier,
+                    BountyRewardCubeShardsPerTier = MHServerEmu.Games.Entities.Player.BountyHuntCubeShardsPerTier,
+                    BountyRewardLegendaryMarksPerTier = MHServerEmu.Games.Entities.Player.BountyHuntLegendaryMarksPerTier,
+                    BountyGuaranteedBisTier = MHServerEmu.Games.Entities.Player.BountyHuntGuaranteedBisTier,
+                };
+            });
+            await context.SendJsonAsync(result);
+        }
+
+        protected override async Task Post(WebRequestContext context)
+        {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+            string body = await context.ReadUtf8StringAsync();
+
+            string playerName = null;
+            string action = null;
+            int slotIndex = -1;
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
+                if (root.TryGetProperty("action",     out var ac)) action = ac.GetString();
+                if (root.TryGetProperty("slotIndex",  out var si)) slotIndex = si.GetInt32();
+            }
+            catch (System.Exception ex)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = $"bad request: {ex.Message}" });
+                return;
+            }
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                if (string.Equals(action, "start", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    string msg = p.StartBountyBoardHunt(slotIndex);
+                    return (object)new { Ok = true, Message = msg };
+                }
+                if (string.Equals(action, "reroll", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    string msg = p.RerollBountyBoard();
+                    return (object)new { Ok = true, Message = msg };
+                }
+                if (string.Equals(action, "collect", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    string msg = p.CollectBountyBoardReward(slotIndex);
+                    return (object)new { Ok = true, Message = msg };
+                }
+                return (object)new { Ok = false, Error = "unknown action (start|collect|reroll)" };
             });
             await context.SendJsonAsync(result);
         }
@@ -965,6 +1353,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Avatar.RunEnemyPhantomPowerAudit(out int heroCount, out int powerCount, out var dangerous);
             await context.SendJsonAsync(new
             {
@@ -1000,6 +1389,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {

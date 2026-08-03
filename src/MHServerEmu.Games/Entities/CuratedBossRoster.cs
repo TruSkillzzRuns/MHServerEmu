@@ -206,5 +206,55 @@ namespace MHServerEmu.Games.Entities
             }
             return best.Values.Select(v => v.Item).ToList();
         }
+
+        /// <summary>
+        /// Same selection as SelectCanonical, but also returns each pick's
+        /// original curated display name ("Doctor Doom") instead of just the
+        /// internal leaf name ("DrDoomPhase1") — for callers that need to
+        /// show the villain a real name, not the raw PrototypeId leaf. Kept
+        /// as a separate method rather than changing SelectCanonical's
+        /// return shape so existing callers (Endless boss pool, Rogue
+        /// Encounter, IsCuratedBossRef) don't need to change.
+        /// </summary>
+        public static List<(T Item, string CuratedName)> SelectCanonicalWithNames<T>(List<T> candidates, Func<T, string> leafSelector, Func<T, string> pathSelector = null)
+        {
+            var best = new Dictionary<string, (int LeafLength, bool InstanceLocked, T Item)>();
+            foreach (T candidate in candidates)
+            {
+                string leaf = leafSelector(candidate);
+                string normLeaf = Normalize(leaf);
+
+                string bestCuratedMatch = null;
+                foreach (string curated in s_normalized)
+                {
+                    if (normLeaf.Contains(curated) && (bestCuratedMatch == null || curated.Length > bestCuratedMatch.Length))
+                        bestCuratedMatch = curated;
+                }
+                if (bestCuratedMatch == null) continue;
+
+                string path = pathSelector?.Invoke(candidate);
+                bool instanceLocked = path != null && path.IndexOf("/PVEInstances/", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                bool better;
+                if (best.TryGetValue(bestCuratedMatch, out var existing) == false)
+                    better = true;
+                else if (existing.InstanceLocked != instanceLocked)
+                    better = existing.InstanceLocked;
+                else
+                    better = leaf.Length < existing.LeafLength;
+
+                if (better)
+                    best[bestCuratedMatch] = (leaf.Length, instanceLocked, candidate);
+            }
+
+            var result = new List<(T, string)>(best.Count);
+            foreach (var kvp in best)
+            {
+                int idx = s_normalized.IndexOf(kvp.Key);
+                string displayName = idx >= 0 ? s_rawNames[idx] : kvp.Key;
+                result.Add((kvp.Value.Item, displayName));
+            }
+            return result;
+        }
     }
 }

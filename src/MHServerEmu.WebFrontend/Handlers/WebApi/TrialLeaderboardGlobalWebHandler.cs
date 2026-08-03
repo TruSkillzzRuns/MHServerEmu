@@ -21,8 +21,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 {
     public class TrialLeaderboardGlobalWebHandler : WebHandler
     {
-        protected override Task Get(WebRequestContext context)
+        protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             var playerNames = new Dictionary<ulong, string>();
             IDBManager.Instance.GetPlayerNames(playerNames);
 
@@ -68,7 +70,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 });
             }
 
-            return context.SendJsonAsync(new { Ok = true, Entries = result });
+            await context.SendJsonAsync(new { Ok = true, Entries = result });
         }
 
         /// <summary>"Thor" -> every real portrait asset candidate for that playable avatar, resolved from loaded client data — same fallback chain PhantomsCatalogWebHandler uses for its hero list, since not every candidate lives in the TFC stream the portrait endpoint extracts from.</summary>

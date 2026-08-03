@@ -568,6 +568,7 @@ namespace MHServerEmu.Games.Entities
             UnsubscribeTerminalRunTracking();
             UnsubscribeTrialTracking();
             UnsubscribeDangerRoomEndlessTracking();
+            UnsubscribeBountyHuntTracking();
 
             MissionManager.Deallocate();
             AchievementManager.Deallocate();
@@ -4673,6 +4674,22 @@ namespace MHServerEmu.Games.Entities
 
             _partyId.Set(party.PartyId);
             UpdatePartyAOI(party);
+
+            // Phantom heroes are a SOLO feature (Avatar.PhantomHero.cs's
+            // CheckPhantomSquadGate). Joining a real party retires any that
+            // are already out - otherwise the spawn-time gate could be walked
+            // straight around by grouping up afterwards.
+            // Endless Challenge is exempt from the solo-only rule (it has its
+            // own higher co-op cap), so joining a party mid-run must not
+            // retire that mode's phantoms.
+            if (party != null && party.NumMembers > 1 && IsEndlessChallengeActive == false)
+            {
+                int retired = PurgePhantoms();
+                if (retired > 0)
+                {
+                    try { SendBannerLines($"👥 Joined a party — {retired} phantom hero(es) retired. Phantoms are solo-only."); } catch { }
+                }
+            }
 
             Avatar avatar = CurrentAvatar;
             if (avatar != null && avatar.IsInWorld)

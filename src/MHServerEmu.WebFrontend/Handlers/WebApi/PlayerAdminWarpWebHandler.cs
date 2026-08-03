@@ -15,6 +15,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
             string? regionRef = null;
             try
@@ -61,6 +63,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string body = await context.ReadUtf8StringAsync();
             await context.SendJsonAsync(new { ok = true, accepted = body?.Length ?? 0, note = "Mod-save is a client-side stub on this fork." });
         }

@@ -97,7 +97,7 @@ namespace MHServerEmu.Games.GameData
             DataDirectory.Initialize();
 
             // Initialize LocaleManager
-            LocaleManager.Instance.Initialize(config.LoadLocaleFiles);
+            LocaleManager.Instance.Initialize(config.LoadLocaleFiles, config.LocaleDirectory);
 
             // Initialize PropertyInfoTable
             PropertyInfoTable = new();

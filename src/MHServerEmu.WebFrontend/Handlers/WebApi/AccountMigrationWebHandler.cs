@@ -43,6 +43,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -154,6 +156,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             ImportRequest request = await context.ReadJsonAsync<ImportRequest>();
             if (request?.Snapshot == null)
             {
@@ -514,6 +518,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string email = PhantomsWebUtil.QueryParam(context, "email");
             if (string.IsNullOrWhiteSpace(email))
             {
@@ -547,6 +553,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             AccountCredentialsSnapshot credentials = await context.ReadJsonAsync<AccountCredentialsSnapshot>();
             if (credentials == null || string.IsNullOrWhiteSpace(credentials.Email) || string.IsNullOrWhiteSpace(credentials.PlayerName))
             {

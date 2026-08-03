@@ -1234,6 +1234,17 @@ namespace MHServerEmu.Games.Entities.Avatars
                         if (avId == phantom.Id) continue;
                         Agent candidate = Game.EntityManager.GetEntity<Agent>(avId);
                         if (candidate == null || candidate.IsDead == false || candidate.IsInWorld == false || candidate.Region != region) continue;
+                        // Only real avatars can be resurrected. PhantomAvatarIds
+                        // also holds TEAM-UP agents (RegisterPhantom stores both),
+                        // and team-ups have no downed/revive flow at all - a dead
+                        // one just despawns. Without this the squad would walk to
+                        // a dead team-up (or one of its temporary away-team
+                        // summons) and play the resurrect cast on nothing, which
+                        // is exactly the "random revive animation on nothing"
+                        // players reported. Confirmed live 2026-08-03 via
+                        // PhantomHero:ReviveClaim entries naming
+                        // NewCoulsonAwayShotgunAgent / NewCoulsonAwayMinigunAgent.
+                        if (candidate is not Avatar) continue;
 
                         float d = Vector3.DistanceSquared(candidate.RegionLocation.Position, phantomPos);
                         if (d < downedDistSq) { downedDistSq = d; downed = candidate; }
@@ -1249,6 +1260,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                     if (we is not Agent candidate) continue;
                     if (candidate.Id == phantom.Id) continue;
                     if (candidate.IsDead == false) continue;
+                    if (candidate is not Avatar) continue;   // see the roster scan above
 
                     Player candOwner = candidate.GetOwnerOfType<Player>();
                     if (candOwner == null || candOwner.PlayerConnection == null) continue;
@@ -2084,6 +2096,9 @@ namespace MHServerEmu.Games.Entities.Avatars
         private const int PhantomReviveRepositionAfterFailures = 3;
         private const int PhantomReviveGiveUpAfterFailures = 8;
         private static readonly Dictionary<ulong, int> s_phantomReviveOutOfPositionCount = new();
+
+        /// <summary>Phantoms already logged once for "no usable power" — keeps the diagnostic from spamming every tick.</summary>
+        private static readonly HashSet<ulong> s_phantomNoPowerLogged = new();
 
         // Per-phantom next-ultimate timestamp (ms). Ultimates fire on any
         // target once available, then rest for 20 minutes regardless of
@@ -4514,15 +4529,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                     // with a genuine positive declared range gets to use that
                     // range as its own gate; everything else is held to true
                     // melee reach.
+                    // Mirror the engine's own activation-range test rather than
+                    // approximating it - see Power.Validation.cs's
+                    // IsInRangeInternal. targetDist here is already EDGE-based
+                    // (the sweep subtracts the target's Bounds.Radius), which is
+                    // the same quantity the engine compares, so no radius is
+                    // added back on this side.
                     float pRange = power.GetRange();
-                    if (Power.IsMelee(pp) || pRange <= 0f)
-                    {
-                        if (targetDistSq > PhantomMeleeRangeSq) continue;
-                    }
-                    else
-                    {
-                        if (pRange + 50f < targetDist) continue;
-                    }
+                    float engineRange = MathF.Max(phantom.Bounds.Radius, pRange) + 5f;
+                    if (targetDist > engineRange) continue;
 
                     if (power.IsOnCooldown()) continue;
 
@@ -4601,7 +4616,19 @@ namespace MHServerEmu.Games.Entities.Avatars
                     // case whatever condition benched it (RestrictiveCondition
                     // clearing, etc.) has already resolved.
                     if (fallbackBlacklistedPower == PrototypeId.Invalid)
-                        return PowerUseResult.OutOfPosition;
+                    {
+                        // NOT a positioning failure - every power was on
+                        // cooldown or filtered out. Returning OutOfPosition here
+                        // (what this used to do) was measured live producing
+                        // "all candidates rejected" at dist=101, i.e. standing
+                        // adjacent to an enemy doing nothing while the log
+                        // blamed position. AbilityMissing is the honest result
+                        // and keeps the caller from treating it as a range
+                        // problem it can never fix by walking.
+                        if (s_phantomNoPowerLogged.Add(phantom.Id))
+                            PhantomLogger.Info($"[PhantomHero:NoPower] {phantom} has no usable power vs {target} at dist={targetDist:F0} (all on cooldown / filtered)");
+                        return PowerUseResult.AbilityMissing;
+                    }
 
                     candidates.Add((fallbackBlacklistedPower, 0f, 0));
                 }
@@ -5156,7 +5183,19 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // party-size limit happens to apply there; it already
                 // returns int.MaxValue (no-op) everywhere else in the game.
                 int endlessCap = Player.GetEndlessPhantomSlotCap(region, host);
-                int cap = endlessCap != int.MaxValue ? endlessCap : GetPhantomPartyCap(region);
+                bool inEndlessArena = endlessCap != int.MaxValue;
+
+                // Endless Challenge keeps its own deliberately higher arena
+                // cap (4 total) and is NOT subject to the solo-only/3-member
+                // squad rule - that rule is scoped to normal play and must not
+                // change how any other mode already behaves.
+                if (inEndlessArena == false)
+                {
+                    string squadGate = CheckPhantomSquadGate(host);
+                    if (squadGate != null) { error = squadGate; return 0; }
+                }
+
+                int cap = inEndlessArena ? endlessCap : Math.Min(GetPhantomPartyCap(region), PhantomMaxSquadSize);
                 // Confirmed live 2026-07-26 — this was ">= cap", an off-by-
                 // one that rejected the LAST legitimate slot instead of only
                 // rejecting once actually over cap: with cap=3 and 2 already
@@ -5437,7 +5476,13 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// suffix applied to the avatar's nameplate. Used by Rogue Encounter
         /// when the roll picks a nemesis instead of a random hero.
         /// </summary>
-        public ulong SpawnNemesisPhantomHero(PrototypeId avatarRef, int level, string killerName, int rank, out string error, int escapeCount = 0, int grudgeScore = 0)
+        /// <param name="costumeRef">
+        /// Optional forced costume. 0 (the default, and what every existing
+        /// caller passes) keeps the original behaviour of picking a random
+        /// costume. Only themed Bounty Board hunts pass a real value, so
+        /// nothing outside that mode changes appearance.
+        /// </param>
+        public ulong SpawnNemesisPhantomHero(PrototypeId avatarRef, int level, string killerName, int rank, out string error, int escapeCount = 0, int grudgeScore = 0, ulong costumeRef = 0)
         {
             // Team-up nemeses go through the team-up spawn path so the
             // AgentTeamUpPrototype dispatch, native AI, and inventory
@@ -5450,7 +5495,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Nemeses are always ambush phantoms — see the constants block
             // above OnPhantomTick for what that changes (spawn distance,
             // detection range, patrol-vs-leash).
-            return SpawnPhantomHeroCore(avatarRef, level, killerName, lockLevel: true, 0, null, out error, enemy: true, nemesisRank: rank, nemesisEscapeCount: escapeCount, ambush: true, nemesisGrudgeScore: grudgeScore);
+            return SpawnPhantomHeroCore(avatarRef, level, killerName, lockLevel: true, costumeRef, null, out error, enemy: true, nemesisRank: rank, nemesisEscapeCount: escapeCount, ambush: true, nemesisGrudgeScore: grudgeScore);
         }
 
         // Cached mutually-hostile alliance for enemy phantoms, resolved from
@@ -5472,6 +5517,55 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// three enemy categories on this same override alliance makes them
         /// mutually friendly while all three stay hostile to the player.
         /// </summary>
+        // ---------------- Squad size / solo-only gate ----------------
+        //
+        // Design rule: a squad is at most THREE members total, and phantom
+        // heroes are a SOLO feature. So the only legal shapes are:
+        //   1 player + 2 phantoms
+        //   2 players (no phantoms)
+        //   3 players (no phantoms)
+        // The moment a real party has more than one human in it, phantoms are
+        // off entirely - they exist to give a solo player a squad, not to pad
+        // an already-grouped one.
+        //
+        // Applies to friendly phantoms only. Enemy phantoms (nemeses, Rogue
+        // Encounter ambushes, Bounty Board targets) are not squad members and
+        // are never gated by this, and neither is anything passing bypassCap.
+        //
+        // The Danger Room Endless arena is EXEMPT: it has its own deliberately
+        // higher 4-total co-op cap (Player.GetEndlessPhantomSlotCap) and that
+        // mode's existing behaviour must not change.
+
+        /// <summary>Hard ceiling on total squad size — real players plus friendly phantoms.</summary>
+        public const int PhantomMaxSquadSize = 3;
+
+        /// <summary>Most friendly phantoms a solo player may field (squad cap minus the player themselves).</summary>
+        public const int PhantomMaxForSoloPlayer = PhantomMaxSquadSize - 1;
+
+        /// <summary>
+        /// Null when this host may spawn one more friendly phantom, otherwise
+        /// the reason they may not. Checked by both friendly spawn paths
+        /// (SpawnPhantomHeroCore and SpawnTeamUpPhantomHero).
+        /// </summary>
+        public static string CheckPhantomSquadGate(Player host)
+        {
+            if (host == null) return "no player host";
+
+            // Real party members, counting the host. GetParty() is null when
+            // solo, and a party of 1 is effectively solo too.
+            var party = host.GetParty();
+            int realPlayers = party != null && party.NumMembers > 0 ? party.NumMembers : 1;
+
+            if (realPlayers > 1)
+                return $"phantom heroes are solo-only — you're grouped with {realPlayers - 1} other player(s). Leave the party to field phantoms.";
+
+            int currentSquad = 1 + host.PhantomHeroCount;   // player + phantoms already out
+            if (currentSquad >= PhantomMaxSquadSize)
+                return $"squad full ({currentSquad}/{PhantomMaxSquadSize}) — a squad is capped at {PhantomMaxSquadSize} (you + {PhantomMaxForSoloPlayer} phantoms)";
+
+            return null;
+        }
+
         public static PrototypeId GetEnemyPhantomAllianceRef() => ResolveHostileAllianceRef();
 
         private static PrototypeId ResolveHostileAllianceRef()
@@ -5481,15 +5575,38 @@ namespace MHServerEmu.Games.Entities.Avatars
             AlliancePrototype playerAlliance = GameDatabase.GlobalsPrototype?.PlayerAlliance;
             if (playerAlliance != null)
             {
-                foreach (PrototypeId allianceRef in DataDirectory.Instance
-                    .IteratePrototypesInHierarchy<AlliancePrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
+                // Prefer the real game's own standard "Enemies" alliance —
+                // the same one native AI mobs already use, mutually hostile
+                // with Players only. Confirmed live 2026-08-03 via
+                // /webapi/protoeditor/fields: the old "first mutually-hostile
+                // alliance found by arbitrary DataDirectory iteration order"
+                // scan below happened to land on Entity/Alliances/
+                // DestructablesHostile.prototype instead, whose own
+                // HostileTo list also includes Destructables (props) AND
+                // Enemies itself — explaining reported phantom/nemesis
+                // damage to props/throwables and to other (native-mob)
+                // enemies. Only falls back to the scan if Enemies.prototype
+                // itself is missing or somehow not mutually hostile.
+                PrototypeId preferredRef = GameDatabase.GetPrototypeRefByName("Entity/Alliances/Enemies.prototype");
+                if (preferredRef != PrototypeId.Invalid)
                 {
-                    var allianceProto = allianceRef.As<AlliancePrototype>();
-                    if (allianceProto == null) continue;
-                    if (allianceProto.IsHostileTo(playerAlliance) && playerAlliance.IsHostileTo(allianceProto))
+                    var preferredProto = preferredRef.As<AlliancePrototype>();
+                    if (preferredProto != null && preferredProto.IsHostileTo(playerAlliance) && playerAlliance.IsHostileTo(preferredProto))
+                        s_enemyAllianceRef = preferredRef;
+                }
+
+                if (s_enemyAllianceRef == PrototypeId.Invalid)
+                {
+                    foreach (PrototypeId allianceRef in DataDirectory.Instance
+                        .IteratePrototypesInHierarchy<AlliancePrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
                     {
-                        s_enemyAllianceRef = allianceRef;
-                        break;
+                        var allianceProto = allianceRef.As<AlliancePrototype>();
+                        if (allianceProto == null) continue;
+                        if (allianceProto.IsHostileTo(playerAlliance) && playerAlliance.IsHostileTo(allianceProto))
+                        {
+                            s_enemyAllianceRef = allianceRef;
+                            break;
+                        }
                     }
                 }
             }
@@ -5552,7 +5669,16 @@ namespace MHServerEmu.Games.Entities.Avatars
                     // cap fully overrides the generic one instead of being
                     // Math.Min'd against it.
                     int endlessCap = Player.GetEndlessPhantomSlotCap(region, capHost);
-                    int cap = endlessCap != int.MaxValue ? endlessCap : GetPhantomPartyCap(region);
+                    bool inEndlessArena = endlessCap != int.MaxValue;
+
+                    // Endless Challenge exempt - see the other call site.
+                    if (inEndlessArena == false)
+                    {
+                        string squadGate = CheckPhantomSquadGate(capHost);
+                        if (squadGate != null) { error = squadGate; return 0; }
+                    }
+
+                    int cap = inEndlessArena ? endlessCap : Math.Min(GetPhantomPartyCap(region), PhantomMaxSquadSize);
                     // See the other call site's comment — off-by-one fixed:
                     // a cap of N should allow N phantoms, not N-1.
                     if (1 + capHost.PhantomHeroCount > cap)

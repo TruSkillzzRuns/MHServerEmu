@@ -295,6 +295,36 @@ namespace MHServerEmu.Games.Entities
             {
                 if (s_endlessBossPool != null) return s_endlessBossPool;
 
+                // Curated whitelist (itembase.mhbugle.com villains list minus
+                // raids/dummies, 2026-07-26) — one entry per recognizable
+                // named villain instead of every chapter/difficulty variant.
+                // See CuratedBossRoster.cs.
+                var pool = CuratedBossRoster.SelectCanonical(GetRawBossCandidatePool(), LeafHeroName, r => GameDatabase.GetPrototypeName(r));
+
+                s_endlessBossPool = pool;
+                WaveLogger.Info($"[WaveDirector] Endless boss pool built: {pool.Count} boss(es)");
+                return pool;
+            }
+        }
+
+        private static List<PrototypeId> s_rawBossCandidatePool;
+        private static readonly object s_rawBossCandidatePoolLock = new();
+
+        /// <summary>
+        /// Every /Bosses/ AgentPrototype that passes the base filters (real
+        /// icon, combat brain, not test/debug/raid/deprecated) — the
+        /// uncurated ~687-entry pool CuratedBossRoster.SelectCanonical
+        /// narrows down from. Split out of GetEndlessBossPool so
+        /// Player.BountyBoard.cs can run its own SelectCanonicalWithNames
+        /// pass over the same candidates without re-walking DataDirectory.
+        /// </summary>
+        internal static List<PrototypeId> GetRawBossCandidatePool()
+        {
+            if (s_rawBossCandidatePool != null) return s_rawBossCandidatePool;
+            lock (s_rawBossCandidatePoolLock)
+            {
+                if (s_rawBossCandidatePool != null) return s_rawBossCandidatePool;
+
                 var pool = new List<PrototypeId>(256);
                 foreach (PrototypeId agentRef in DataDirectory.Instance.IteratePrototypesInHierarchy<AgentPrototype>(PrototypeIterateFlags.NoAbstract))
                 {
@@ -329,14 +359,7 @@ namespace MHServerEmu.Games.Entities
                     pool.Add(agentRef);
                 }
 
-                // Curated whitelist (itembase.mhbugle.com villains list minus
-                // raids/dummies, 2026-07-26) — one entry per recognizable
-                // named villain instead of every chapter/difficulty variant.
-                // See CuratedBossRoster.cs.
-                pool = CuratedBossRoster.SelectCanonical(pool, LeafHeroName, r => GameDatabase.GetPrototypeName(r));
-
-                s_endlessBossPool = pool;
-                WaveLogger.Info($"[WaveDirector] Endless boss pool built: {pool.Count} boss(es)");
+                s_rawBossCandidatePool = pool;
                 return pool;
             }
         }

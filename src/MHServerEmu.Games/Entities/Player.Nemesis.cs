@@ -4,7 +4,9 @@ using System.Linq;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Games.Entities.Avatars;
+using MHServerEmu.Games.Events;
 using MHServerEmu.Games.GameData;
+using MHServerEmu.Games.Regions;
 
 namespace MHServerEmu.Games.Entities
 {
@@ -31,7 +33,14 @@ namespace MHServerEmu.Games.Entities
         // NemesisHealthMultForRank/NemesisDmgBoostForRank below now have
         // data for them — those cases are only ever reachable via Endless
         // mode's own synthetic scaleIndex-driven rank (Player.WaveDirector.cs).
+        //
+        // 2026-07-31 — Bounty Hunt (Player.BountyHunt.cs) reuses this exact
+        // same rank 6-10 data via a second ephemeral (non-persisted) rank of
+        // its own, same pattern as Endless. See BountyHuntMaxRank below.
         public const int EndlessMaxRank = 10;
+
+        /// <summary>Alias of EndlessMaxRank for Bounty Hunt's ephemeral rank — same underlying curve data, just named for its own caller.</summary>
+        public const int BountyHuntMaxRank = EndlessMaxRank;
 
         // Per-escape HP bonus (see Avatar.Nemesis.cs) — +2% HealthMaxMult on
         // top of the rank curve for every time this nemesis has escaped
@@ -63,7 +72,10 @@ namespace MHServerEmu.Games.Entities
         internal const double NemesisRogueChance = 0.80;
 
         // Rank → suffix. Kept short so nameplates read like "PhantomWolverine
-        // the Slayer" not a paragraph.
+        // the Slayer" not a paragraph. Ranks 6-10 (2026-07-31) only ever
+        // reachable via Bounty Hunt's ephemeral rank (see Player.BountyHunt.cs)
+        // -- the persistent NemesisEntry.Rank field stays capped at
+        // NemesisMaxRank=5, same as before.
         public static readonly string[] NemesisSuffixes =
         {
             "",                 // rank 0 (never used — entries start at rank 1)
@@ -71,7 +83,12 @@ namespace MHServerEmu.Games.Entities
             "the Undying",      // rank 2
             "the Slayer",       // rank 3
             "the Reaver",       // rank 4
-            "the Nemesis",      // rank 5 (cap)
+            "the Nemesis",      // rank 5 (persistent roster cap)
+            "the Feared",       // rank 6
+            "the Dreaded",      // rank 7
+            "the Merciless",    // rank 8
+            "the Apex Predator",// rank 9
+            "the World-Ender",  // rank 10 (Bounty Hunt cap)
         };
 
         private readonly List<NemesisEntry> _nemeses = new();
@@ -246,6 +263,44 @@ namespace MHServerEmu.Games.Entities
                 }
             }
             return best;
+        }
+
+        // Boss-type nemesis kill tracking. Confirmed live 2026-07-31: RetireNemesis
+        // is only ever called from Avatar.PhantomHero.cs's corpse-cleanup tick,
+        // which iterates EnemyPhantomAvatarIds -- a list populated exclusively by
+        // RegisterEnemyPhantom, which only the phantom-avatar/team-up spawn paths
+        // call. SpawnCuratedBoss (the plain-Agent path every IsBoss nemesis uses,
+        // including the existing "revenge fight" webapi action) never registers
+        // there, so killing a boss-type nemesis never called RetireNemesis or
+        // TryClaimBountyReward at all -- a pre-existing gap, not new. This tracks
+        // a one-shot EntityDeadEvent hook per spawned boss entity id instead of
+        // touching the phantom-specific corpse tick, so it works for ANY
+        // SpawnCuratedBoss-based nemesis revenge fight (Rogue Encounter's
+        // existing revenge slot, the "spawn" webapi action, and Bounty Hunt).
+        private readonly Dictionary<ulong, Event<EntityDeadGameEvent>.Action> _bossNemesisDeadActions = new();
+
+        /// <summary>
+        /// Call right after spawning a boss-type nemesis via SpawnCuratedBoss
+        /// (never for the phantom-avatar pipeline -- that's already covered by
+        /// the corpse-cleanup tick). Fires RetireNemesis + TryClaimBountyReward
+        /// exactly once when the spawned entity dies, then unregisters itself.
+        /// </summary>
+        public void TrackBossNemesisForRetire(ulong entityId, ulong heroRef, Region region)
+        {
+            if (region == null || entityId == 0) return;
+            if (_bossNemesisDeadActions.ContainsKey(entityId)) return; // already tracked
+
+            Event<EntityDeadGameEvent>.Action action = null;
+            action = (in EntityDeadGameEvent evt) =>
+            {
+                if (evt.Defender == null || evt.Defender.Id != entityId) return;
+                region.EntityDeadEvent.RemoveAction(action);
+                _bossNemesisDeadActions.Remove(entityId);
+                RetireNemesis(heroRef);
+                TryClaimBountyReward(heroRef);
+            };
+            _bossNemesisDeadActions[entityId] = action;
+            region.EntityDeadEvent.AddActionBack(action);
         }
 
         /// <summary>Currently active Bounty Board target, or null if none is set / the target has left the roster.</summary>
@@ -535,7 +590,12 @@ namespace MHServerEmu.Games.Entities
 
         internal static string NemesisSuffixForRank(int rank)
         {
-            int r = Math.Clamp(rank, 1, NemesisMaxRank);
+            // Clamped to 10 (not NemesisMaxRank=5) so Bounty Hunt's ephemeral
+            // rank (see Player.BountyHunt.cs) gets a real suffix instead of
+            // silently reusing rank 5's "the Nemesis" for everything above it.
+            // The persistent roster's own Rank field never exceeds 5 anyway,
+            // so this is a no-op change for every existing caller.
+            int r = Math.Clamp(rank, 1, BountyHuntMaxRank);
             return NemesisSuffixes[r];
         }
 

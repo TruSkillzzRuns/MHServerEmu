@@ -403,6 +403,11 @@ namespace MHServerEmu.Games.Network
             try { Player.SnapshotDangerRoomEndlessWarpForTransfer(); }
             catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotDangerRoomEndlessWarpForTransfer threw: {ex.Message}"); }
 
+            // Same idea for a confirmed Bounty Hunt warp still in flight —
+            // see Player.BountyHunt.cs's SnapshotBountyHuntForTransfer.
+            try { Player.SnapshotBountyHuntForTransfer(); }
+            catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotBountyHuntForTransfer threw: {ex.Message}"); }
+
             Player.CurrentAvatar.ExitWorld();
 
             // We are likely to be on our way to another game instance, so don't save player data just yet.

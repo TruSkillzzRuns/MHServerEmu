@@ -98,6 +98,87 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// </summary>
         public bool PendingDangerRoomEndlessWarp { get; set; }
 
+        /// <summary>
+        /// Bounty Hunt (Player.BountyHunt.cs) — same shape as
+        /// PendingTrialWarp, but the target can't be recomputed after
+        /// landing the way Trial's arena/roster can (Trial just needs to
+        /// know "warp was intentional" and rebuilds everything fresh via
+        /// StartTrialGauntlet; Bounty Hunt needs the SPECIFIC nemesis and its
+        /// ephemeral rank to still be known once the new Game instance
+        /// exists), so those two values are snapshotted here too, not just
+        /// the flag. Set right before
+        /// TeleportToRegionFromWeb warps the player to a random arena.
+        /// Snapshotted by Player.SnapshotBountyHuntForTransfer() at
+        /// BeginRegionTransfer, consumed by
+        /// Player.OnAvatarEnteredRegionForBountyHunt() from the new Avatar's
+        /// OnEnteredWorld once it's actually standing in the arena.
+        /// </summary>
+        public bool PendingBountyHuntWarp { get; set; }
+        public ulong BountyHuntHeroRef { get; set; }
+        public int BountyHuntRank { get; set; }
+
+        /// <summary>
+        /// Which Bounty Board slot (0-5) the in-flight Bounty Hunt warp
+        /// above was launched from, or -1 if this hunt was started against
+        /// a personal Nemesis roster entry instead of a board slot. Needed
+        /// on the far side of the cross-region hop so
+        /// Player.OnBountyHuntEntityDead/OnBountyHuntLoss know which
+        /// BountyBoard entry (if any) to resolve.
+        /// </summary>
+        public int BountyHuntBoardSlot { get; set; } = -1;
+
+        /// <summary>
+        /// Theme index the IN-FLIGHT hunt was launched under. Separate from
+        /// BountyThemeIndex (which tracks the board itself) and required for
+        /// the same reason BountyHuntBoardSlot is: the arrival handler runs in
+        /// a NEW Game instance after the region transfer, so a plain Player
+        /// field is already back to -1 by the time the arena is sterilized.
+        /// Without this the themed arena repopulation and themed Phantom
+        /// Requiem pool both silently no-op. Bounty Board mode only.
+        /// </summary>
+        public int BountyHuntThemeIndex { get; set; } = -1;
+
+        /// <summary>
+        /// RegionPrototypeId (as ulong) of the arena the player's last
+        /// Bounty Hunt warp landed them in, or 0 if none yet. Excluded from
+        /// the random pick on the NEXT hunt so two hunts in a row can't
+        /// send the player back into a region that may not have fully torn
+        /// down yet — confirmed live 2026-08-02 as a real complaint
+        /// ("sent to a region I've already been to that hasn't reset").
+        /// Persisted here (not a plain Player field) because a region
+        /// transfer destroys/recreates the Player/Game instance, so this
+        /// needs to survive the exact hop it's meant to inform the next
+        /// pick after.
+        /// </summary>
+        public ulong LastBountyHuntRegionId { get; set; }
+
+        /// <summary>
+        /// Game-clock ms timestamp of the last Bounty Hunt warp start —
+        /// enforces a minimum gap between consecutive hunts (see Player.
+        /// BountyHunt.cs's BountyHuntMinIntervalMs). Persisted the same way
+        /// as LastBountyHuntRegionId and for the same reason: a region
+        /// transfer destroys/recreates the Player instance, and this needs
+        /// to survive the exact hop it's cooling down after.
+        /// </summary>
+        public long LastBountyHuntStartMs { get; set; }
+
+        /// <summary>
+        /// The Bounty Board — 6 randomly-rolled nemeses shown at once,
+        /// independent of the player's personal Nemesis roster/kill
+        /// history. See Player.BountyBoard.cs.
+        /// </summary>
+        public List<BountyBoardEntry> BountyBoard { get; } = new();
+
+        /// <summary>
+        /// Index into BountyThemes.All for the board's current themed roll, or
+        /// -1 for an untheme(d)/legacy board. Has to ride along with the board
+        /// itself — the theme drives arena, costume, hazard powers and arena
+        /// repopulation for every hunt launched off that board, so losing it
+        /// on a region transfer would silently untheme an in-progress board.
+        /// Bounty Board mode only. See Player.BountyThemes.cs.
+        /// </summary>
+        public int BountyThemeIndex { get; set; } = -1;
+
         public MigrationData() { }
 
         public List<(ulong, ulong)> GetOrCreatePropertyList(ulong entityDbId)
@@ -136,6 +217,15 @@ namespace MHServerEmu.DatabaseAccess.Models
             PendingWaveRun = null;
             PendingTrialWarp = false;
             PendingDangerRoomEndlessWarp = false;
+            PendingBountyHuntWarp = false;
+            BountyHuntHeroRef = 0;
+            BountyHuntRank = 0;
+            BountyHuntBoardSlot = -1;
+            BountyHuntThemeIndex = -1;
+            LastBountyHuntRegionId = 0;
+            LastBountyHuntStartMs = 0;
+            BountyBoard.Clear();
+            BountyThemeIndex = -1;
         }
     }
 
@@ -206,6 +296,61 @@ namespace MHServerEmu.DatabaseAccess.Models
 
         /// <summary>Number of times this nemesis has been spared (SpareNemesis) instead of finished off normally.</summary>
         public int MercyCount;
+    }
+
+    /// <summary>
+    /// One posting on the Bounty Board — a randomly-rolled nemesis shown
+    /// to the player independent of their personal Nemesis roster/kill
+    /// history. Up to 6 exist at once (Player.BountyBoard.cs); once every
+    /// slot is Resolved (Defeated or Fled) the whole board rerolls fresh.
+    /// </summary>
+    public sealed class BountyBoardEntry
+    {
+        /// <summary>Hero PrototypeId as ulong.</summary>
+        public ulong HeroRef;
+
+        /// <summary>True when HeroRef is a curated boss AgentPrototype instead of a playable Avatar. See NemesisEntry.IsBoss.</summary>
+        public bool IsBoss;
+
+        /// <summary>Current difficulty, 1-10. Starts low on roll, climbs by 1 each time the player loses to this bounty (capped at 10).</summary>
+        public int Rank;
+
+        /// <summary>
+        /// Losses to THIS specific bounty since it was rolled, 0-2. On the
+        /// 3rd loss the bounty flees permanently (Fled = true) instead of
+        /// ranking up again — the player loses the reward and the credits
+        /// already spent to post it, same as any other loss.
+        /// </summary>
+        public int LossCount;
+
+        /// <summary>True once the player has killed this bounty. Resolved (counts toward a board reroll) but stays visible until reroll.</summary>
+        public bool Defeated;
+
+        /// <summary>
+        /// True once the player has claimed the currency (+ guaranteed BiS
+        /// at rank 9-10) reward for a Defeated bounty via
+        /// CollectBountyBoardReward. Killing a bounty only sets Defeated —
+        /// the reward itself waits for this explicit "Collect Rewards"
+        /// click rather than granting silently at kill time.
+        /// </summary>
+        public bool RewardCollected;
+
+        /// <summary>True once this bounty has fled (3rd loss). Resolved, no longer huntable, stays visible until reroll.</summary>
+        public bool Fled;
+
+        /// <summary>Display name captured at spawn time, same purpose as NemesisEntry.LastKillerName.</summary>
+        public string LastKillerName;
+
+        /// <summary>
+        /// The exact BiS piece this bounty is guaranteed to drop, rolled ONCE
+        /// when the slot first reaches BountyBoardGuaranteedBisRank so the card
+        /// can show the player which specific item they are hunting for and
+        /// the drop matches it. 0 = none (boss slots, or below that rank).
+        /// Rolled from the BOUNTY'S OWN hero loadout, not the player's - you
+        /// kill Psylocke, you take a piece of Psylocke's kit.
+        /// Bounty Board mode only.
+        /// </summary>
+        public ulong GuaranteedBisRef;
     }
 
     /// <summary>

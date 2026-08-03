@@ -479,8 +479,23 @@ namespace MHServerEmu.Games.Loot
         /// Creates and gives a new item to the provided <see cref="Player"/>.
         /// </summary>
         public bool GiveItem(PrototypeId itemProtoRef, LootContext lootContext, Player player)
+            => GiveItem(itemProtoRef, lootContext, player, 1, PrototypeId.Invalid);
+
+        /// <summary>
+        /// Same as <see cref="GiveItem(PrototypeId, LootContext, Player)"/>,
+        /// but lets the caller force the item's level and rarity instead of
+        /// always rolling level 1 with whatever rarity that level would
+        /// normally produce. Added for guaranteed-BiS grants (Bounty Board,
+        /// and — confirmed live 2026-08-03 — Trial of the Impossible's
+        /// finale chest has the exact same gap via SpawnItem) — a curated
+        /// BiS item PrototypeId is the RIGHT item, but without an explicit
+        /// rarity override CreateItemSpec still auto-rolls its rarity off a
+        /// level-1 context, so the "guaranteed BiS" item was actually
+        /// landing at whatever low rarity a level 1 roll produces.
+        /// </summary>
+        public bool GiveItem(PrototypeId itemProtoRef, LootContext lootContext, Player player, int level, PrototypeId rarityProtoRef)
         {
-            ItemSpec itemSpec = CreateItemSpec(itemProtoRef, lootContext, player);
+            ItemSpec itemSpec = CreateItemSpec(itemProtoRef, lootContext, player, level, rarityProtoRef);
             if (!Verify.IsNotNull(itemSpec, $"Failed to create an ItemSpec! itemProto=[{itemProtoRef.GetName()}], lootContext=[{lootContext}], player=[{player}]"))
                 return false;
 
