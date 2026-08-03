@@ -117,6 +117,23 @@ namespace MHServerEmu.DatabaseAccess.Models
         public ulong BountyHuntHeroRef { get; set; }
         public int BountyHuntRank { get; set; }
 
+        /// <summary>
+        /// Which Bounty Board slot (0-5) the in-flight Bounty Hunt warp
+        /// above was launched from, or -1 if this hunt was started against
+        /// a personal Nemesis roster entry instead of a board slot. Needed
+        /// on the far side of the cross-region hop so
+        /// Player.OnBountyHuntEntityDead/OnBountyHuntLoss know which
+        /// BountyBoard entry (if any) to resolve.
+        /// </summary>
+        public int BountyHuntBoardSlot { get; set; } = -1;
+
+        /// <summary>
+        /// The Bounty Board — 6 randomly-rolled nemeses shown at once,
+        /// independent of the player's personal Nemesis roster/kill
+        /// history. See Player.BountyBoard.cs.
+        /// </summary>
+        public List<BountyBoardEntry> BountyBoard { get; } = new();
+
         public MigrationData() { }
 
         public List<(ulong, ulong)> GetOrCreatePropertyList(ulong entityDbId)
@@ -158,6 +175,8 @@ namespace MHServerEmu.DatabaseAccess.Models
             PendingBountyHuntWarp = false;
             BountyHuntHeroRef = 0;
             BountyHuntRank = 0;
+            BountyHuntBoardSlot = -1;
+            BountyBoard.Clear();
         }
     }
 
@@ -228,6 +247,41 @@ namespace MHServerEmu.DatabaseAccess.Models
 
         /// <summary>Number of times this nemesis has been spared (SpareNemesis) instead of finished off normally.</summary>
         public int MercyCount;
+    }
+
+    /// <summary>
+    /// One posting on the Bounty Board — a randomly-rolled nemesis shown
+    /// to the player independent of their personal Nemesis roster/kill
+    /// history. Up to 6 exist at once (Player.BountyBoard.cs); once every
+    /// slot is Resolved (Defeated or Fled) the whole board rerolls fresh.
+    /// </summary>
+    public sealed class BountyBoardEntry
+    {
+        /// <summary>Hero PrototypeId as ulong.</summary>
+        public ulong HeroRef;
+
+        /// <summary>True when HeroRef is a curated boss AgentPrototype instead of a playable Avatar. See NemesisEntry.IsBoss.</summary>
+        public bool IsBoss;
+
+        /// <summary>Current difficulty, 1-10. Starts low on roll, climbs by 1 each time the player loses to this bounty (capped at 10).</summary>
+        public int Rank;
+
+        /// <summary>
+        /// Losses to THIS specific bounty since it was rolled, 0-2. On the
+        /// 3rd loss the bounty flees permanently (Fled = true) instead of
+        /// ranking up again — the player loses the reward and the credits
+        /// already spent to post it, same as any other loss.
+        /// </summary>
+        public int LossCount;
+
+        /// <summary>True once the player has killed this bounty. Resolved (counts toward a board reroll) but stays visible until reroll.</summary>
+        public bool Defeated;
+
+        /// <summary>True once this bounty has fled (3rd loss). Resolved, no longer huntable, stays visible until reroll.</summary>
+        public bool Fled;
+
+        /// <summary>Display name captured at spawn time, same purpose as NemesisEntry.LastKillerName.</summary>
+        public string LastKillerName;
     }
 
     /// <summary>

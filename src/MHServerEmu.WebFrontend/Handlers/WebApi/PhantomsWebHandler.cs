@@ -841,7 +841,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         }
 
         /// <summary>HeroRef -> portrait asset candidates, resolved directly from loaded client data (AvatarPrototype for a hero nemesis, AgentPrototype's icon for a boss nemesis) rather than by name match — nemesis entries already carry the exact PrototypeId, so no lookup-by-shortname ambiguity like ResolveHeroPortraitCandidates elsewhere has to deal with.</summary>
-        private static List<string> ResolveNemesisPortraitCandidates(ulong heroRef, bool isBoss)
+        internal static List<string> ResolveNemesisPortraitCandidates(ulong heroRef, bool isBoss)
         {
             var candidates = new List<string>(4);
             var protoRef = (PrototypeId)heroRef;
@@ -882,7 +882,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         }
 
         /// <summary>Currency ref (Credits/EternitySplinters/etc.) -> icon asset candidates, same Icon/IconHiRes/IconSmall fields the vendor/inventory UI reads off CurrencyPrototype — lets the Bounty Board show a real currency icon next to its cost/reward numbers instead of a generic glyph.</summary>
-        private static List<string> ResolveCurrencyIconCandidates(PrototypeId currencyRef)
+        internal static List<string> ResolveCurrencyIconCandidates(PrototypeId currencyRef)
         {
             var candidates = new List<string>(3);
             var proto = currencyRef.As<CurrencyPrototype>();
@@ -1047,6 +1047,134 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     return (object)new { Ok = true, Message = msg };
                 }
                 return (object)new { Ok = false, Error = "unknown action (banish|banish-oldest|clear|spawn|spare|bounty-set|bounty-hunt-start|bounty-clear)" };
+            });
+            await context.SendJsonAsync(result);
+        }
+    }
+
+    // GET  /webapi/phantoms/bountyboard?player=
+    //   → { Ok, Slots:[{ SlotIndex, HeroRef, HeroName, IsBoss, Rank,
+    //       LossCount, Defeated, Fled, AcceptCost, PortraitPath,
+    //       PortraitCandidates }], PlayerCredits, MaxLosses, CurrencyIcons,
+    //       BountyRewardEternitySplintersPerTier, BountyRewardCubeShardsPerTier,
+    //       BountyRewardLegendaryMarksPerTier, BountyGuaranteedBisTier }
+    //   Generates a fresh 6-slot board on first call, and again any time
+    //   every current slot is Resolved (Defeated or Fled) — see
+    //   Player.BountyBoard.cs.GetBountyBoard.
+    //
+    // POST /webapi/phantoms/bountyboard
+    //   body: { playerName, action: "start", slotIndex: 0-5 }
+    //     → pays that slot's rank-scaled Credits cost and warps the player
+    //       to a random arena, same ambush pipeline as a personal-nemesis
+    //       Bounty Hunt. See Player.BountyBoard.cs's StartBountyBoardHunt.
+    public class BountyBoardWebHandler : WebHandler
+    {
+        protected override async Task Get(WebRequestContext context)
+        {
+            Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                var board = p.GetBountyBoard();
+                var slots = new System.Collections.Generic.List<object>(board.Count);
+                for (int i = 0; i < board.Count; i++)
+                {
+                    var e = board[i];
+                    // LastKillerName holds the friendly display name rolled
+                    // at generation time (curated boss display name, or the
+                    // avatar's localized DisplayName) — the raw prototype
+                    // leaf ((PrototypeId)e.HeroRef).GetName() is only a
+                    // fallback for entries rolled before this existed.
+                    string heroName = string.IsNullOrEmpty(e.LastKillerName)
+                        ? (((PrototypeId)e.HeroRef).GetName() ?? string.Empty)
+                        : e.LastKillerName;
+                    var portraitCandidates = NemesisWebHandler.ResolveNemesisPortraitCandidates(e.HeroRef, e.IsBoss);
+                    slots.Add(new
+                    {
+                        SlotIndex = i,
+                        HeroRef = "0x" + e.HeroRef.ToString("X"),
+                        HeroName = heroName,
+                        e.IsBoss,
+                        e.Rank,
+                        e.LossCount,
+                        e.Defeated,
+                        e.Fled,
+                        AcceptCost = MHServerEmu.Games.Entities.Player.BountyBoardAcceptCost(e.Rank),
+                        PortraitPath = portraitCandidates.Count > 0 ? portraitCandidates[0] : null,
+                        PortraitCandidates = portraitCandidates,
+                    });
+                }
+
+                int playerCredits = p.Properties[MHServerEmu.Games.Properties.PropertyEnum.Currency, GameDatabase.CurrencyGlobalsPrototype.Credits];
+
+                return new
+                {
+                    Ok = true,
+                    Slots = slots,
+                    PlayerCredits = playerCredits,
+                    MaxLosses = MHServerEmu.Games.Entities.Player.BountyBoardMaxLosses,
+                    CurrencyIcons = new
+                    {
+                        Credits = NemesisWebHandler.ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.Credits),
+                        EternitySplinters = NemesisWebHandler.ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.EternitySplinters),
+                        CubeShards = NemesisWebHandler.ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.CubeShards),
+                        LegendaryMarks = NemesisWebHandler.ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.LegendaryMarks),
+                    },
+                    BountyRewardEternitySplintersPerTier = MHServerEmu.Games.Entities.Player.BountyHuntEternitySplintersPerTier,
+                    BountyRewardCubeShardsPerTier = MHServerEmu.Games.Entities.Player.BountyHuntCubeShardsPerTier,
+                    BountyRewardLegendaryMarksPerTier = MHServerEmu.Games.Entities.Player.BountyHuntLegendaryMarksPerTier,
+                    BountyGuaranteedBisTier = MHServerEmu.Games.Entities.Player.BountyHuntGuaranteedBisTier,
+                };
+            });
+            await context.SendJsonAsync(result);
+        }
+
+        protected override async Task Post(WebRequestContext context)
+        {
+            string body = await context.ReadUtf8StringAsync();
+
+            string playerName = null;
+            string action = null;
+            int slotIndex = -1;
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("playerName", out var pn)) playerName = pn.GetString();
+                if (root.TryGetProperty("action",     out var ac)) action = ac.GetString();
+                if (root.TryGetProperty("slotIndex",  out var si)) slotIndex = si.GetInt32();
+            }
+            catch (System.Exception ex)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = $"bad request: {ex.Message}" });
+                return;
+            }
+
+            Player player = PhantomsWebUtil.FindTargetPlayer(playerName, null, out string error);
+            if (player == null)
+            {
+                await context.SendJsonAsync(new { Ok = false, Error = error ?? "player not found" });
+                return;
+            }
+
+            object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
+            {
+                if (string.Equals(action, "start", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    string msg = p.StartBountyBoardHunt(slotIndex);
+                    return (object)new { Ok = true, Message = msg };
+                }
+                if (string.Equals(action, "reroll", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    string msg = p.RerollBountyBoard();
+                    return (object)new { Ok = true, Message = msg };
+                }
+                return (object)new { Ok = false, Error = "unknown action (start|reroll)" };
             });
             await context.SendJsonAsync(result);
         }

@@ -22,6 +22,11 @@ namespace MHServerEmu.Games.Entities.Avatars
             Agent killerAgent = ResolveNemesisKillerAgent(killer, directKiller);
             if (killerAgent == null) return;
 
+            // No-ops unless killerAgent is the specific entity this
+            // player's own in-flight Bounty Hunt spawned — see
+            // Player.BountyHunt.cs's OnBountyHuntLoss doc comment.
+            victimPlayer.OnBountyHuntLoss(killerAgent);
+
             var entry = victimPlayer.RegisterNemesisKill(killerAgent);
             if (entry != null) entry.IsBoss = Player.IsCuratedBossRef(killerAgent.PrototypeDataRef);
 

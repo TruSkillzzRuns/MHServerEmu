@@ -429,6 +429,7 @@ namespace MHServerEmu.Games.Entities
             {
                 mig.RogueEncounterEnabled = _rogueEncounterEnabled;
                 SnapshotNemesesForTransfer(mig);
+                SnapshotBountyBoardForTransfer(mig);
                 SnapshotPreferredPowersForTransfer(mig);
                 SnapshotCombatRangePrefsForTransfer(mig);
             }
@@ -476,6 +477,7 @@ namespace MHServerEmu.Games.Entities
                 RogueEncounterEnabled = true;
 
             RestoreNemesesFromMigration(mig);
+            RestoreBountyBoardFromMigration(mig);
             RestorePreferredPowersFromMigration(mig);
             RestoreCombatRangePrefsFromMigration(mig);
 

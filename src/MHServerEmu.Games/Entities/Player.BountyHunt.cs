@@ -75,23 +75,42 @@ namespace MHServerEmu.Games.Entities
         private Event<EntityDeadGameEvent>.Action _bountyHuntDeadAction;
 
         /// <summary>
+        /// Which Bounty Board slot (0-5) the in-flight hunt was launched
+        /// from, or -1 for a personal-nemesis-roster hunt. See
+        /// Player.BountyBoard.cs.
+        /// </summary>
+        private int _bountyHuntBoardSlot = -1;
+
+        /// <summary>
         /// Start a Bounty Hunt against an existing active (non-Defeated)
         /// nemesis roster entry at the given tier (1-10). Validates the same
-        /// way SetBountyTarget does, picks a random arena from Trial of the
-        /// Impossible's own arena pool, and warps. The actual spawn happens
-        /// later, on arrival (see OnAvatarEnteredRegionForBountyHunt) — a
-        /// cross-region transfer destroys this Game instance, so nothing
-        /// beyond the MigrationData snapshot below survives the warp.
+        /// way SetBountyTarget does, then hands off to StartBountyHuntInternal
+        /// for the actual cost/warp mechanics shared with Bounty Board hunts.
         /// </summary>
         public string StartBountyHunt(ulong heroRef, int rank)
         {
-            if (rank < 1 || rank > BountyHuntMaxRank)
-                return $"rank must be 1-{BountyHuntMaxRank}";
-
             NemesisEntry entry = null;
             foreach (var n in _nemeses) { if (n.HeroRef == heroRef) { entry = n; break; } }
             if (entry == null) return "that nemesis isn't on your roster";
             if (entry.Defeated) return "that nemesis is already defeated — pick an active one";
+
+            return StartBountyHuntInternal(heroRef, rank, -1);
+        }
+
+        /// <summary>
+        /// Shared cost/warp mechanics for both a personal-nemesis hunt
+        /// (Player.BountyHunt.StartBountyHunt, boardSlot -1) and a Bounty
+        /// Board hunt (Player.BountyBoard.StartBountyBoardHunt, boardSlot
+        /// 0-5) — picks a random arena from Trial of the Impossible's own
+        /// arena pool and warps. The actual spawn happens later, on
+        /// arrival (see OnAvatarEnteredRegionForBountyHunt) — a
+        /// cross-region transfer destroys this Game instance, so nothing
+        /// beyond the MigrationData snapshot below survives the warp.
+        /// </summary>
+        private string StartBountyHuntInternal(ulong heroRef, int rank, int boardSlot)
+        {
+            if (rank < 1 || rank > BountyHuntMaxRank)
+                return $"rank must be 1-{BountyHuntMaxRank}";
 
             Avatar avatar = CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false) return "no avatar in world";
@@ -100,7 +119,7 @@ namespace MHServerEmu.Games.Entities
             if (pool.Length == 0) return "no valid arena regions available";
 
             PrototypeId creditsProtoRef = GameDatabase.CurrencyGlobalsPrototype.Credits;
-            int cost = BountyHuntAcceptCost(rank);
+            int cost = boardSlot >= 0 ? BountyBoardAcceptCost(rank) : BountyHuntAcceptCost(rank);
             int currentCredits = Properties[PropertyEnum.Currency, creditsProtoRef];
             if (currentCredits < cost)
                 return $"not enough credits — bounty costs {cost}, you have {currentCredits}";
@@ -111,13 +130,14 @@ namespace MHServerEmu.Games.Entities
             DetachBountyHuntDeadAction();
             _bountyHuntHeroRef = heroRef;
             _bountyHuntRank = rank;
+            _bountyHuntBoardSlot = boardSlot;
             _bountyHuntRegion = null;
             _bountyHuntSpawnedId = 0;
             _bountyHuntWarpPending = true;
 
             avatar.TeleportToRegionFromWeb((ulong)chosen);
 
-            BountyHuntLogger.Info($"[BountyHunt] {GetName()}: hunt started on '{((PrototypeId)heroRef).GetName()}' tier {rank}, warping to {chosen}");
+            BountyHuntLogger.Info($"[BountyHunt] {GetName()}: hunt started on '{((PrototypeId)heroRef).GetName()}' tier {rank} (board slot {boardSlot}), warping to {chosen}");
             return $"hunt started on {((PrototypeId)heroRef).GetName()} (tier {rank}) — warping...";
         }
 
@@ -130,6 +150,7 @@ namespace MHServerEmu.Games.Entities
             mig.PendingBountyHuntWarp = true;
             mig.BountyHuntHeroRef = _bountyHuntHeroRef;
             mig.BountyHuntRank = _bountyHuntRank;
+            mig.BountyHuntBoardSlot = _bountyHuntBoardSlot;
             _bountyHuntWarpPending = false; // this Game instance is going away
         }
 
@@ -144,6 +165,7 @@ namespace MHServerEmu.Games.Entities
             mig.PendingBountyHuntWarp = false;
             _bountyHuntHeroRef = mig.BountyHuntHeroRef;
             _bountyHuntRank = mig.BountyHuntRank;
+            _bountyHuntBoardSlot = mig.BountyHuntBoardSlot;
             _bountyHuntRegion = region;
 
             // Baseline reward reuses the existing Bounty Board claim flow —
@@ -154,7 +176,12 @@ namespace MHServerEmu.Games.Entities
             // field with no MigrationData snapshot of its own (deliberately
             // short-lived per its own doc comment), so setting it before the
             // warp would just be lost when this Game instance is destroyed.
-            SetBountyTarget(_bountyHuntHeroRef, BountyHuntBaselineLootTableRef);
+            // Board hunts skip this entirely — SetBountyTarget requires an
+            // active Nemesis roster entry, which a board slot deliberately
+            // isn't; board hunts pay out through the tier-scaled currency
+            // (+ guaranteed BiS at rank 9-10) below instead.
+            if (_bountyHuntBoardSlot < 0)
+                SetBountyTarget(_bountyHuntHeroRef, BountyHuntBaselineLootTableRef);
 
             int removed = ClearArena(avatar);
             if (removed > 0)
@@ -189,31 +216,57 @@ namespace MHServerEmu.Games.Entities
                 return;
             }
 
-            NemesisEntry entry = null;
-            foreach (var n in _nemeses) { if (n.HeroRef == _bountyHuntHeroRef) { entry = n; break; } }
-            if (entry == null || entry.Defeated)
+            bool isBoss;
+            int escapeCount = 0;
+            int grudge = 0;
+            string killerBase;
+
+            if (_bountyHuntBoardSlot >= 0)
             {
-                ClearBountyHuntState();
-                return;
+                if (_bountyHuntBoardSlot >= _bountyBoard.Count)
+                {
+                    ClearBountyHuntState();
+                    return;
+                }
+                BountyBoardEntry slot = _bountyBoard[_bountyHuntBoardSlot];
+                if (slot.HeroRef != _bountyHuntHeroRef || slot.Defeated || slot.Fled)
+                {
+                    ClearBountyHuntState();
+                    return;
+                }
+                isBoss = slot.IsBoss;
+                killerBase = string.IsNullOrEmpty(slot.LastKillerName) ? FriendlyNameFromRef((PrototypeId)_bountyHuntHeroRef) : slot.LastKillerName;
+            }
+            else
+            {
+                NemesisEntry entry = null;
+                foreach (var n in _nemeses) { if (n.HeroRef == _bountyHuntHeroRef) { entry = n; break; } }
+                if (entry == null || entry.Defeated)
+                {
+                    ClearBountyHuntState();
+                    return;
+                }
+                isBoss = entry.IsBoss;
+                escapeCount = entry.EscapeCount;
+                grudge = GrudgeScore(entry);
+                killerBase = string.IsNullOrEmpty(entry.LastKillerName) ? "Phantom" : entry.LastKillerName;
             }
 
-            string killerBase = string.IsNullOrEmpty(entry.LastKillerName) ? "Phantom" : entry.LastKillerName;
             string suffix = NemesisSuffixForRank(_bountyHuntRank);
             string stars = new string('★', Math.Clamp(_bountyHuntRank, 1, BountyHuntMaxRank));
             string displayName = string.IsNullOrEmpty(suffix) ? $"{stars} {killerBase}" : $"{stars} {killerBase} {suffix}";
 
             ulong id;
             string err;
-            if (entry.IsBoss)
+            if (isBoss)
             {
-                id = SpawnCuratedBoss(avatar, (PrototypeId)entry.HeroRef, out err,
+                id = SpawnCuratedBoss(avatar, (PrototypeId)_bountyHuntHeroRef, out err,
                     BossNemesisExtraHealthMultForRank(_bountyHuntRank), BossNemesisExtraDamageMultForRank(_bountyHuntRank));
-                if (id != 0) TrackBossNemesisForRetire(id, entry.HeroRef, _bountyHuntRegion);
+                if (id != 0) TrackBossNemesisForRetire(id, _bountyHuntHeroRef, _bountyHuntRegion);
             }
             else
             {
-                int grudge = GrudgeScore(entry);
-                id = avatar.SpawnNemesisPhantomHero((PrototypeId)entry.HeroRef, 0, displayName, _bountyHuntRank, out err, entry.EscapeCount, grudge);
+                id = avatar.SpawnNemesisPhantomHero((PrototypeId)_bountyHuntHeroRef, 0, displayName, _bountyHuntRank, out err, escapeCount, grudge);
             }
 
             if (id == 0)
@@ -239,6 +292,7 @@ namespace MHServerEmu.Games.Entities
 
             int tier = _bountyHuntRank;
             ulong heroRef = _bountyHuntHeroRef;
+            int boardSlot = _bountyHuntBoardSlot;
             DetachBountyHuntDeadAction();
 
             try
@@ -261,6 +315,8 @@ namespace MHServerEmu.Games.Entities
 
                 try { SendBannerLines($"💰 Bounty claimed — tier {tier} payout!"); } catch { }
                 BountyHuntLogger.Info($"[BountyHunt] {GetName()}: bounty tier {tier} claimed on '{((PrototypeId)heroRef).GetName()}'");
+
+                if (boardSlot >= 0) ResolveBountyBoardWin(boardSlot, heroRef);
             }
             catch (Exception ex)
             {
@@ -270,6 +326,27 @@ namespace MHServerEmu.Games.Entities
             {
                 ClearBountyHuntState();
             }
+        }
+
+        /// <summary>
+        /// Called from Avatar.TryRegisterNemesisKill whenever the PLAYER
+        /// dies to some agent — no-ops unless that agent is the specific
+        /// entity this player's in-flight Bounty Hunt spawned
+        /// (killerAgent.Id == _bountyHuntSpawnedId). Always clears the hunt
+        /// state on a match — losing means the credits already spent are
+        /// gone and the player must pay again to re-engage, whether this
+        /// was a personal-nemesis hunt or a board hunt. Board hunts
+        /// additionally escalate/flee that slot via ResolveBountyBoardLoss.
+        /// </summary>
+        internal void OnBountyHuntLoss(Agent killerAgent)
+        {
+            if (killerAgent == null || _bountyHuntSpawnedId == 0 || killerAgent.Id != _bountyHuntSpawnedId) return;
+
+            int boardSlot = _bountyHuntBoardSlot;
+            DetachBountyHuntDeadAction();
+            ClearBountyHuntState();
+
+            if (boardSlot >= 0) ResolveBountyBoardLoss(boardSlot);
         }
 
         private void DetachBountyHuntDeadAction()
@@ -284,6 +361,7 @@ namespace MHServerEmu.Games.Entities
             DetachBountyHuntDeadAction();
             _bountyHuntHeroRef = 0;
             _bountyHuntRank = 0;
+            _bountyHuntBoardSlot = -1;
             _bountyHuntRegion = null;
             _bountyHuntSpawnedId = 0;
         }
