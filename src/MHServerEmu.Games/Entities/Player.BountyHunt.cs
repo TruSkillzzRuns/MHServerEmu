@@ -92,6 +92,21 @@ namespace MHServerEmu.Games.Entities
         private ulong _lastBountyHuntRegionId;
 
         /// <summary>
+        /// Minimum gap between the START of one Bounty Hunt warp and the
+        /// next. Mitigation for a live-repro'd client freeze (2026-08-03):
+        /// two hunts posted ~90s apart (post, lose, immediately post again)
+        /// left the client hung mid-load on the second warp — the server
+        /// itself behaved correctly throughout (clean, instant shutdown the
+        /// moment the dead connection was detected, no sign of a stuck game
+        /// thread), so this doesn't fix a proven server bug, it just slows
+        /// down the one variable that was different about that incident:
+        /// back-to-back full region generate/teardown cycles faster than
+        /// normal play would ever produce.
+        /// </summary>
+        private const int BountyHuntMinIntervalMs = 15_000;
+        private long _lastBountyHuntStartMs;
+
+        /// <summary>
         /// Start a Bounty Hunt against an existing active (non-Defeated)
         /// nemesis roster entry at the given tier (1-10). Validates the same
         /// way SetBountyTarget does, then hands off to StartBountyHuntInternal
@@ -125,6 +140,14 @@ namespace MHServerEmu.Games.Entities
             Avatar avatar = CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false) return "no avatar in world";
 
+            long nowMs = Game?.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond ?? 0;
+            long sinceLastMs = nowMs - _lastBountyHuntStartMs;
+            if (_lastBountyHuntStartMs > 0 && sinceLastMs < BountyHuntMinIntervalMs)
+            {
+                int waitSec = (int)Math.Ceiling((BountyHuntMinIntervalMs - sinceLastMs) / 1000.0);
+                return $"too soon after your last bounty hunt — wait {waitSec}s and try again";
+            }
+
             RegionPrototypeId[] pool = GetValidTrialArenaPool();
             if (pool.Length == 0) return "no valid arena regions available";
 
@@ -151,6 +174,7 @@ namespace MHServerEmu.Games.Entities
                 chosen = pool[Game.Random.Next(pool.Length)];
             }
             _lastBountyHuntRegionId = (ulong)chosen;
+            _lastBountyHuntStartMs = nowMs;
 
             DetachBountyHuntDeadAction();
             _bountyHuntHeroRef = heroRef;
@@ -180,6 +204,7 @@ namespace MHServerEmu.Games.Entities
             var mig = PlayerConnection?.MigrationData;
             if (mig == null) return;
             mig.LastBountyHuntRegionId = _lastBountyHuntRegionId;
+            mig.LastBountyHuntStartMs = _lastBountyHuntStartMs;
 
             if (_bountyHuntWarpPending == false) return;
             mig.PendingBountyHuntWarp = true;
@@ -197,6 +222,7 @@ namespace MHServerEmu.Games.Entities
             var mig = PlayerConnection?.MigrationData;
             if (mig == null) return;
             _lastBountyHuntRegionId = mig.LastBountyHuntRegionId;
+            _lastBountyHuntStartMs = mig.LastBountyHuntStartMs;
 
             if (mig.PendingBountyHuntWarp == false) return;
 

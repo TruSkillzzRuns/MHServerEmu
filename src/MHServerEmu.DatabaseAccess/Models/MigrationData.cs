@@ -142,6 +142,16 @@ namespace MHServerEmu.DatabaseAccess.Models
         public ulong LastBountyHuntRegionId { get; set; }
 
         /// <summary>
+        /// Game-clock ms timestamp of the last Bounty Hunt warp start —
+        /// enforces a minimum gap between consecutive hunts (see Player.
+        /// BountyHunt.cs's BountyHuntMinIntervalMs). Persisted the same way
+        /// as LastBountyHuntRegionId and for the same reason: a region
+        /// transfer destroys/recreates the Player instance, and this needs
+        /// to survive the exact hop it's cooling down after.
+        /// </summary>
+        public long LastBountyHuntStartMs { get; set; }
+
+        /// <summary>
         /// The Bounty Board — 6 randomly-rolled nemeses shown at once,
         /// independent of the player's personal Nemesis roster/kill
         /// history. See Player.BountyBoard.cs.
@@ -191,6 +201,7 @@ namespace MHServerEmu.DatabaseAccess.Models
             BountyHuntRank = 0;
             BountyHuntBoardSlot = -1;
             LastBountyHuntRegionId = 0;
+            LastBountyHuntStartMs = 0;
             BountyBoard.Clear();
         }
     }
