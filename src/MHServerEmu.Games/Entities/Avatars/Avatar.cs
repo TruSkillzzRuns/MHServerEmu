@@ -584,6 +584,18 @@ namespace MHServerEmu.Games.Entities.Avatars
                 return true;
             }
 
+            // Bounty Hunt — losing to a tracked bounty spawn bounces the
+            // player back to Avengers Tower instead of the normal
+            // checkpoint/corpse release, so they can't just release nearby
+            // in the (now-sterilized) arena and carry on without ever
+            // having to pay to re-engage. See Player.BountyHunt.cs's
+            // OnBountyHuntLoss/EndBountyHuntFromDeath.
+            if (owner.IsBountyHuntDeathPending)
+            {
+                owner.EndBountyHuntFromDeath(this);
+                return true;
+            }
+
             if (region.MetaGames.Count > 0)
             {
                 var player = GetOwnerOfType<Player>();

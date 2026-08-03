@@ -107,6 +107,19 @@ namespace MHServerEmu.Games.Entities
         private long _lastBountyHuntStartMs;
 
         /// <summary>
+        /// True from the moment the player is killed by their own tracked
+        /// Bounty Hunt spawn until their next DoDeathRelease consumes it —
+        /// redirects that release to Avengers Tower instead of the normal
+        /// checkpoint/corpse release, same mechanism Trial of the
+        /// Impossible's 3-death limit already uses (Avatar.DoDeathRelease).
+        /// Without this, the player could just release at the nearby
+        /// checkpoint and carry on in the (now-sterilized) arena without
+        /// ever having to pay to re-engage — the whole point of the
+        /// "pay again to try once more" rule.
+        /// </summary>
+        internal bool IsBountyHuntDeathPending { get; private set; }
+
+        /// <summary>
         /// Start a Bounty Hunt against an existing active (non-Defeated)
         /// nemesis roster entry at the given tier (1-10). Validates the same
         /// way SetBountyTarget does, then hands off to StartBountyHuntInternal
@@ -437,8 +450,18 @@ namespace MHServerEmu.Games.Entities
             int boardSlot = _bountyHuntBoardSlot;
             DetachBountyHuntDeadAction();
             ClearBountyHuntState();
+            IsBountyHuntDeathPending = true;
 
             if (boardSlot >= 0) ResolveBountyBoardLoss(boardSlot);
+        }
+
+        /// <summary>Called from Avatar.DoDeathRelease instead of the normal checkpoint/corpse release, once IsBountyHuntDeathPending is confirmed true.</summary>
+        internal void EndBountyHuntFromDeath(Avatar avatar)
+        {
+            IsBountyHuntDeathPending = false;
+            try { SendBannerLines("🏢 Defeated — returning to Avengers Tower. Pay again to try that bounty once more."); } catch { }
+            avatar.TeleportToRegionFromWeb((ulong)RegionPrototypeId.NPEAvengersTowerHUBRegion);
+            BountyHuntLogger.Info($"[BountyHunt] {GetName()}: death release redirected to Avengers Tower");
         }
 
         private void DetachBountyHuntDeadAction()
