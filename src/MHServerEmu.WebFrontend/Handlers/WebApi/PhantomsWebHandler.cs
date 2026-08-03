@@ -786,6 +786,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 foreach (var n in p.Nemeses)
                 {
                     string heroName = ((PrototypeId)n.HeroRef).GetName() ?? string.Empty;
+                    var portraitCandidates = ResolveNemesisPortraitCandidates(n.HeroRef, n.IsBoss);
                     list.Add(new
                     {
                         HeroRef = "0x" + n.HeroRef.ToString("X"),
@@ -803,17 +804,104 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         GrudgeScore = MHServerEmu.Games.Entities.Player.GrudgeScore(n),
                         IsBountyTarget = bountyTarget != null && bountyTarget.HeroRef == n.HeroRef,
                         IsPublicEnemyOne = publicEnemyOne != null && publicEnemyOne.HeroRef == n.HeroRef,
+                        PortraitPath = portraitCandidates.Count > 0 ? portraitCandidates[0] : null,
+                        PortraitCandidates = portraitCandidates,
                     });
                 }
+
+                int playerCredits = p.Properties[MHServerEmu.Games.Properties.PropertyEnum.Currency, GameDatabase.CurrencyGlobalsPrototype.Credits];
+
                 return new
                 {
                     Ok = true,
                     Nemeses = list,
                     BountyTargetHeroRef = bountyTarget != null ? "0x" + bountyTarget.HeroRef.ToString("X") : null,
                     PublicEnemyOneHeroRef = publicEnemyOne != null ? "0x" + publicEnemyOne.HeroRef.ToString("X") : null,
+                    // Bounty Board pricing — sent as raw per-tier rates rather
+                    // than a precomputed value per nemesis so the client can
+                    // recompute live as the tier picker moves, without a
+                    // round-trip per tick. See Player.BountyHunt.cs (the
+                    // single source of truth these mirror).
+                    PlayerCredits = playerCredits,
+                    BountyAcceptCostCreditsPerTier = MHServerEmu.Games.Entities.Player.BountyHuntAcceptCostCreditsPerTier,
+                    BountyRewardEternitySplintersPerTier = MHServerEmu.Games.Entities.Player.BountyHuntEternitySplintersPerTier,
+                    BountyRewardCubeShardsPerTier = MHServerEmu.Games.Entities.Player.BountyHuntCubeShardsPerTier,
+                    BountyRewardLegendaryMarksPerTier = MHServerEmu.Games.Entities.Player.BountyHuntLegendaryMarksPerTier,
+                    BountyGuaranteedBisTier = MHServerEmu.Games.Entities.Player.BountyHuntGuaranteedBisTier,
+                    CurrencyIcons = new
+                    {
+                        Credits = ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.Credits),
+                        EternitySplinters = ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.EternitySplinters),
+                        CubeShards = ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.CubeShards),
+                        LegendaryMarks = ResolveCurrencyIconCandidates(GameDatabase.CurrencyGlobalsPrototype.LegendaryMarks),
+                    },
                 };
             });
             await context.SendJsonAsync(result);
+        }
+
+        /// <summary>HeroRef -> portrait asset candidates, resolved directly from loaded client data (AvatarPrototype for a hero nemesis, AgentPrototype's icon for a boss nemesis) rather than by name match — nemesis entries already carry the exact PrototypeId, so no lookup-by-shortname ambiguity like ResolveHeroPortraitCandidates elsewhere has to deal with.</summary>
+        private static List<string> ResolveNemesisPortraitCandidates(ulong heroRef, bool isBoss)
+        {
+            var candidates = new List<string>(4);
+            var protoRef = (PrototypeId)heroRef;
+
+            void AddCandidate(AssetId assetId)
+            {
+                if (assetId == 0) return;
+                string assetName = GameDatabase.GetAssetName(assetId);
+                if (string.IsNullOrEmpty(assetName) == false && candidates.Contains(assetName) == false)
+                    candidates.Add(assetName);
+            }
+
+            if (isBoss)
+            {
+                var agentProto = protoRef.As<AgentPrototype>();
+                if (agentProto != null)
+                {
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+                    AddCandidate(agentProto.IconPathHiRes != 0 ? agentProto.IconPathHiRes : agentProto.IconPath);
+#else
+                    AddCandidate(agentProto.IconPath);
+#endif
+                }
+            }
+            else
+            {
+                var avatarProto = protoRef.As<AvatarPrototype>();
+                if (avatarProto != null)
+                {
+                    AddCandidate(avatarProto.PortraitPath);
+                    AddCandidate(avatarProto.CharacterSelectIconPortraitSmall);
+                    AddCandidate(avatarProto.SocialIconPath);
+                    AddCandidate(avatarProto.CharacterSelectIconPath);
+                }
+            }
+
+            return candidates;
+        }
+
+        /// <summary>Currency ref (Credits/EternitySplinters/etc.) -> icon asset candidates, same Icon/IconHiRes/IconSmall fields the vendor/inventory UI reads off CurrencyPrototype — lets the Bounty Board show a real currency icon next to its cost/reward numbers instead of a generic glyph.</summary>
+        private static List<string> ResolveCurrencyIconCandidates(PrototypeId currencyRef)
+        {
+            var candidates = new List<string>(3);
+            var proto = currencyRef.As<CurrencyPrototype>();
+            if (proto == null) return candidates;
+
+            void AddCandidate(AssetId assetId)
+            {
+                if (assetId == 0) return;
+                string assetName = GameDatabase.GetAssetName(assetId);
+                if (string.IsNullOrEmpty(assetName) == false && candidates.Contains(assetName) == false)
+                    candidates.Add(assetName);
+            }
+
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            AddCandidate(proto.IconHiRes);
+#endif
+            AddCandidate(proto.Icon);
+            AddCandidate(proto.IconSmall);
+            return candidates;
         }
 
         protected override async Task Post(WebRequestContext context)

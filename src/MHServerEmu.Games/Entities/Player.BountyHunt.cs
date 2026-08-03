@@ -43,15 +43,26 @@ namespace MHServerEmu.Games.Entities
 
         // Flat currency-per-tier scaling, reusing the exact same currency
         // fields Trial's finale grant already uses.
-        private const int BountyHuntEternitySplintersPerTier = 5;
-        private const int BountyHuntCubeShardsPerTier = 2;
-        private const int BountyHuntLegendaryMarksPerTier = 1;
+        public const int BountyHuntEternitySplintersPerTier = 5;
+        public const int BountyHuntCubeShardsPerTier = 2;
+        public const int BountyHuntLegendaryMarksPerTier = 1;
 
         // Tier at/above which a kill also grants one guaranteed BiS piece
         // for the player's own current hero — same mechanism Trial's finale
         // chest uses (PhantomBiSData + LootManager.SpawnItem), just a single
         // piece instead of Trial's multi-hero spread.
-        private const int BountyHuntGuaranteedBisTier = 9;
+        public const int BountyHuntGuaranteedBisTier = 9;
+
+        // Posting a bounty costs Credits up front, scaled by tier — this is
+        // what makes it a real "bounty" (a wager) rather than a free
+        // difficulty picker. Paid on StartBountyHunt, before the warp;
+        // never refunded if the player leaves without the target finding
+        // them (same no-penalty design as the rest of Bounty Hunt — the
+        // penalty for backing out is just losing the credits already spent).
+        public const int BountyHuntAcceptCostCreditsPerTier = 250;
+
+        /// <summary>Credits required to post a bounty at the given tier. Public/static so the WebAPI can echo it back to the client for display without duplicating the formula.</summary>
+        public static int BountyHuntAcceptCost(int tier) => BountyHuntAcceptCostCreditsPerTier * Math.Clamp(tier, 1, BountyHuntMaxRank);
 
         private readonly EventGroup _bountyHuntEvents = new();
         private readonly EventPointer<BountyHuntSpawnTickEvent> _bountyHuntSpawnTick = new();
@@ -87,6 +98,14 @@ namespace MHServerEmu.Games.Entities
 
             RegionPrototypeId[] pool = GetValidTrialArenaPool();
             if (pool.Length == 0) return "no valid arena regions available";
+
+            PrototypeId creditsProtoRef = GameDatabase.CurrencyGlobalsPrototype.Credits;
+            int cost = BountyHuntAcceptCost(rank);
+            int currentCredits = Properties[PropertyEnum.Currency, creditsProtoRef];
+            if (currentCredits < cost)
+                return $"not enough credits — bounty costs {cost}, you have {currentCredits}";
+            Properties.AdjustProperty(-cost, new(PropertyEnum.Currency, creditsProtoRef));
+
             RegionPrototypeId chosen = pool[Game.Random.Next(pool.Length)];
 
             DetachBountyHuntDeadAction();
