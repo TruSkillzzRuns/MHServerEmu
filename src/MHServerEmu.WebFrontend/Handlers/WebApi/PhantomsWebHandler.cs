@@ -1104,6 +1104,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         e.LossCount,
                         e.Defeated,
                         e.Fled,
+                        e.RewardCollected,
                         AcceptCost = MHServerEmu.Games.Entities.Player.BountyBoardAcceptCost(e.Rank),
                         PortraitPath = portraitCandidates.Count > 0 ? portraitCandidates[0] : null,
                         PortraitCandidates = portraitCandidates,
@@ -1174,7 +1175,12 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     string msg = p.RerollBountyBoard();
                     return (object)new { Ok = true, Message = msg };
                 }
-                return (object)new { Ok = false, Error = "unknown action (start|reroll)" };
+                if (string.Equals(action, "collect", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    string msg = p.CollectBountyBoardReward(slotIndex);
+                    return (object)new { Ok = true, Message = msg };
+                }
+                return (object)new { Ok = false, Error = "unknown action (start|collect|reroll)" };
             });
             await context.SendJsonAsync(result);
         }

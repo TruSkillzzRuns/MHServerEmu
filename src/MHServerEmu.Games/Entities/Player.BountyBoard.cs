@@ -7,6 +7,8 @@ using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Locales;
+using MHServerEmu.Games.Loot;
+using MHServerEmu.Games.Properties;
 
 namespace MHServerEmu.Games.Entities
 {
@@ -128,13 +130,58 @@ namespace MHServerEmu.Games.Entities
             MaybeRerollBountyBoard();
         }
 
+        /// <summary>
+        /// Grants a Defeated slot's currency reward (+ guaranteed BiS at
+        /// rank 9-10, straight to inventory) and marks it collected —
+        /// separate from the kill itself (ResolveBountyBoardWin) so the
+        /// player gets an explicit "Collect Rewards" moment on the board
+        /// rather than the payout landing silently mid-fight-cleanup.
+        /// Reward amount is recomputed from the slot's Rank, which is
+        /// frozen the moment it's Defeated (no more loss-driven rank-ups
+        /// apply to a resolved slot).
+        /// </summary>
+        public string CollectBountyBoardReward(int slotIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= _bountyBoard.Count) return "invalid bounty slot";
+            BountyBoardEntry slot = _bountyBoard[slotIndex];
+            if (slot.Defeated == false) return "that bounty hasn't been defeated yet";
+            if (slot.RewardCollected) return "reward already collected";
+
+            var currencyGlobals = GameDatabase.CurrencyGlobalsPrototype;
+            Properties.AdjustProperty(BountyHuntEternitySplintersPerTier * slot.Rank, new(PropertyEnum.Currency, currencyGlobals.EternitySplinters));
+            Properties.AdjustProperty(BountyHuntCubeShardsPerTier * slot.Rank, new(PropertyEnum.Currency, currencyGlobals.CubeShards));
+            Properties.AdjustProperty(BountyHuntLegendaryMarksPerTier * slot.Rank, new(PropertyEnum.Currency, currencyGlobals.LegendaryMarks));
+
+            bool gotBis = false;
+            if (slot.Rank >= BountyHuntGuaranteedBisTier)
+            {
+                Avatar avatar = CurrentAvatar;
+                if (avatar != null && PhantomBiSData.TryGetLoadout(avatar.PrototypeDataRef, Game, out var bisSlots) && bisSlots.Count > 0)
+                {
+                    var pool = new List<PrototypeId>(bisSlots.Values);
+                    PrototypeId itemRef = pool[Game.Random.Next(pool.Count)];
+                    gotBis = Game.LootManager.GiveItem(itemRef, LootContext.Drop, this);
+                }
+            }
+
+            slot.RewardCollected = true;
+            MaybeRerollBountyBoard();
+
+            try { SendBannerLines($"💰 Bounty reward collected — rank {slot.Rank} payout{(gotBis ? " + guaranteed BiS!" : "!")}"); } catch { }
+            BountyBoardLogger.Info($"[BountyBoard] {GetName()}: slot {slotIndex} reward collected (rank {slot.Rank}, bis={gotBis})");
+            return gotBis ? "reward collected — currency + a guaranteed BiS item" : "reward collected";
+        }
+
+        /// <summary>A slot is done with — eligible to count toward a board reroll — once it's Fled, or Defeated AND its reward has actually been collected. A Defeated-but-uncollected slot must stay put so the reward doesn't vanish into a reroll before the player claims it.</summary>
+        private static bool IsSlotFullyResolved(BountyBoardEntry e) => e.Fled || (e.Defeated && e.RewardCollected);
+
         private void MaybeRerollBountyBoard(bool force = false)
         {
             if (force == false)
             {
                 if (_bountyBoard.Count == 0) return;
                 foreach (var e in _bountyBoard)
-                    if (e.Defeated == false && e.Fled == false) return; // still an active slot — no reroll yet
+                    if (IsSlotFullyResolved(e) == false) return; // still an active or uncollected slot — no reroll yet
             }
             GenerateBountyBoard();
         }

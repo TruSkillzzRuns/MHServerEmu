@@ -277,6 +277,15 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// <summary>True once the player has killed this bounty. Resolved (counts toward a board reroll) but stays visible until reroll.</summary>
         public bool Defeated;
 
+        /// <summary>
+        /// True once the player has claimed the currency (+ guaranteed BiS
+        /// at rank 9-10) reward for a Defeated bounty via
+        /// CollectBountyBoardReward. Killing a bounty only sets Defeated —
+        /// the reward itself waits for this explicit "Collect Rewards"
+        /// click rather than granting silently at kill time.
+        /// </summary>
+        public bool RewardCollected;
+
         /// <summary>True once this bounty has fled (3rd loss). Resolved, no longer huntable, stays visible until reroll.</summary>
         public bool Fled;
 

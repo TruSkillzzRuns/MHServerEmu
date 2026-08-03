@@ -285,7 +285,15 @@ namespace MHServerEmu.Games.Entities
             BountyHuntLogger.Info($"[BountyHunt] {GetName()}: {displayName} spawned (id={id:X}), tier {_bountyHuntRank}");
         }
 
-        /// <summary>Fires when the tracked Bounty Hunt spawn dies — grants the tier-scaled currency and (tier 9-10) guaranteed BiS bonus on top of the baseline Bounty Board reward, which is claimed separately via the existing RetireNemesis/TryClaimBountyReward chain.</summary>
+        /// <summary>
+        /// Fires when the tracked Bounty Hunt spawn dies. Personal-nemesis
+        /// hunts (boardSlot -1) still pay out immediately, same as always —
+        /// there's no "collect" UI for those. Board hunts instead just mark
+        /// the slot Defeated here; the tier-scaled currency + guaranteed
+        /// BiS grant moves to CollectBountyBoardReward (Player.
+        /// BountyBoard.cs), fired by an explicit "Collect Rewards" click so
+        /// the reward visibly lands rather than vanishing mid-fight-cleanup.
+        /// </summary>
         private void OnBountyHuntEntityDead(in EntityDeadGameEvent evt)
         {
             if (evt.Defender == null || evt.Defender.Id != _bountyHuntSpawnedId) return;
@@ -297,26 +305,33 @@ namespace MHServerEmu.Games.Entities
 
             try
             {
-                var currencyGlobals = GameDatabase.CurrencyGlobalsPrototype;
-                Properties.AdjustProperty(BountyHuntEternitySplintersPerTier * tier, new(PropertyEnum.Currency, currencyGlobals.EternitySplinters));
-                Properties.AdjustProperty(BountyHuntCubeShardsPerTier * tier, new(PropertyEnum.Currency, currencyGlobals.CubeShards));
-                Properties.AdjustProperty(BountyHuntLegendaryMarksPerTier * tier, new(PropertyEnum.Currency, currencyGlobals.LegendaryMarks));
-
-                if (tier >= BountyHuntGuaranteedBisTier)
+                if (boardSlot >= 0)
                 {
-                    Avatar avatar = CurrentAvatar;
-                    if (avatar != null && PhantomBiSData.TryGetLoadout(avatar.PrototypeDataRef, Game, out var slots) && slots.Count > 0)
-                    {
-                        var pool = new List<PrototypeId>(slots.Values);
-                        PrototypeId itemRef = pool[Game.Random.Next(pool.Count)];
-                        Game.LootManager.SpawnItem(itemRef, LootContext.Drop, this, evt.Defender);
-                    }
+                    ResolveBountyBoardWin(boardSlot, heroRef);
+                    try { SendBannerLines("💰 Bounty defeated — collect your reward from the Bounty Board!"); } catch { }
+                    BountyHuntLogger.Info($"[BountyHunt] {GetName()}: board slot {boardSlot} defeated on '{((PrototypeId)heroRef).GetName()}', reward pending collection");
                 }
+                else
+                {
+                    var currencyGlobals = GameDatabase.CurrencyGlobalsPrototype;
+                    Properties.AdjustProperty(BountyHuntEternitySplintersPerTier * tier, new(PropertyEnum.Currency, currencyGlobals.EternitySplinters));
+                    Properties.AdjustProperty(BountyHuntCubeShardsPerTier * tier, new(PropertyEnum.Currency, currencyGlobals.CubeShards));
+                    Properties.AdjustProperty(BountyHuntLegendaryMarksPerTier * tier, new(PropertyEnum.Currency, currencyGlobals.LegendaryMarks));
 
-                try { SendBannerLines($"💰 Bounty claimed — tier {tier} payout!"); } catch { }
-                BountyHuntLogger.Info($"[BountyHunt] {GetName()}: bounty tier {tier} claimed on '{((PrototypeId)heroRef).GetName()}'");
+                    if (tier >= BountyHuntGuaranteedBisTier)
+                    {
+                        Avatar avatar = CurrentAvatar;
+                        if (avatar != null && PhantomBiSData.TryGetLoadout(avatar.PrototypeDataRef, Game, out var slots) && slots.Count > 0)
+                        {
+                            var pool = new List<PrototypeId>(slots.Values);
+                            PrototypeId itemRef = pool[Game.Random.Next(pool.Count)];
+                            Game.LootManager.SpawnItem(itemRef, LootContext.Drop, this, evt.Defender);
+                        }
+                    }
 
-                if (boardSlot >= 0) ResolveBountyBoardWin(boardSlot, heroRef);
+                    try { SendBannerLines($"💰 Bounty claimed — tier {tier} payout!"); } catch { }
+                    BountyHuntLogger.Info($"[BountyHunt] {GetName()}: bounty tier {tier} claimed on '{((PrototypeId)heroRef).GetName()}'");
+                }
             }
             catch (Exception ex)
             {
