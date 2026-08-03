@@ -10,10 +10,10 @@ using MHServerEmu.DatabaseAccess.Models;
 namespace MHServerEmu.Games.Entities
 {
     // Cross-session persistence for our phantom-heroes fork's per-player
-    // state: nemesis roster, preferred-power map, and the Rogue Encounter
-    // toggle. Stored as a JSON sidecar per DbGuid under Data/PhantomPersist
-    // so we don't have to touch the SQLite schema (which would need a
-    // migration for every fork user).
+    // state: nemesis roster, Bounty Board, preferred-power map, and the
+    // Rogue Encounter toggle. Stored as a JSON sidecar per DbGuid under
+    // Data/PhantomPersist so we don't have to touch the SQLite schema
+    // (which would need a migration for every fork user).
     //
     // Save fires on Player.ExitGame; load fires on Player.OnLoadingScreenFinished
     // once the DbGuid is known. Idempotent — safe to call multiple times.
@@ -67,6 +67,18 @@ namespace MHServerEmu.Games.Entities
                     foreach (var n in blob.Nemeses) _nemeses.Add(n);
                 }
 
+                // Bounty Board — same "must survive a real logout, not just
+                // a same-session region hop" requirement as Nemeses. It
+                // also rides MigrationData.BountyBoard for region-transfer
+                // continuity (Player.BountyBoard.cs's Snapshot/Restore), but
+                // that's a separate, session-only relay — this JSON sidecar
+                // is what actually makes it outlive a disconnect.
+                _bountyBoard.Clear();
+                if (blob.BountyBoard != null)
+                {
+                    foreach (var b in blob.BountyBoard) _bountyBoard.Add(b);
+                }
+
                 // Preferred powers
                 _preferredPowers.Clear();
                 if (blob.PreferredPowers != null)
@@ -80,7 +92,7 @@ namespace MHServerEmu.Games.Entities
                 if (blob.RogueEncounterEnabled)
                     RogueEncounterEnabled = true;
 
-                PersistLogger.Info($"[PhantomPersist] {GetName()}: loaded {_nemeses.Count} nemesis entries, {_preferredPowers.Count} preferred powers");
+                PersistLogger.Info($"[PhantomPersist] {GetName()}: loaded {_nemeses.Count} nemesis entries, {_bountyBoard.Count} bounty board slots, {_preferredPowers.Count} preferred powers");
             }
             catch (Exception ex)
             {
@@ -101,6 +113,7 @@ namespace MHServerEmu.Games.Entities
             // point littering the folder with empty stubs for players who
             // never engaged with the phantom systems.
             bool hasData = _nemeses.Count > 0
+                        || _bountyBoard.Count > 0
                         || _preferredPowers.Count > 0
                         || _rogueEncounterEnabled;
             string path = PhantomPersistPath(dbGuid);
@@ -116,6 +129,7 @@ namespace MHServerEmu.Games.Entities
                 {
                     Version = 1,
                     Nemeses = new List<NemesisEntry>(_nemeses),
+                    BountyBoard = new List<BountyBoardEntry>(_bountyBoard),
                     PreferredPowers = new Dictionary<ulong, ulong>(_preferredPowers),
                     RogueEncounterEnabled = _rogueEncounterEnabled,
                 };
@@ -127,7 +141,7 @@ namespace MHServerEmu.Games.Entities
                 if (File.Exists(path)) File.Delete(path);
                 File.Move(tempPath, path);
 
-                PersistLogger.Info($"[PhantomPersist] {GetName()}: saved {_nemeses.Count} nemesis entries, {_preferredPowers.Count} preferred powers");
+                PersistLogger.Info($"[PhantomPersist] {GetName()}: saved {_nemeses.Count} nemesis entries, {_bountyBoard.Count} bounty board slots, {_preferredPowers.Count} preferred powers");
             }
             catch (Exception ex)
             {
@@ -139,6 +153,7 @@ namespace MHServerEmu.Games.Entities
         {
             public int Version { get; set; }
             public List<NemesisEntry> Nemeses { get; set; }
+            public List<BountyBoardEntry> BountyBoard { get; set; }
             public Dictionary<ulong, ulong> PreferredPowers { get; set; }
             public bool RogueEncounterEnabled { get; set; }
         }
