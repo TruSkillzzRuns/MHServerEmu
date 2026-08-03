@@ -20,10 +20,20 @@ namespace MHServerEmu.Games.Entities
     public partial class Player
     {
         private static readonly Logger PersistLogger = LogManager.CreateLogger();
+        // IncludeFields is REQUIRED here — NemesisEntry/BountyBoardEntry are
+        // plain public-field classes (no properties), and System.Text.Json
+        // only handles properties by default. Without this, every entry
+        // silently round-trips as "{}" (Serialize writes nothing, Deserialize
+        // gives back a blank default-constructed instance) — confirmed live
+        // 2026-08-02: a saved-then-reloaded board came back as 6 slots with
+        // HeroRef=0/Rank=0, since a region transfer (not just a full
+        // disconnect) also runs a Save+Load cycle via Player.ExitGame/
+        // OnLoadingScreenFinished.
         private static readonly JsonSerializerOptions s_persistJsonOptions = new()
         {
             WriteIndented = false,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            IncludeFields = true,
         };
 
         private bool _phantomPersistLoaded;
