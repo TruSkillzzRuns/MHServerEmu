@@ -1,0 +1,962 @@
+{
+  "10628343964123464959": {
+    "en_us": "Craft Axis Raid Unique\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "1884687540569834810": {
+    "en_us": "Upgrade an Item Grade 63 Unique or Cosmic item to Item Grade 66.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "15116771868702213443": {
+    "en_us": "Replace all the affix values on a Cosmic rarity weapon or armor slot item with new affix values.\n\nRequired Materials:\n1 - Cosmic Armor or Weapon\n10 - Futuristic Alloy\n10 - High Tech Fabric\n10 - Ionic Particle\n10 - Nanotech Filament\n10 - Enhanced Genome\n10 - Astral Essence\n1 - Unstable Molecules"
+  },
+  "3180060594848335161": {
+    "en_us": "This recipe crafts 1 Starktech Research Credit\n\nMaterials Required:\n\nRequired Materials:\n100 - Cosmic Fragment"
+  },
+  "17115471587432793342": {
+    "en_us": "Swaps Crafted Affixes between two Catalysts.\n\nRequired Materials:\n1 - Catalyst\n1 - Catalyst"
+  },
+  "15000782939683489092": {
+    "en_us": "Swaps Blessings between two Artifacts.\n\nRequired Materials:\n1 - Any Artifact\n1 - Any Artifact"
+  },
+  "15463865566153737485": {
+    "en_us": "Upgrade an Item Grade 63 Medallion to Grade 66.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Any Medallion"
+  },
+  "11062324437783872828": {
+    "en_us": "Builds an Improved Arc Reactor Artifact.\n\n1 - 3 Base damage vs bosses\n300 - 500  Spirit\n1 - 5% less damage from enemy Energy Powers\n\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "18425032181476558135": {
+    "en_us": "Materials Required:\n\nRequired Materials:\n1 - Any Ring, Medal, Relic, Legendary or Artifact item\n1 - Matrix of Unbinding"
+  },
+  "9037148689377527051": {
+    "en_us": "Upgrade an Item Grade 66 Insignia to Grade 69.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Epic Insignia"
+  },
+  "4170140815322580292": {
+    "en_us": "Transforms a level 13 to 24 rare item into an epic item of the same slot and level.\nThe affixes from the rare item will also be on the epic item.\nRecipe does not accept Insignias or Rings, or items that are not for your current hero.\nIf your gear is older and has affixes that give bonuses or grants to a certain power that has since changed, those affixes may be re-rolled.\n\nRequired Materials:\n1 - Blue (Rare) Armor or Weapon\n1 - Any Element"
+  },
+  "10048813426908267793": {
+    "en_us": "Transforms two of the same Unique into a random stack of 8 relics.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "17132550722460452103": {
+    "en_us": "Adds the artifact\u0027s visual effect to the Catalyst.\nReplaces any existing visual effect already on the Catalyst.\nWarning: Artifact is consumed and Catalyst becomes bound.\n\nRequired Materials:\n1 - Catalyst\n1 - Any Decorative Artifact"
+  },
+  "18237298954755310860": {
+    "en_us": "Craft Lord Brimstone\u0027s Hide, a Level 60 Slot 2 Unique Item that is usable by Any Hero\n\n#emphasis#Lord Brimstone\u0027s Hide#/emphasis#\n#emphasis#\u002BDefense Rating#/emphasis#\n#emphasis#\u002BMelee Damage#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#\u002BTenacity#/emphasis#\n#emphasis#\u002BHealth Regeneration#/emphasis#\n#emphasis#When you drop below 30% Health, gain Durability#/emphasis#\n#emphasis#When you are hit by a Damage Over Time Power, gain Defense Rating and Movement Speed#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "17718755686172263737": {
+    "en_us": "Upgrade an Item Grade 63 Unique or Cosmic item to Item Grade 66.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "17929671127674520901": {
+    "en_us": "Research a L3 Engineering Project.\n\nThe results will contain information that increases the level of your Engineering Division and can teach them how to build new items! \n\nHigher level research projects grant more rewards!\n\nIt requires the following materials to research:\n\nRequired Materials:\n25 - Engineering Schematic Data"
+  },
+  "17382026075461518657": {
+    "en_us": "Research a Level 1 Science Project.\n\nThe results will contain information that increases the level of your Science Division and can increase the amount of enhancements and modifications they can perform!\n\nIt requires the following materials to research:\n\nRequired Materials:\n5 - Technical Readouts"
+  },
+  "6387487152974529855": {
+    "en_us": "Adds the #emphasis#Repulsor Afterburner#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Damage Rating to Leap Powers#/emphasis#\n#emphasis#Damage Rating to Movement Powers#/emphasis#\n#emphasis#Critical Rating#/emphasis#\n#emphasis#Move Speed#/emphasis#\n#emphasis#Power Cost Reduction#/emphasis#\n#emphasis#2% chance when you hit with a Movement Power to gain \u002B200 Critical Hit Rating and \u002B2000 Critical Damage Rating for 5s#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Enhanced Genome\n1 - Nanotech Filament\n10 - Mechanical Components\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "9506282495393137982": {
+    "en_us": "Resets the Rare Cybernetics Upgrade for a pet of your choice.\n\nRequired Materials:\n1 - Any Pet\n1 - Any Element"
+  },
+  "12952484049478223159": {
+    "en_us": "Adds the #emphasis#Elk Rune#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 50-60 of this enchantment gives you:\n#emphasis#\u002B150 Tenacity#/emphasis#\n\nLevel 35-49 of this enchantment gives you:\n#emphasis#\u002B125 Tenacity#/emphasis#\n\nLevel 20-34 of this enchantment gives you:\n#emphasis#\u002B100 Tenacity#/emphasis#\n\nLevel 1-19 of this enchantment gives you:\n#emphasis#\u002B75 Tenacity#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Elk Rune"
+  },
+  "6652161364378191165": {
+    "en_us": "Adds the #emphasis#Agamotto\u0027s Enhancement#/emphasis# enhancement to any #emphasis#Utility Armor Slot Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Damage Rating to Magic Powers#/emphasis#\n#emphasis#Spirit#/emphasis#\n#emphasis#Health#/emphasis#\n#emphasis#% chance when you hit to grow in size and gain 1000 Damage Rating for 15s (1m cooldown)#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Astral Essence\n5 - Meteorite Dust\n5 - Mechanical Components\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "2468218058145596725": {
+    "en_us": "Builds a Pym\u0027s Growth Serum Artifact.\n\n250 - 300 Damage Rating to Bruiser Powers\n665 -1200 Health\nChance when you hit to grow and gain 1200 Defense for 5s. (10s cooldown)\nChance when you hit to shrink your opponent and weaken them for 5s. \n\n\nRequired Materials:\n10 - Spare Parts\n10 - Scrap Metal\n2 - Ionic Particle"
+  },
+  "7663033006069843212": {
+    "en_us": "Upgrade an Item Grade 66 Unique or Cosmic item to Item Grade 69.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "11493155841357055293": {
+    "en_us": "Transforms an artifact into a #emphasis#Modified Artifact#/emphasis# and adds a Reserve Modification to it, replacing any existing blessings already on the artifact.\nReserve Modification is a #red#Utility Mod#/red# that grants you #emphasis#Spirit, Damage Rating, and Health#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "8747523329452606840": {
+    "en_us": "Adds the #emphasis#Hammer of the Gods#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B300 Physical Damage Rating#/emphasis#\n#emphasis#\u002B300 Energy Damage Rating#/emphasis#\n#emphasis#30 Spirit#/emphasis#\n#emphasis#\u002B300 Physical Defense Rating#/emphasis#\n#emphasis#\u002B300 Energy Defense Rating#/emphasis#\n#emphasis#3% chance when you hit to summon a lightning strike that does 30,000 damage (30s cooldown)#/emphasis#\n\nLevel 25 items receive half bonus to lightning strike damage, Defense, and Damage Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Thor Rune\n1 - Day Rune\n1 - Hail Rune\n1 - Earth Rune"
+  },
+  "11776136938540696889": {
+    "en_us": "Adds the #emphasis#Joy Rune#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 1-60 of this enchantment gives you:\n#emphasis#\u002B5% Rare Item Find#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Joy Rune"
+  },
+  "5647623480903730550": {
+    "en_us": "Creates a heroic rarity accessory item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Magnetic Materials\n5 - Mechanical Components\n5 - Energized Particles\n5 - Ionic Particle\n5 - Nanotech Filament"
+  },
+  "1848810527759074670": {
+    "en_us": "Adds the #emphasis#Voice of the Spirit Walker#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B300 Energy Damage Rating#/emphasis#\n#emphasis#\u002B300 Defense Rating#/emphasis#\n#emphasis#\u002B300 Health#/emphasis#\n#emphasis#\u002B30 Spirit#/emphasis#\n#emphasis#\u002B30 Bonus XP per enemy defeat#/emphasis#\n\nLevel 25 items receive half the bonus to Health, Damage, and Defense Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Ash Rune\n1 - Lake Rune\n1 - Mouth Rune\n1 - Saturn Rune\n1 - Stone Rune"
+  },
+  "14897193834650797376": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Area Damage Upgrade#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item. This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B100 Area Damage Rating#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Alternate Reality Rune"
+  },
+  "6851882244141417739": {
+    "en_us": "Replace all the affix values on a Cosmic rarity medal or ring slot item with new affix values.\n\nRequired Materials:\n1 - Cosmic Ring or Medal\n10 - Futuristic Alloy\n10 - High Tech Fabric\n10 - Ionic Particle\n10 - Nanotech Filament\n10 - Enhanced Genome\n10 - Astral Essence\n1 - Unstable Molecules"
+  },
+  "10188576571928085828": {
+    "en_us": "Adds the #emphasis#Starktech Evasive Capabilities#/emphasis# enhancement to any Upper Body or Lower Body item of Super Heroic or higher rarity, replacing any existing enchancements already on the item.\n\nThis enhancement grants #emphasis#25 - 100 Dodge Rating#/emphasis# based off of item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Biological Samples\n5 - Enhanced Genome\n1 - High Tech Fabric"
+  },
+  "12569113559237461300": {
+    "en_us": "Adds the #emphasis#Stone Rune#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 50-60 of this enchantment gives you:\n#emphasis#\u002B50 Physical Damage Rating#/emphasis#\n\nLevel 35-49 of this enchantment gives you:\n#emphasis#\u002B40 Physical Damage Rating#/emphasis#\n\nLevel 20-34 of this enchantment gives you:\n#emphasis#\u002B30 Physical Damage Rating#/emphasis#\n\nLevel 1-19 of this enchantment gives you:\n#emphasis#\u002B20 Physical Damage Rating#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Stone Rune"
+  },
+  "13157961491084805377": {
+    "en_us": "Rerolls a Cosmic Artifact\u0027s Cosmic Affix\n\nRequired Materials:\n1 - Any Artifact\n1 - Unstable Molecules"
+  },
+  "15250591612147795267": {
+    "en_us": "Crafts a Bloodstone Sigil Flourish from any Bloodstone Demonband and an Astral Element.\n\nThis crafted item can be used in your Flourish slot.\n\nRequired Materials:\n1 - Bloodstone Ring\n1 - Astral Essence"
+  },
+  "9723019322679297345": {
+    "en_us": "Transforms a level 49 or higher rare item into an epic item of the same slot and level.\nThe affixes from the rare item will also be on the epic item.\nRecipe does not accept Insignias or Rings, or items that are not for your current hero.\nIf your gear is older and has affixes that give bonuses or grants to a certain power that has since changed, those affixes may be re-rolled.\n\nRequired Materials:\n1 - Blue (Rare) Armor or Weapon\n1 - Any Element"
+  },
+  "6389550824626128186": {
+    "en_us": "Builds a Beta Particle Mini-Reactor Artifact.\n\n70 - 100 Spirit\n200 Damage Rating to Movement Powers for 12s when you hit with a power\n100 - 200  Damage Rating vs Vulnerable Targets\n\n\nRequired Materials:\n10 - Spare Parts\n10 - Scrap Metal\n2 - Ionic Particle"
+  },
+  "18184866672729523564": {
+    "en_us": "This consumes your Legendary Item and gives you a chest of Legendary Marks in return. \n#red#NOTE:#/red# You can only exchange #red#Level 80 Legendary Items#/red# that were previously purchased for #red#2,000 Legendary Marks#/red#.\n\nRequired Materials:\n1 - Any Legendary"
+  },
+  "1482669440446170384": {
+    "en_us": "Builds a S.H.I.E.L.D. Training Manual - Clearance Level 1.\n\nThis Artifact grants the following:\nWhen you hit with a Power reference the manual, gaining 150 damage Rating for 10s\n150 of one of your hero specific defense types.\n300 - 600 Health\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal"
+  },
+  "6905275237569070437": {
+    "en_us": "Creates a super heroic rarity weapon item for your current hero at their current level.\n\nRequired Materials:\n20 - Spare Parts\n10 - Scrap Metal\n10 - Cloth\n10 - Mechanical Components\n1 - Futuristic Alloy\n1 - High Tech Fabric"
+  },
+  "7779368586250487100": {
+    "en_us": "Unbinds any Artifact, allowing you to trade it to another player or give it to another of your heroes.\n\nRequired Materials:\n1 - Any Artifact\n1 - Any Element\n1 - Unstable Molecules"
+  },
+  "2754739075920692497": {
+    "en_us": "Transforms two Cosmic Danger Room Scenarios into 1 new Cosmic Danger Room Scenario.\n\nRequired Materials:\n1 - Danger Room Scenario\n1 - Danger Room Scenario"
+  },
+  "8199152822833579320": {
+    "en_us": "Transforms a level 59 or lower Unique item into a level 60 version of the same Unique.\nThis does not re-roll affixes. Existing affixes are scaled to a higher level.\nRecipe does not accept Uniques that are not for your current hero.\n\nRequired Materials:\n1 - Unique Armor or Weapon\n1 - Astral Essence\n1 - Enhanced Genome\n1 - Ionic Particle\n1 - Nanotech Filament\n2 - Unstable Molecules"
+  },
+  "9685446304518243637": {
+    "en_us": "Transforms four of the same Unique into a Credit Chest worth 200,000 credits.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "13198353618456675639": {
+    "en_us": "Builds an artifact that increases your Health and movement speed, plus gives you a chance to summon haste orbs when you attack.\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Ionic Particle\n5 - Futuristic Alloy\n1 - Unstable Molecules"
+  },
+  "11417995455566316855": {
+    "en_us": "Craft Blade of Hrinmeer, a Level 60 Slot 1 Unique Item that is usable by Any Hero\n\n#emphasis#Blade of Hrinmeer#/emphasis#\n#emphasis#\u002BDamage Rating#/emphasis#\n#emphasis#\u002BDamage Rating vs. Bleeding Targets#/emphasis#\n#emphasis#\u002BFighting#/emphasis#\n#emphasis#\u002BBrutal Strike Rating to Melee Attacks#/emphasis#\n#emphasis#\u002BBrutal Damage Rating#/emphasis#\n#emphasis#Chance when you hit to cause enemies to Bleed#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "7681848381622453520": {
+    "en_us": "This consumes your Legendary item and gives you a chest of 300 Legendary Marks in return. \nYou cannot exchange Limited Edition Legendary items.\n\nRequired Materials:\n1 - Any Legendary\n1 - Any Element"
+  },
+  "14560590684951872832": {
+    "en_us": "Transforms a level 12 or lower Epic item usable by another hero into a new item usable by your current hero and binds it to you.\n\nRequired Materials:\n1 - Epic (Purple) Armor or Weapon\n1 - Nanotech Filament\n1 - Ionic Particle"
+  },
+  "5862181161967224119": {
+    "en_us": "Builds a Pym\u0027s Shrinking Serum Artifact.\n\n250 - 300 Damage Rating to Bruiser Powers\n10 - 15% Chance when you are hit to shrink to minimum size and gain 800 Dodge Rating for 5s. (10s cooldown)\n10 - 15% Chance when you hit to shrink your opponent, and weaken them for 5s (10s cooldown)\n150 - 200 Brutal Strike Rating\n\n\nRequired Materials:\n10 - Spare Parts\n10 - Scrap Metal\n2 - Ionic Particle"
+  },
+  "17537317820706719036": {
+    "en_us": "Adds the #emphasis#Stark Resilient#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Damage Rating to Energy Powers#/emphasis#\n#emphasis#Deflect Rating#/emphasis#\n#emphasis#Movement Speed#/emphasis#\n#emphasis#Primary Resource#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Enhanced Genome\n5 - Biological Samples\n10 - Mechanical Components\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "16831402660998087997": {
+    "en_us": "Adds the #emphasis#Targeting Assist System#/emphasis# enhancement to any Weapon or Accessory item of Super Heroic or higher rarity, replacing any existing enhancement already on the item.\n\nThis ehancement grants #emphasis#20 - 50 Critical Hit Rating#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Biological Samples\n5 - Enhanced Genome\n1 - High Tech Fabric"
+  },
+  "818059470902134077": {
+    "en_us": "Craft a Mask of the Goat, a Level 60 Slot 5 Unique Item that is usable by Any Hero\n\n#emphasis#Mask of the Goat#/emphasis#\n#emphasis#\u002BDamage Reduction#/emphasis#\n#emphasis#All enemies around you are constantly slowed and weakened#/emphasis#\n#emphasis#\u002BDamage Rating vs enemies with Weakened status#/emphasis#\n#emphasis#\u002BCritical Hit Rating#/emphasis#\n#emphasis#\u002BCritical Damage Rating#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#-Spirit Cost#/emphasis#\n#emphasis#When you use your Signature Power, gain 5% Defense Rating Multiplier for 3s#/emphasis#\n\nRequired Materials:\n20 - Astral Essence\n20 - Enhanced Genome\n20 - Ionic Particle\n20 - Nanotech Filament\n4 - Unstable Molecules\n1 - Reforged Sentinel Armor Scrap"
+  },
+  "16915268765051323664": {
+    "en_us": "Crafts Quinjet Cloaking Drive\n\nRequired Materials:\n1 - Wakandan Casing\n2 - Gold Conduit\n4 - Gold Wires"
+  },
+  "3750467809790461240": {
+    "en_us": "Creates a set of Mechanical Components, usable in other construction.\n\nRequired Materials:\n5 - Spare Parts\n5 - Ionic Particle"
+  },
+  "827788598329214273": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Item Find Upgrade#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item. This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B10% RIF#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Alternate Reality Rune"
+  },
+  "6194107315620676922": {
+    "en_us": "Builds a S.H.I.E.L.D. Training Manual - Clearance Level 4.\n\nThis Artifact grants the following:\nWhen you hit with a Power, reference the manual, gaining 450 damage Rating for 10s\n450 of one of your hero specific defense types.\n600 - 900 Health\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n10 - Cloth\n10 - Futuristic Alloy"
+  },
+  "3463311506182767939": {
+    "en_us": "Research a L2 Engineering Project.\n\nThe results will contain information that increases the level of your Engineering Division and can teach them how to build new items! \n\nHigher level research projects grant more rewards!\n\nIt requires the following materials to research:\n\nRequired Materials:\n12 - Engineering Schematic Data"
+  },
+  "7683160408301372749": {
+    "en_us": "Adds a #emphasis#Grade 1#/emphasis# offensive affix to your Catalyst.\nReplaces any existing #emphasis#Grade 1#/emphasis# affix already in this Catalyst.\nAffix benefit will scale to match the level of any attached Catalyst!\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "931459960515659023": {
+    "en_us": "Unbinds any Legendary, allowing you to give it to another of your heroes. Does NOT make the item tradable.\nWARNING: This resets the experience and affixes on this item.\n\nRequired Materials:\n1 - Any Legendary"
+  },
+  "1632703583081530641": {
+    "en_us": "Adds the #emphasis#God of Mischief#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B100 Mental Defense Rating#/emphasis#\n#emphasis#\u002B300 Damage Rating#/emphasis#\n#emphasis#\u002B100 Critical Hit Rating#/emphasis#\n#emphasis#\u002B100 Brutal Strike Rating#/emphasis#\n#emphasis#\u002B300 Health#/emphasis#\n#emphasis#\u002B10% Power Duration#/emphasis#\n\n#emphasis#1% chance when you hit to summon 10 Loki Illusions to obliterate you enemies for 10s (1m cooldown)#/emphasis#\n\nLevel 25 items receive half bonus to Defense, Damage, Dodge, Critical Hit, and Brutal Strike Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Loki Rune\n1 - Loki Rune\n1 - Loki Rune\n1 - Loki Rune\n1 - Loki Rune"
+  },
+  "3152115338600580413": {
+    "en_us": "Adds the #emphasis#Erskine\u0027s Formula#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Damage Rating to Sword Powers#/emphasis#\n#emphasis#Damage Rating to Bleed#/emphasis#\n#emphasis#Defense Rating#/emphasis#\n#emphasis#Spirit #/emphasis#\n#emphasis#Regenerate 20 Health when you hit#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Enhanced Genome\n5 - Biological Samples\n10 - Mechanical Components\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "207484124022637837": {
+    "en_us": "Creates a set of Energized Particles, usable in other construction.\n\nRequired Materials:\n5 - Magnetic Materials\n5 - Astral Essence"
+  },
+  "8123806971771028796": {
+    "en_us": "Changes an artifact into a #emphasis#Modified Artifact#/emphasis# and adds a Marksman Modification to it, replacing  any existing Mods already on the artifact.\nMarksman Modification is an #red#Offensive Mod#/red# that grants you #emphasis#Ranged Damage Rating and Brutal Strike Rating#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "11926031919941420345": {
+    "en_us": "Transforms three of the same Unique into small box of 5 runes.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "12891734941126952255": {
+    "en_us": "Creates a rare rarity weapon item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Cloth\n10 - Scrap Metal\n5 - Energized Particles"
+  },
+  "8499647009892009226": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Defense Upgrade#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item.  This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B200 Defense Rating#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Alternate Reality Rune"
+  },
+  "14287418227927287114": {
+    "en_us": "Adds a #emphasis#Grade 3#/emphasis# offensive affix to your Catalyst.\nReplaces any existing #emphasis#Grade 3#/emphasis# affix already in this Catalyst.\nAffix benefit will scale to match the level of any attached Catalyst!\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "3694198897797760330": {
+    "en_us": "Adds the #emphasis#Fire Barrage#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 Fire Barrage gives you:\n#emphasis#\u002B200 Energy Damage Rating#/emphasis#\n#emphasis#\u002B200 Ranged Damage Rating#/emphasis#\n#emphasis#2% chance for Ranged Powers to ignite your target, burning them for 20,000 damage over 5s (20s cooldown)#/emphasis#\n\nLevel 25 items receive half bonus to Damage Ratings and burning damage.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Bow Rune\n1 - Fire Rune\n1 - Torch Rune"
+  },
+  "10943294598909723969": {
+    "en_us": "Transforms four of the same Unique into one Random Level 60 Unique that is usable by your current hero.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "5655777802733094263": {
+    "en_us": "Creates a set of Futuristic Alloy, usable in other construction.\n\nRequired Materials:\n5 - Scrap Metal\n5 - Enhanced Genome"
+  },
+  "10750448681896183160": {
+    "en_us": "Creates a heroic rarity upper body armor item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Magnetic Materials\n5 - Mechanical Components\n5 - Energized Particles\n5 - Ionic Particle\n5 - Nanotech Filament"
+  },
+  "2991920742168659275": {
+    "en_us": "Adds a #emphasis#Grade 4#/emphasis# defensive affix to your Catalyst.\nReplaces any existing #emphasis#Grade 4#/emphasis# affix already in this Catalyst.\nAffix benefit will scale to match the level of any attached Catalyst!\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "4623371684570400099": {
+    "en_us": "Adds the #emphasis#Stabilized Extremis#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Critical Hit Rating#/emphasis#\n#emphasis#Brutal Strike Rating#/emphasis#\n#emphasis#Critical Damage Rating#/emphasis#\n#emphasis#Brutal Damage Rating#/emphasis#\n#emphasis#Damage Rating to Energy Powers#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Enhanced Genome\n5 - Biological Samples\n10 - Mechanical Components\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "12981068328149714239": {
+    "en_us": "Generate a Superheroic Danger Room Scenario.\n\nSuperheroic Danger Room Scenarios can only be activated if you have completed the Superheroic Trial.\n\nRequired Materials:\n5 - Mechanical Components\n5 - Energized Particles\n5 - Futuristic Alloy"
+  },
+  "12278405523839911237": {
+    "en_us": "Adds the #emphasis#Starktech Improved Web Fluid#/emphasis# enhancement to any Weapon or Accessory item of Super Heroic or higher rarity, replacing any existing enhancement already on the item.\n\nThis enchantment grants #emphasis#50 - 75 Damage Rating to Web Powers#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Biological Samples\n5 - Enhanced Genome\n1 - High Tech Fabric"
+  },
+  "6629893075635930424": {
+    "en_us": "Adds the #emphasis#Yew Rune#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 50-60 of this enchantment gives you:\n#emphasis#\u002B400 Health Regeneration per Minute#/emphasis#\n\nLevel 35-49 of this enchantment gives you:\n#emphasis#\u002B300 Health Regeneration per Minute#/emphasis#\n\nLevel 20-34 of this enchantment gives you:\n#emphasis#\u002B200 Health Regeneration per Minute#/emphasis#\n\nLevel 1-19 of this enchantment gives you:\n#emphasis#\u002B100 Health Regeneration per Minute#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Yew Rune"
+  },
+  "8447888891640743226": {
+    "en_us": "Transforms a level 37 to 48 Epic item usable by another hero into a new item usable by your current hero and binds it to you.\n\nRequired Materials:\n1 - Epic (Purple) Armor or Weapon\n1 - Nanotech Filament\n1 - Ionic Particle\n1 - Unstable Molecules"
+  },
+  "8507550608705455365": {
+    "en_us": "Craft Fire Giant\u0027s Greaves, a Level 60 Slot 4 Unique Item that is usable by Any Hero\n\n#emphasis#Fire Giant\u0027s Greaves#/emphasis#\n#emphasis#\u002BDefense Rating#/emphasis#\n#emphasis#\u002BEnergy Damage Rating#/emphasis#\n#emphasis#\u002BMental Damage Rating#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#\u002B1 to All Attributes#/emphasis#\n#emphasis#\u002BCritical Hit Rating#/emphasis#\n#emphasis#\u002BPower Duration#/emphasis#\n#emphasis#\u002BMovement Speed#/emphasis#\n#emphasis#Less Damage from Energy Powers#/emphasis#\n#emphasis#Chance to Burn and Slow enemies that hit you#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "4616168861158671682": {
+    "en_us": "Adds the #emphasis#Vitality Support Nanites#/emphasis# enhancement to any Upper Body or Lower Body item of Super Heroic or higher rarity, replacing any existing enchantments already on the item.\n\nThis enhancement grants #emphasis# 50 - 200 Health#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Enhanced Genome\n5 - Nanotech Filament\n1 - High Tech Fabric"
+  },
+  "2665600435598918925": {
+    "en_us": "Salvages 3 Rare (Blue) Rings into Gold Wires\n\nRequired Materials:\n1 - Any Ring\n1 - Any Ring\n1 - Any Ring"
+  },
+  "15800905213442065734": {
+    "en_us": "Creates 2 Dynamic Serums\n\nConsuming this item increases your damage by 10 for 20 minutes.\n\n#emphasis#Critical Success: You create twice as many of this item.#/emphasis#\n\nRequired Materials:\n1 - Any Element"
+  },
+  "17928764923930477886": {
+    "en_us": "Research a Level 3 Science Project.\n\nThe results will contain information that increases the level of your Science Division and can increase the amount of enhancements and modifications they can perform!\n\nHigher level research projects grant more rewards!\n\nIt requires the following materials to research:\n\nRequired Materials:\n25 - Technical Readouts"
+  },
+  "17662075041366607116": {
+    "en_us": "Adds a Durability Challenge Bonus Affix to any Item Grade 63 or higher Unique or Cosmic item. This recipe can also be used to replace an existing Challenge Bonus Affix.\n\nRequired Materials:\n1 - Unique or Cosmic Armor or Weapon\n1 - Specific Challenge Bonus Upgrade Token"
+  },
+  "5624857177690866949": {
+    "en_us": "Transforms an artifact into a #emphasis#Modified Artifact#/emphasis# and adds an Offensive Modification to it, replacing any existing Modifications already on the Artifact.\nStarktech Modification is an #red#Offensive Mod#/red# that grants you #emphasis#Brutal Strike Rating and Damage Rating to Energy Powers#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact\n1 - Cosmic Fragment\n10 - Ionic Particle\n10 - Nanotech Filament\n20 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "13523411204578280768": {
+    "en_us": "Breaks down weapon and armor items into crafting materials.\nRequired Input:\n\nRequired Materials:\n1 - Cosmic Armor or Weapon"
+  },
+  "3413358498196292919": {
+    "en_us": "Builds an EMP Device Artifact.\n\n4 - 10 Damage vs Robot enemies\n6 - 12 Attack Speed\n750 - 1000 Deflect Rating\n500 - 600 Damage Rating to Gadget Powers\nDeal 9002 energy damage to attacker when you are hit\n\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "4197376431367325042": {
+    "en_us": "Adds the #emphasis#Vice#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B25% Special Item Find#/emphasis#\n#emphasis#\u002B25% Rare Item Find#/emphasis#\n#emphasis#\u002B25% Orb Pickup Range#/emphasis#\n#emphasis#25 Bonus Credits per drop#/emphasis#\n\nLevel 25 items receive full benefits from this runeword.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - White Suit Jacket\n1 - Ruby Topped Cane\n1 - Kingpin Medallion\n1 - Need Rune"
+  },
+  "12473617564171109696": {
+    "en_us": "Resets the Super Heroic Cybernetics Upgrade for a pet of your choice.\n\nRequired Materials:\n1 - Any Pet\n1 - Any Element\n1 - Any Element\n1 - Any Element"
+  },
+  "104152618311484744": {
+    "en_us": "Adds the #emphasis#The Power Doop#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#When you hit with a Mental Power, gain \u002B377-577 Damage Rating for 17s and recover 17 Spirit (7s cooldown)#/emphasis#\n#emphasis#When you hit with a Physical Power, gain \u002B2777-4777 Brutal Damage Rating for 17s and recover 17 Spirit (7s cooldown)#/emphasis#\n#emphasis#When you hit with an Energy Power, gain \u002B777-1777 Critical Damage Rating for 17s and recover 17 Spirit (7s cooldown)#/emphasis#\n\nLevel 25 items receive half bonus to Spirit recovery, Damage, Brutal Damage, and Critical Damage Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n7 - Day Rune\n1 - Doop Rune"
+  },
+  "16542572419650880834": {
+    "en_us": "Transforms an artifact into a #emphasis#Modified Artifact#/emphasis# and adds a Officer Modification to it, replacing  any existing mods already on the artifact.\nOfficer Modification is an #red#Offensive Mod#/red# that grants you #emphasis#Summoned Ally Damage and Brutal Strike Rating#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "117736182463071502": {
+    "en_us": "Adds the #emphasis#Infernal Precognition#/emphasis# enhance any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Health#/emphasis#\n#emphasis#Bonus XP per enemy defeat#/emphasis#\n#emphasis#Damage Rating to Psychic Powers#/emphasis#\n#emphasis#Recover Spirit when you pick up any orb#/emphasis#\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Cloth\n5 - Meteorite Dust\n10 - Energized Particles\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "10374123939414541636": {
+    "en_us": "Builds an artifact worthy of Apocalypse\n\nRequired Materials:\n1 - Essence of War\n1 - Essence of Pestilence\n1 - Essence of Famine\n1 - Essence of Death"
+  },
+  "3393573550958314806": {
+    "en_us": "Adds the #emphasis#Surtur Rune#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 50-60 of this enchantment gives you:\n#emphasis#\u002B50 Brutal Strike Rating#/emphasis#\n\nLevel 35-49 of this enchantment gives you:\n#emphasis#\u002B40 Brutal Strike Rating#/emphasis#\n\nLevel 20-34 of this enchantment gives you:\n#emphasis#\u002B30 Brutal Strike Rating#/emphasis#\n\nLevel 1-19 of this enchantment gives you:\n#emphasis#\u002B20 Brutal Strike Rating#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Surtur Rune"
+  },
+  "10063027870350116173": {
+    "en_us": "Creates 2 Spirit Boosters\n\nConsuming this item increases your spirit by 15 and your spirit regeneration for 20 minutes.\n\n #emphasis#Critical Success: You create twice as many of this item.#/emphasis#\n\nRequired Materials:\n1 - Any Element"
+  },
+  "12363597136467461454": {
+    "en_us": "Rerolls the numbers on the existing #emphasis#Grade 2#/emphasis# affix on your Catalyst.\n\nRequired Materials:\n1 - Catalyst\n1 - Ionic Particle\n1 - Nanotech Filament"
+  },
+  "15890394301618062665": {
+    "en_us": "Adds the #emphasis#Valkyrie\u0027s Legacy#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B200 Ranged Damage Rating#/emphasis#\n#emphasis#\u002B200 Melee Damage Rating#/emphasis#\n#emphasis#\u002B20 Bonus XP per enemy defeated#/emphasis#\n#emphasis#Regain 2 Health and 2 Spirit when you hit an enemy#/emphasis#\n\nLevel 25 items receive half bonus to Ranged Damage and Melee Damage Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Bow Rune\n1 - Spear Rune"
+  },
+  "10357532008303035714": {
+    "en_us": "Salvages 3 Epic (Purple) Rings into Gold Conduits\n\nRequired Materials:\n1 - Any Ring\n1 - Any Ring\n1 - Any Ring"
+  },
+  "17139596418799502648": {
+    "en_us": "Transforms ingredients into a Fully Loaded Hot Dog, which can be used to buy a special Unique item at the Special Events Vendor.\n\nRequired Materials:\n1 - Omega Red Ketchup\n1 - Remy\u0027s Dijon Mustard\n1 - Electric Pickle Relish\n1 - Plain Hot Dog"
+  },
+  "14653786780812444936": {
+    "en_us": "Gather these five medallions to craft an item that will open a mysterious portal.\n\nRequired Materials:\n1 - Medallion\n1 - Medallion\n1 - Medallion\n1 - Medallion\n1 - Medallion"
+  },
+  "9220587464205141310": {
+    "en_us": "Creates a rare rarity leg armor item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Cloth\n10 - Scrap Metal\n5 - Energized Particles"
+  },
+  "8283302953128559930": {
+    "en_us": "Adds the #emphasis#Wealth Rune#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 1-60 of this enchantment gives you:\n#emphasis#\u002B20 Credits per drop#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Wealth Rune"
+  },
+  "11217140807476708686": {
+    "en_us": "Adds a #emphasis#Grade 2#/emphasis# defensive affix to your Catalyst.\nReplaces any existing #emphasis#Grade 2#/emphasis# affix already in this Catalyst.\nAffix benefit will scale to match the level of any attached Catalyst!\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "16797551863314384143": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Critical Damage Upgrade#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item. This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B90 Critical Damage Rating#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Alternate Reality Rune"
+  },
+  "12004345992913552761": {
+    "en_us": "Adds the #emphasis#Courage of Asgard#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B1000 Defense Rating#/emphasis#\n#emphasis#\u002B1000 Health#/emphasis#\n#emphasis#\u002B100 Critical Hit Rating#/emphasis#\n#emphasis#\u002B100 Brutal Strike Rating#/emphasis#\n#emphasis#10% Damage Reduction from Area Powers#/emphasis#\n\nLevel 25 items receive half bonus to Health, Defense, Critical Hit, and Brutal Strike Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Sif Rune\n1 - Odin Rune\n1 - Frigga Rune\n1 - Thor Rune\n1 - Zod Rune"
+  },
+  "1006992230336693514": {
+    "en_us": "Research a Level 2 Starktech Research project.\n\nThe results will contain information that increases the level of your Logistics Division, Engineer, or Scientist and can increase the amount and variety of items they have for sale!\n\nIt requires the following materials to research:\n\nRequired Materials:\n1 - Cosmic Essence"
+  },
+  "9701957146664043850": {
+    "en_us": "Creates 2 Adrenal Formulas\n\nConsuming this item increases your Move Speed by 5% for 20m.\n\n#emphasis#Critical Success: You create twice as many of this item.#/emphasis#\n\nRequired Materials:\n1 - Any Element"
+  },
+  "434666548049872186": {
+    "en_us": "Generate a Cosmic Danger Room Scenario.\n\nCosmic Danger Room Scenarios can only be activated if you have completed the Cosmic Trial.\n\nRequired Materials:\n10 - Mechanical Components\n10 - Energized Particles\n10 - Futuristic Alloy\n1 - Cosmic Fragment"
+  },
+  "1025190990378698045": {
+    "en_us": "Adds a Speed Challenge Bonus Affix to any Item Grade 63 or higher Unique or Cosmic item. This recipe can also be used to replace an existing Challenge Bonus Affix.\n\nRequired Materials:\n1 - Unique or Cosmic Armor or Weapon\n1 - Specific Challenge Bonus Upgrade Token"
+  },
+  "363276159940429063": {
+    "en_us": "Craft Claws of the Sisters, a Level 60 Slot 5 Unique Item that is usable by Any Hero\n\n#emphasis#Claws of the Sisters#/emphasis#\n#emphasis#\u002BDefense Rating#/emphasis#\n#emphasis#\u002BMental Damage Rating#/emphasis#\n#emphasis#\u002BPhysical Damage Rating#/emphasis#\n#emphasis#\u002BCritical Rating#/emphasis#\n#emphasis#Cost Reduction#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#Spirit when you hit#/emphasis#\n#emphasis#When your health drops below 40%, summon a Winged Demon that fights for you and absorbs 10% of the damage you take for 20s (1m cooldown) #/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "1877692752539157824": {
+    "en_us": "Research a Level 1 Logistics Project.\n\nThe results will contain information that increases the level of your Logistics Division and can increase the amount and variety of items they have for sale!\n\nIt requires the following materials to research:\n\nRequired Materials:\n5 - Supplier Contact Information"
+  },
+  "6849254553083381001": {
+    "en_us": "Extracts Astral Essence from Meteorite Dust.\n\nCreates 5 Astral Essence.\n\nRequired Materials:\n5 - Meteorite Dust"
+  },
+  "1255776578860156157": {
+    "en_us": "Transforms four of the same Unique into a random stack of 50 relics.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "1091655020930336107": {
+    "en_us": "Creates a Super Heroic rarity leg armor item for your current hero at their current level.\n\nRequired Materials:\n20 - Spare Parts\n10 - Scrap Metal\n10 - Cloth\n10 - Mechanical Components\n1 - Futuristic Alloy\n1 - High Tech Fabric"
+  },
+  "12918837039458092344": {
+    "en_us": "Transforms three costumes into one randomly determined costume.\n\nNOTE: You are not guaranteed to get a different costume from what you used in the recipe.\n\n #emphasis#Critical Success: You create two costumes instead of one. #/emphasis#\n\nRequired Materials:\n1 - Costume\n1 - Costume\n1 - Costume\n2 - Unstable Molecules"
+  },
+  "8264948041022244155": {
+    "en_us": "Builds an A.R.M.O.R. Supercharged Power Cell Artifact.\n\n200 - 250 Critical Hit Rating\n275 - 350 Damage Rating\n450 - 700 Health\nWhen you land a critical hit, you and your allies gain 5% Attack speed for 6s (3s cd)\n1 to all Attributes\n\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "7957939707014284549": {
+    "en_us": "Swaps Visuals between two Catalysts and makes them ineligible to be traded.\n\nRequired Materials:\n1 - Any Item With Visual Effect\n1 - Any Item With Visual Effect"
+  },
+  "3898304797487334720": {
+    "en_us": "Unbinds a stack of Relics, allowing you to give it to another of your heroes.\n\nRequired Materials:\n1 - Any Stack of Relics\n1 - Any Element\n1 - Any Element\n1 - Any Element"
+  },
+  "151469091832595729": {
+    "en_us": "Resets the Cosmic Cybernetics Upgrade for a pet of your choice.\n\nRequired Materials:\n1 - Any Pet\n1 - Any Element"
+  },
+  "6588522408689337606": {
+    "en_us": "Adds the #emphasis#Year Rune#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 50-60 of this enchantment gives you:\n#emphasis#\u002B40 XP per enemy defeat#/emphasis#\n\nLevel 35-49 of this enchantment gives you:\n#emphasis#\u002B30 XP per enemy defeat#/emphasis#\n\nLevel 20-34 of this enchantment gives you:\n#emphasis#\u002B20 XP per enemy defeat#/emphasis#\n\nLevel 1-19 of this enchantment gives you:\n#emphasis#\u002B10 XP per enemy defeat#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Year Rune"
+  },
+  "1278189814224782653": {
+    "en_us": "Adds the #emphasis#Starktech Arc Enhancement#/emphasis# enhancement to any Weapon or Accessory item of Super Heroic or higher rarity, replacing any existing enhancement already on the item.\n\nThis enchantment grants #emphasis#5 - 20 Primary Resource#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Biological Samples\n5 - Enhanced Genome\n1 - High Tech Fabric"
+  },
+  "7252086154316743942": {
+    "en_us": "Adds a Purple Glowing Eye visual effect to the Catalyst.\nReplaces any existing visual effect already on the Catalyst. \nThis Catalyst becomes bound after applying the visual.\n\nRequired Materials:\n1 - Catalyst"
+  },
+  "11128941678347027765": {
+    "en_us": "Adds the #emphasis#Uru Augmentation#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Melee Damage Rating#/emphasis#\n#emphasis#\u002BDefense Rating#/emphasis#\n#emphasis#Health#/emphasis#\n#emphasis#Dodge Rating#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Lightweight Armor Plate\n5 - Magnetic Materials\n10 - Futuristic Alloy\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "3910167608818468147": {
+    "en_us": "Adds the #emphasis#Hail Rune#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 50-60 of this enchantment gives you:\n#emphasis#\u002B50 Area Damage Rating#/emphasis#\n\nLevel 35-49 of this enchantment gives you:\n#emphasis#\u002B40 Area Damage Rating#/emphasis#\n\nLevel 20-34 of this enchantment gives you:\n#emphasis#\u002B30 Area Damage Rating#/emphasis#\n\nLevel 1-19 of this enchantment gives you:\n#emphasis#\u002B20 Area Damage Rating#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Hail Rune"
+  },
+  "10076167820267881788": {
+    "en_us": "Research a Level 2 Science Project.\n\nThe results will contain information that increases the level of your Science Division and can increase the amount of enhancements and modifications they can perform!\n\nHigher level research projects grant more rewards!\n\nIt requires the following materials to research:\n\nRequired Materials:\n12 - Technical Readouts"
+  },
+  "2226484594221909313": {
+    "en_us": "Research a L1 Engineering Project.\n\nThe results will contain information that increases the level of your Engineering Division and can teach them how to build new items! \n\nIt requires the following materials to research:\n\nRequired Materials:\n5 - Engineering Schematic Data"
+  },
+  "9830840744383677815": {
+    "en_us": "Adds the #emphasis#Cow King\u0027s Gift#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B20% Rare Item Find#/emphasis#\n#emphasis#\u002B200 Health#/emphasis#\n#emphasis#\u002B200 Defense Rating#/emphasis#\n#emphasis#\u002B100 Energy Damage Rating#/emphasis#\n#emphasis#\u002B100 Mental Damage Rating#/emphasis#\n#emphasis#\u002B100 Physical Damage Rating#/emphasis#\n#emphasis#2% Damage Reduction from Area powers#/emphasis#\n\nLevel 25 items receive half bonus to Health, Defense and Damage Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Bovine Sector Medallion\n2 - Cattle Rune\n1 - Game Rune\n1 - Horse Rune"
+  },
+  "7854602287064810755": {
+    "en_us": "Transforms eight of the same Unique into a large box of 30 runes.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "5984249458278139189": {
+    "en_us": "Adds the #emphasis#Killgrave Pheromones#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Critical Hit Rating#/emphasis#\n#emphasis#Summoned Ally Damage Rating#/emphasis#\n#emphasis#Damage Rating to Psychic Powers#/emphasis#\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Cloth\n5 - Nanotech Filament\n10 - Energized Particles\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "3265635752345929024": {
+    "en_us": "Changes an artifact into a #emphasis#Modified Artifact#/emphasis# and adds a Guardian Modification to it, replacing  any existing mods already on the artifact.\nGuardian Modification is a #red#Defensive Mod#/red# that grants you #emphasis#Deflect Rating and Less Damage Taken from All Attacks#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "3468961308022605114": {
+    "en_us": "Upgrade an Item Grade 63 Unique or Cosmic item to Item Grade 66.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "14856370166150399250": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Health Upgrade#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item.. This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B300 Health#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Alternate Reality Rune"
+  },
+  "5836722240813270332": {
+    "en_us": "Creates a rare rarity utility armor item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Cloth\n10 - Scrap Metal\n5 - Energized Particles"
+  },
+  "2363296065857652031": {
+    "en_us": "Adds a Strength Challenge Bonus Affix to any Item Grade 63 or higher Unique or Cosmic item. This recipe can also be used to replace an existing Challenge Bonus Affix.\n\nRequired Materials:\n1 - Unique or Cosmic Armor or Weapon\n1 - Specific Challenge Bonus Upgrade Token"
+  },
+  "17788593026929394999": {
+    "en_us": "Adds StarkTech Power Sphere Socket to an Any Hero Unique without one.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "5675918390321677588": {
+    "en_us": "Adds a random Challenge Bonus Affix to any Item Grade 63 or higher Unique or Cosmic item. This recipe can also be used to replace a existing Challenge Bonus Affix.\n\nRequired Materials:\n1 - Unique or Cosmic Armor or Weapon\n1 - Random Challenge Bonus Upgrade Token"
+  },
+  "1119484690967561539": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Attack Speed Upgrade#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item. This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B2% Attack Speed#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Alternate Reality Rune"
+  },
+  "6608273627605763382": {
+    "en_us": "Craft a Mzee\u0027s Hardened Shell, a Level 60 Slot 2 Unique Item that is usable by Any Hero\n\n#emphasis#Mzee\u0027s Hardened Shell#/emphasis#\n#emphasis#\u002BDamage Rating#/emphasis#\n#emphasis#\u002BDamage Reduction#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#\u002BDurability#/emphasis#\n#emphasis#\u002BStrength#/emphasis#\n#emphasis#\u002BDeflect Rating#/emphasis#\n#emphasis#\u002BDodge Rating#/emphasis#\n#emphasis#If your health is below 50%, your Critical Hits regenerate Health#/emphasis#\n#emphasis#When you drop below 25% health, gain Defense Rating and Health Regeneration for 5s (15s cooldown)#/emphasis#\n\nRequired Materials:\n20 - Astral Essence\n20 - Enhanced Genome\n20 - Ionic Particle\n20 - Nanotech Filament\n4 - Unstable Molecules\n1 - Reforged Sentinel Armor Scrap"
+  },
+  "14344760868859872573": {
+    "en_us": "Transforms a level 25 to 36 Epic item usable by another hero into a new item usable by your current hero and binds it to you.\n\nRequired Materials:\n1 - Epic (Purple) Armor or Weapon\n1 - Nanotech Filament\n1 - Ionic Particle"
+  },
+  "11806321487668774207": {
+    "en_us": "Crafts Capillary Array\n\nRequired Materials:\n1 - Reinforced Casing\n5 - Brood Biomass"
+  },
+  "15846587271517373710": {
+    "en_us": "Adds an Energy Challenge Bonus Affix to any Item Grade 63 or higher Unique or Cosmic item. This recipe can also be used to replace an existing Challenge Bonus Affix.\n\nRequired Materials:\n1 - Unique or Cosmic Armor or Weapon\n1 - Specific Challenge Bonus Upgrade Token"
+  },
+  "6794709044007208250": {
+    "en_us": "Transforms an artifact into a #emphasis#Modified Artifact#/emphasis# and adds a Efficiency Modification to it, replacing any existing mods already on the artifact.\nEfficiency Modification is a #red#Utility Mod#/red# that grants you #emphasis#Spirit Cost Reduction, Damage Rating, and Health#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "15357670008742937928": {
+    "en_us": "Adds the #emphasis#Velocity Booster#/emphasis# enhancement to any Weapon or Accessory item of Super Heroic or higher rarity, replacing any existing enhancements already on the item.\n\nThis enhancement grants #emphasis#20 - 50 Ranged Damage Rating#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Meteorite Dust\n5 - Ionic Particle\n1 - Lightweight Armor Plate"
+  },
+  "16065120846833911060": {
+    "en_us": "Creates 10 S.H.I.E.L.D. Med Kits\n\n#emphasis#Critical Success: You create twice as many of this item.#/emphasis#\n\nRequired Materials:\n1 - Any Element\n1 - Any Element"
+  },
+  "8795609800413021507": {
+    "en_us": "Transforms a rare ring/insignia into an epic ring/insignia of the same and level.\nThe affixes from the rare ring/insignia will also be on the epic ring/insignia.\n\nRequired Materials:\n1 - Any Ring\n1 - Astral Essence\n1 - Enhanced Genome\n1 - Ionic Particle\n1 - Nanotech Filament\n1 - Unstable Molecules"
+  },
+  "9288113657237800209": {
+    "en_us": "Transforms an artifact into a #emphasis#Blessed Artifact#/emphasis# and adds a Blessing of Hela to it, replacing  any existing blessings already on the artifact.\nBlessing of Hela is an #red#Offensive Blessing#/red# that grants you #emphasis#Brutal Strike Rating and Brutal Damage Rating#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact"
+  },
+  "6296524036322362693": {
+    "en_us": "Adds the #emphasis#Dark Bargain#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B600 Brutal Strike Rating#/emphasis#\n#emphasis#\u002B600 Brutal Damage Rating#/emphasis#\n#emphasis#\u002B600 Critial Hit Rating#/emphasis#\n#red#-100 Spirit#/red#\n#red#-100 Health#/red#\n#red#-100 Defense Rating#/red#\n#red#Lose 1% of your Health when you hit#/red#\n\nLevel 25 items receive half bonus to Brutal Strike, Brutal Damage, and Critical Hit Ratings and half penalty to Spirit, Health and Defense Rating.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Fire Rune\n2 - Need Rune\n1 - Serpent Rune\n1 - Serpent Rune"
+  },
+  "14054720181232141676": {
+    "en_us": "Creates a Super Heroic rarity utility armor item for your current hero at their current level.\n\nRequired Materials:\n20 - Spare Parts\n10 - Scrap Metal\n10 - Cloth\n10 - Mechanical Components\n1 - Futuristic Alloy\n1 - High Tech Fabric"
+  },
+  "16389897048211391794": {
+    "en_us": "Builds a Metasensory Array Artifact.\n\n200 - 250 Damage Rating to Energy Powers\n75 - 100 Critical Hit Rating\n2 - 5% Attack Speed\nWhen you use your Med Kit, release nanites in a 10 yard radius, weakening enemies caught in the area for 8s\n\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Cloth"
+  },
+  "3181070762568516924": {
+    "en_us": "Transforms a level 39 or lower Unique item into a level 40 version of the same Unique.\nThis does not re-roll affixes. Existing affixes are scaled to a higher level.\nRecipe does not accept Uniques that are not for your current hero.\n\nRequired Materials:\n1 - Unique Armor or Weapon\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "16370032442224280895": {
+    "en_us": "Transforms ingredients into an artifact that increases your movement speed and damage, and heals you when you use movement powers.\n\nRequired Materials:\n10 - Spare Parts\n10 - Scrap Metal\n2 - Ionic Particle"
+  },
+  "6390896833017873723": {
+    "en_us": "Builds a S.H.I.E.L.D. I.D. Badge Artifact.\n\n1 - 2 Energy \n90 - 140 Spirit \n300 - 400 Damage Rating to Summon Powers \n5 - 12% chance to summon a S.H.I.E.L.D. Agent to assist you for 30s when you hit. (1m cooldown)\n\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "3387896836852679996": {
+    "en_us": "Builds an artifact that increases your defenses and deals damage to attackers.\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Ionic Particle\n5 - Futuristic Alloy\n1 - Unstable Molecules"
+  },
+  "9195973607931839811": {
+    "en_us": "Builds a S.H.I.E.L.D. Training Manual - Clearance Level 2.\n\nThis Artifact grants the following:\nWhen you hit with a Power, reference the manual, gaining 250 damage Rating for 10s\n250 of one of your hero specific defense types.\n400 - 700 Health\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Cloth"
+  },
+  "13199952660492190981": {
+    "en_us": "Upgrade an Item Grade 60 or lower Medallion to Grade 63.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Any Medallion\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element\n2 - Unstable Molecules"
+  },
+  "15228335001365906703": {
+    "en_us": "Transforms Dynamics Serums into a Charged Nano-Serum.\n\n#emphasis#Critical Success: You create two of this item instead of one.#/emphasis#\n\nRequired Materials:\n5 - Nanotech Filament\n5 - Dynamic Serum"
+  },
+  "17091140623542256959": {
+    "en_us": "Trade 5 Small Character Experience Tokens for a random Large Character Experience Token\n\nRequired Materials:\n1 - Any Small Character Experience Token\n1 - Any Small Character Experience Token\n1 - Any Small Character Experience Token\n1 - Any Small Character Experience Token\n1 - Any Small Character Experience Token"
+  },
+  "12350738420922844427": {
+    "en_us": "Engineering this item grants you 1 Omega Essence\n\nRequired Materials:\n10 - Fractured Omega Essence"
+  },
+  "6422600331627005198": {
+    "en_us": "Adds an Armor Item\u0027s Omega Set to the First Armor Item.\n\nReplaces any existing Omega set already on the Armor Item.\n\n#red#Warning:#/red# Second Armor Item is destroyed upon completion.\n\nRequired Materials:\n1 - First Omega Item\n1 - Second Omega Item\nWill be #red#destroyed#/red#"
+  },
+  "14152865823174624568": {
+    "en_us": "Builds an A.R.M.O.R. Dimensional Power Portal Generator Artifact.\n\n150 - 250 Damage Rating to Ranged Powers\nWhen you use your Signature Power, place a portal that lasts 10s under your feet that grants you and your allies \u002B1300 Critical Damage Rating (15s Cooldown)\n350 - 550 Damage Rating to Energy Powers\n1 - 2 Durability\n\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "6174283941306369333": {
+    "en_us": "Builds a Vita-Ray Projector Artifact.\n\n150 - 200 Damage Rating to Energy Powers\n300 - 500 Health\n\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Cloth"
+  },
+  "17831992833932068146": {
+    "en_us": "Adds the #emphasis#Gift Rune#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 1-60 of this enchantment gives you:\n#emphasis#\u002B5% Special Item Find#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Gift Rune"
+  },
+  "5499277573882381633": {
+    "en_us": "Adds the #emphasis#Starktech Impact Generator#/emphasis# enhancement to any Weapon or Accessory item of Super Heroic or higher rarity, replacing any existing enhancement already on the item.\n\nThis enchantment grants #emphasis#50 - 75 Damage Rating to Energy Powers#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Biological Samples\n5 - Enhanced Genome\n1 - High Tech Fabric"
+  },
+  "2941060821768930622": {
+    "en_us": "Transforms a level 49 to 60 Epic item usable by another hero into a new item usable by your current hero and binds it to you.\n\nRequired Materials:\n1 - Epic (Purple) Armor or Weapon\n1 - Nanotech Filament\n1 - Ionic Particle\n1 - Unstable Molecules"
+  },
+  "5856824547479455038": {
+    "en_us": "Builds a Captain America\u0027s Silver Star Artifact.\n\n10 - 15% Chance to create a shield that absorbs 1700 damage when attacked\n2 - 5 Strength\n500 - 900 Deflect Rating\n1000 - 1500 Health\n\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "13431364184205624641": {
+    "en_us": "Adds the #emphasis#Kree Dynamo#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Spirit#/emphasis#\n#emphasis#Recover 6 Spirit when you hit#/emphasis#\n#emphasis#\u002B400 Damage Rating to Gadget Powers#/emphasis#\n#emphasis#\u002B400 Damage Rating to Cooldown Powers#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Spare Parts\n5 - Magnetic Materials\n10 - Mechanical Components\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "13681316175431861565": {
+    "en_us": "Trade 3 Extra Large Character Experience Tokens for a random Extra Large Character Experience Token\n\nRequired Materials:\n1 - Any Extra Large Character Experience Token\n1 - Any Extra Large Character Experience Token\n1 - Any Extra Large Character Experience Token"
+  },
+  "3681011638798320964": {
+    "en_us": "Adds the #emphasis#Shock Absorbent Plating#/emphasis# enhancement to any Upper Body or Lower Body item of Super Heroic or higher rarity, replacing any existing enhancements already on the item.\n\nThis enhancement grants #emphasis# 75 - 150 Defense Rating#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n20 - Spare Parts\n10 - Bulletproof Ceramics\n5 - Ionic Particle\n5 - Nanotech Filament\n1 - Lightweight Armor Plate"
+  },
+  "94952944390440264": {
+    "en_us": "Using an experimental A.R.M.O.R. technology, randomly swap the affixes values on an artifact with those from an alternative reality. S.H.I.E.L.D. is not responsible for any paradoxal effects while performing this task.\n\nRequired Materials:\n1 - Any Artifact\n10 - Futuristic Alloy\n10 - High Tech Fabric\n10 - Ionic Particle\n10 - Nanotech Filament\n10 - Enhanced Genome\n10 - Astral Essence\n1 - Unstable Molecules"
+  },
+  "12936235664211772728": {
+    "en_us": "Builds an A.R.M.O.R. Alternate Reality Chaos Portal Artifact.\n\n31 - 44% Summoned Ally Health\n31 - 44% Summoned Ally Damage\n500 - 1500 Health\n1% Chance on any hit to summon a random being from an alternate chaos reality to fight alongside you. Multiple beings can fight with you at one time, each lasting 20s.\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "11816070784207881500": {
+    "en_us": "This recipe unlocks the ability to Omega Prestige enabled heroes through your Hero Roster.\n\n#red#Requires Level 60 and Prestige Rank 6#/red#\n\nRequired Materials:\n400 - Omega Essence"
+  },
+  "9657461590356198674": {
+    "en_us": "Adds an Intelligence Challenge Bonus Affix to any Item Grade 63 or higher Unique or Cosmic item. This recipe can also be used to replace an existing Challenge Bonus Affix.\n\nRequired Materials:\n1 - Unique or Cosmic Armor or Weapon\n1 - Specific Challenge Bonus Upgrade Token"
+  },
+  "685379358374954301": {
+    "en_us": "Breaks down Heroic rarity weapon and armor items into crafting materials.\nRequired Input:\n\nRequired Materials:\n1 - Cosmic Armor or Weapon"
+  },
+  "17882433793163986252": {
+    "en_us": "Adds the #emphasis#Torch Rune#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 50-60 of this enchantment gives you:\n#emphasis#\u002B50 Mental Damage Rating#/emphasis#\n\nLevel 35-49 of this enchantment gives you:\n#emphasis#\u002B40 Mental Damage Rating#/emphasis#\n\nLevel 20-34 of this enchantment gives you:\n#emphasis#\u002B30 Mental Damage Rating#/emphasis#\n\nLevel 1-19 of this enchantment gives you:\n#emphasis#\u002B20 Mental Damage Rating#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Torch Rune"
+  },
+  "17363452553812641084": {
+    "en_us": "Resets the Heroic Cybernetics Upgrade for a pet of your choice.\n\nRequired Materials:\n1 - Any Pet\n1 - Any Element\n1 - Any Element"
+  },
+  "17639579978354525453": {
+    "en_us": "Transforms an artifact into a #emphasis#Modified Artifact#/emphasis# and adds an Offensive Modification to it, replacing any existing Modifications already on the Artifact.\nDefenders Modification is an #red#Offensive Mod#/red# that grants you #emphasis#Brutal Strike Rating and Damage Rating to Hand-to-Hand Powers#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\nx5 Ionic Particles\nx5 Nanotech Filaments\nx10 Spare Parts\nx1 Base Modification\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "1492445361658201460": {
+    "en_us": "Adds the #emphasis#Heroes of Asgard#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#You and allies gain \u002B300 Critical Hit Rating#/emphasis#\n#emphasis#You and allies have a 3% chance to deal 3000 Energy Damage on hit#/emphasis#\n#emphasis#You and allies have a 3% chance to deal 3000 Physical Damage on hit#/emphasis#\n#emphasis#When you critically hit, you and allies gain \u002B300 Brutal Strike Rating for 3s (10s cooldown)#/emphasis#\n\nLevel 25 items receive half bonus to damage, Critical Hit, and Brutal Strike Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Gift Rune\n1 - Horse Rune\n1 - Thor Rune\n1 - Epic Insignia\n1 - Epic Insignia"
+  },
+  "6591892184198546698": {
+    "en_us": "Transforms an Epic Insignia into a Cosmic Insignia.\n\nRequired Materials:\n1 - Epic Insignia\n1 - Cosmic Upgrade Token\n1 - Astral Essence\n1 - Enhanced Genome\n1 - Ionic Particle\n1 - Nanotech Filament\n1 - Doop Rune"
+  },
+  "7006128817678910723": {
+    "en_us": "Rerolls the numbers on the existing #emphasis#Grade 3#/emphasis# affix on your Catalyst.\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome\n1 - Ionic Particle\n1 - Nanotech Filament"
+  },
+  "3879074085652202762": {
+    "en_us": "Craft Lady Hellfire\u0027s Talon, a Level 60 Slot 1 Unique Item that is usable by Any Hero\n\n#emphasis#Lady Hellfire\u0027s Talon#/emphasis#\n#emphasis#\u002BDamage Rating#/emphasis#\n#emphasis#\u002BRanged Damage#/emphasis#\n#emphasis#\u002BEnergy Damage#/emphasis#\n#emphasis#\u002BCritical Rating#/emphasis#\n#emphasis#\u002BBrutal Rating#/emphasis#\n#emphasis#\u002BSpirit#/emphasis#\n#emphasis#Chance to avoid Ranged Attacks#/emphasis#\n#emphasis#Chance to fire off a powerful energy blast when you hit#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "15355111861788542268": {
+    "en_us": "Adds the #emphasis#Doop Inspiration#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B500 Summoned Ally Damage#/emphasis#\n#emphasis#\u002B20-30 Spirit#/emphasis#\n#emphasis#\u002B200-300 Critical Hit Rating #/emphasis#\n#emphasis#\u002B200-300 Brutal Strike Rating#/emphasis#\n#emphasis#\u002B200-300 Health#/emphasis#\n#emphasis#\u002B200-300 Defense Rating#/emphasis#\n\nLevel 25 items receive receive half bonus to Health, Summoned Ally Damage, Critical Hit, Brutal Strike, and Defense Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Binding Rune\n1 - Birch Rune\n1 - Doop Rune\n1 - Gift Rune\n1 - Hail Rune\n1 - Joy Rune"
+  },
+  "4456821219378398526": {
+    "en_us": "Adds a random Challenge Bonus Affix to any Unique item. This recipe can also be used to re-roll a Challenge Bonus Affix.\n\nRequired Materials:\n1 - Unique Armor or Weapon\n1 - Unique Upgrade Token"
+  },
+  "12792981471052236091": {
+    "en_us": "Changes an artifact into a #emphasis#Modified Artifact#/emphasis# and adds a Scout Modification to it, replacing  any existing mods already on the artifact.\nScout Modification is a #red#Defensive mod#/red# that grants you #emphasis#Dodge Rating and Less Damage Taken from All Attacks#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "18424196896241157438": {
+    "en_us": "Adds the #emphasis#Gamma Steroid#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Melee Damage Rating#/emphasis#\n#emphasis#Attack Speed#/emphasis#\n#emphasis#Strength#/emphasis#\n#emphasis#chance for Hand-to-Hand Powers to cause broken bones in enemies, reducing their Move and Attack Speed by 20% for 2s#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Cloth\n5 - Nanotech Filament\n10 - Enhanced Genome\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "1691632256786630004": {
+    "en_us": "Creates a rare rarity accessory item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Cloth\n10 - Scrap Metal\n5 - Energized Particles"
+  },
+  "4178081569898235199": {
+    "en_us": "Research a Level 3 Logistics Project.\n\nThe results will contain information that increases the level of your Logistics Division and can increase the amount and variety of items they have for sale!\n\nHigher level research projects grant more rewards!\n\nIt requires the following materials to research:\n\nRequired Materials:\n25 - Supplier Contact Information"
+  },
+  "16489317204534953233": {
+    "en_us": "Extracts Essential Genomes from Biological Samples.\n\n\nCreates 5 Essential Genomes.\n\nRequired Materials:\n5 - Biological Samples"
+  },
+  "9868514805863089464": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Summoned Ally Damage Upgrade#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item. This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B200 Summon Ally Damage#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Alternate Reality Rune"
+  },
+  "14808596441805554996": {
+    "en_us": "Builds a Super-Soldier Serum Artifact.\n\n800 Health\n350 Defense Rating\n1300 - 1500 Health Regen per minute\n\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Cloth"
+  },
+  "10022687596158584113": {
+    "en_us": "Transforms ingredients into an artifact that increases your attack speed, damage rating, summoned ally damage rating and can summon a S.H.I.E.L.D. gunner.\n\nRequired Materials:\n1 - Astral Essence\n1 - Enhanced Genome\n1 - Ionic Particle\n1 - Nanotech Filament"
+  },
+  "18220997973323613455": {
+    "en_us": "Adds the #emphasis#Fortitude of the Lion#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B500 Defense Rating#/emphasis#\n#emphasis#\u002B500 Health#/emphasis#\n#emphasis#\u002B8 Health Regeneration per second#/emphasis#\n\nLevel 25 items receive half bonus to Defense Rating, Health and Health Regeneration.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Oak Rune\n1 - Stone Rune"
+  },
+  "5387758090912728386": {
+    "en_us": "Transforms a level 12 or less rare item into an epic item of the same slot and level.\nThe affixes from the rare item will also be on the epic item.\nRecipe does not accept Insignias or Rings, or items that are not for your current hero.\nIf your gear is older and has affixes that give bonuses or grants to a certain power that has since changed, those affixes may be re-rolled.\n\nRequired Materials:\n1 - Blue (Rare) Armor or Weapon\n1 - Any Element"
+  },
+  "8864152032434062652": {
+    "en_us": "Builds a S.H.I.E.L.D. Support Beacon Artifact.\n\n4 - 8% Bonus Attack Speed\n200 - 350 Damage Rating\n600 - 900 Summoned Ally Damage Rating\n5 - 10% Chance when you hit to summon a S.H.I.E.L.D. Gunner to fight alongside you for 30s (1m CD)\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "10091160309860074819": {
+    "en_us": "Craft a Red Onslaught Medallion, a Level 60 Unique Medallion that is usable by Any Hero\n\n#emphasis#Red Onslaught Medallion#/emphasis#\n#emphasis#When you Critically Hit a Raid Boss, restore Health and gain Damage Rating for 8s#/emphasis#\n#emphasis#\u002BEnergy#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#You take % less damage from enemy Area Powers#/emphasis#\n#emphasis#\u002BStrength#/emphasis#\n#emphasis#\u002BCritical Damage Rating#/emphasis#\n#emphasis#\u002BBrutal Damage Rating#/emphasis#\n#emphasis#Manifest a Damage Amplification Field when you defeat an enemy, increasing the damage of anyone standing inside of it.#/emphasis#\n\nRequired Materials:\n20 - Astral Essence\n20 - Enhanced Genome\n20 - Ionic Particle\n20 - Nanotech Filament\n4 - Unstable Molecules\n1 - Psychic Imprint"
+  },
+  "11517782200287823168": {
+    "en_us": "Transforms three of the same Unique into a random stack of 20 relics.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "11195550436299375879": {
+    "en_us": "Upgrade an Item Grade 66 Medallion to Grade 69.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Any Medallion"
+  },
+  "9898604281592218944": {
+    "en_us": "Extracts Nanotech Filaments from Spare Parts.\n\nCreates 5 Nanotech Filaments.\n\nRequired Materials:\n5 - Spare Parts"
+  },
+  "9199884489178547513": {
+    "en_us": "Builds an Advanced Super-Soldier Serum Artifact.\n\n2000 Health\n1000 Defense Rating\n44 - 50 Health Regen per second\nYour Medkit heals you for an additional 10% due to your training through the Super Soldier Program.\n\n\nRequired Materials:\n10 - Spare Parts\n10 - Scrap Metal\n2 - Ionic Particle"
+  },
+  "10664036564114015594": {
+    "en_us": "Creates a Super Heroic rarity accessory item for your current hero at their current level.\n\nRequired Materials:\n20 - Spare Parts\n10 - Scrap Metal\n10 - Cloth\n10 - Mechanical Components\n1 - Futuristic Alloy\n1 - High Tech Fabric"
+  },
+  "15326516072611513660": {
+    "en_us": "Extracts Ionic Particles from Magnetic Material.\n\nCreates 5 Ionic Particles.\n\nRequired Materials:\n5 - Magnetic Materials"
+  },
+  "8472646358753084745": {
+    "en_us": "Crafts Molecular Power Cell\n\nRequired Materials:\n1 - Reinforced Casing\n1 - Gold Conduit\n2 - Gold Wires"
+  },
+  "2934355832364467523": {
+    "en_us": "Adds the #emphasis#ENCHANTMENT NAME/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002BENCHANTMENT#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Alternate Reality Rune"
+  },
+  "11818526337309345076": {
+    "en_us": "Upgrade an Item Grade 63 Insignia to Grade 66.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Epic Insignia"
+  },
+  "7895933418854090057": {
+    "en_us": "Creates 2 Health Tonics\n\nConsuming this item increases your health by 300 and your health regeneration for 20 minutes.\nRequires level 27.\n\n#emphasis#Critical Success: You create twice as many of this item.#/emphasis#\n\nRequired Materials:\n1 - Any Element"
+  },
+  "17619201707164632346": {
+    "en_us": "Creates the World\u0027s Greatest Hamburger\n\nConsuming this item increases your Damage Rating by 100 and Health by 1000 for an hour.\n\n#emphasis#Critical Success: You create twice as many of this item.#/emphasis#\n\nRequired Materials:\n1 - Astral Essence\n1 - Enhanced Genome\n1 - Ionic Particle\n1 - Nanotech Filament"
+  },
+  "9288069642466952510": {
+    "en_us": "Unbinds any armor, weapon, insignia or team-up item from your hero, making it tradable to other players. Does not work on uniques.\n\nRequired Materials:\n1 - Any Armor or Weapon\n1 - Any Element\n1 - Unstable Molecules"
+  },
+  "7989293977708594533": {
+    "en_us": "Adds the #emphasis#Density Manipulator#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Defense Rating#/emphasis#\n#emphasis#Health#/emphasis#\n#emphasis#Critical Hit Rating#/emphasis#\n#emphasis#Brutal Strike Rating#/emphasis#\n#emphasis#Damage Reduction from Area Powers#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Lightweight Armor Plate\n5 - Magnetic Materials\n10 - Mechanical Components\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "7374392735410291969": {
+    "en_us": "Transforms Legendary Pieces of Rainbow into the Legendary Pot of Gold of Cassidy Keep.\nThe Pot of Gold of Cassidy Keeps gives:\nRank 1: \u002B10% XP\nRank 2: \u002B10% Rare Item Find\nRank 3: \u002B10% Special Item Find\nRank 4: \u002B10 More Credits per drop\nRank 5: Leprechaun-sized chance (1%) when you defeat an enemy to summon a lucky chest! (20 hour cooldown)\n\nRequired Materials:\n3 - Legendary Piece of Rainbow"
+  },
+  "2916278624256001349": {
+    "en_us": "Transforms Dynamics Serums into an Enhanced Mutant Serum.\n\n#emphasis#Critical Success: You create two of this item instead of one.#/emphasis#\n\nRequired Materials:\n5 - Enhanced Genome\n5 - Dynamic Serum"
+  },
+  "14367343785426879803": {
+    "en_us": "Adds the #emphasis#Cerebral Coordinator#/emphasis# enhancement to any Weapon or Accessory item of Super Heroic or higher rarity, replacing any existing enhancement already on the item.\n\nThis ehancement grants #emphasis#\u002B100 Damage to Summoned Ally Powers#/emphasis# regardless of item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Biological Samples\n5 - Enhanced Genome\n1 - High Tech Fabric"
+  },
+  "13068710150905398608": {
+    "en_us": "Adds a #emphasis#Grade 3#/emphasis# defensive affix to your Catalyst.\nReplaces any existing #emphasis#Grade 3#/emphasis# affix already in this Catalyst.\nAffix benefit will scale to match the level of any attached Catalyst!\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "7339154921114043714": {
+    "en_us": "Resets the Omega Cybernetics Upgrade for a pet of your choice.\n\nRequired Materials:\n1 - Any Pet\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element"
+  },
+  "190403597429376266": {
+    "en_us": "Generate a Standard Danger Room Scenario.\n\nRequired Materials:\n5 - Spare Parts\n5 - Biological Samples"
+  },
+  "9408132850415830282": {
+    "en_us": "Adds the Jack O\u0027 Lantern Spotlight visual effect to the Catalyst.\nReplaces any existing visual effect already on the Catalyst.\nThis Catalyst becomes bound after applying the visual.\n\nRequired Materials:\n1 - Catalyst"
+  },
+  "7256853022612653368": {
+    "en_us": "Transforms five of the same Unique into a large box of 10 runes.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "11344731607080043834": {
+    "en_us": "Builds an A.R.M.O.R. M-26 Anti-Reality Grenade Artifact.\n\nWhen you hit with a Force Power, gain 1000 Brutal Strike Rating to Cooldown Powers 10s (5s CD)\nWhen you hit with a Magic Power, gain 800 Critical Rating to Cooldown Powers for 10s (5s CD)\nWhen you hit with an Energy Power, gain 1000 Damage Rating to Cooldown Powers for 10s (5s CD)\n1 - 1% Power Radius\n\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "480165292688409916": {
+    "en_us": "Adds the #emphasis#Pym Particles#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Defense Rating#/emphasis#\n#emphasis#Dodge Rating#/emphasis#\n#emphasis#When you dodge, get Critical Hit Rating to Hand-to-Hand Powers for 2s (10s cooldown)#/emphasis#\n#emphasis#Recover Spirit when you critically hit (2s cooldown)#/emphasis#\n#emphasis#Become invisible for 5s when your Health drops below 20% (20s cooldown)#/emphasis#\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Magnetic Materials\n5 - Spare Parts\n10 - Energized Particles\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "263450597373707582": {
+    "en_us": "Changes an artifact into a #emphasis#Modified Artifact#/emphasis# and adds a Vanguard Modification to it, replacing  any existing mods already on the artifact.\nVanguard Modification is an #red#Offensive Mod#/red# that grants you #emphasis#Melee Damage Rating and Brutal Strike Rating#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "17759948545723073866": {
+    "en_us": "Rerolls the numbers on the existing #emphasis#Grade 4#/emphasis# affix on your Catalyst.\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome\n1 - Ionic Particle\n1 - Nanotech Filament"
+  },
+  "898108195128476932": {
+    "en_us": "Transforms an Ultimate Upgrade token or extra Team-Up Token into a Unique Item that is usable by your current hero. This will be the same level as the hero that is using the recipe.\n\nRequired Materials:\n1 - Ultimate Upgrade Token"
+  },
+  "17179804038606161204": {
+    "en_us": "Builds an Advanced Vita-Ray Projector Artifact.\n\n550 - 700 Damage Rating to Energy Powers\n222 - 333 Deflect Rating\n1 - 1 Fighting\n400 - 600 Health\n\n\nRequired Materials:\n10 - Spare Parts\n10 - Scrap Metal\n2 - Ionic Particle"
+  },
+  "14106590505499952442": {
+    "en_us": "Transforms three of the same Unique into one Random Level 60 Unique that is usable by a random hero.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "16767239685014422860": {
+    "en_us": "Adds a #emphasis#Grade 1#/emphasis# defensive affix to your Catalyst.\nReplaces any existing #emphasis#Grade 1#/emphasis# affix already in this Catalyst.\nAffix benefit will scale to match the level of any attached Catalyst!\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "6914838909855597837": {
+    "en_us": "Craft an Omega Sentinel\u0027s Arm Gun, a Level 60 Slot 5 Unique Item that is usable by Any Hero.\nThis item has Ranged Damage Rating, Defense, Crit Rating, a chance to summon a Sentinel to fight for you, a chance on hit with a Ranged attack to fire a wide Sentinel laser, and a chance on hit to pull out the big gun and gain a large amount of damage rating but lose 5% attack speed.\n\nRequired Materials:\n1 - Mini-Sentinel\n1 - Sentinel Limb\n1 - Mega-Sentinel Medallion"
+  },
+  "2889233846488204558": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Area Damage Reduction Upgrade#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item. This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B1% Enemy Area Damage Reduction#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Alternate Reality Rune"
+  },
+  "367882100114326851": {
+    "en_us": "Creates a rare rarity upper body armor item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Cloth\n10 - Scrap Metal\n5 - Energized Particles"
+  },
+  "9338409231931868538": {
+    "en_us": "Adds the #emphasis#Brigand\u0027s Fortune#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B70 Spirit#/emphasis#\n#emphasis#\u002B70 Bonus XP per enemy defeat#/emphasis#\n#emphasis#\u002B7% Rare Item Find#/emphasis#\n#emphasis#\u002B7% Special Item Find#/emphasis#\n#emphasis#\u002B7% Attack Speed#/emphasis#\n#emphasis#\u002B7% Move Speed#/emphasis#\n#emphasis#7% Damage Reduction from Ranged Powers#/emphasis#\n#emphasis#\u002B1 Speed#/emphasis#\n\nLevel 25 items receive full bonuses from this runeword.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Cattle Rune\n1 - Chalice Rune\n1 - Ride Rune\n1 - Wealth Rune"
+  },
+  "16115569764739319155": {
+    "en_us": "Creates a heroic rarity weapon item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Magnetic Materials\n5 - Mechanical Components\n5 - Energized Particles\n5 - Ionic Particle\n5 - Nanotech Filament"
+  },
+  "2526421118426678540": {
+    "en_us": "Research a Level 3 Starktech Research project.\n\nThe results will contain information that increases the level of your Logistics Division, Engineer, or Scientist and can increase the amount and variety of items they have for sale!\n\nIt requires the following materials to research:\n\nRequired Materials:\n1 - Cosmic Essence"
+  },
+  "1484039934500996417": {
+    "en_us": "Transforms an artifact into a  #emphasis#Modified Artifact#/emphasis#  and adds a Bulwark Modification to it, replacing any existing mods already on the artifact. \nBulwark Modification is a #red#Defensive Mod#/red# that grants you #emphasis#Defense Rating and Less Damage Taken from All Attacks#/emphasis#.\nAffix values scale with artifact level until reaching maximum value at Item Grade 42 and above.\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "1955430655511168264": {
+    "en_us": "Craft a Crossbones Tactical Vest, a Level 60 Slot 3 Unique Item that is usable by Any Hero\n\n#emphasis#Crossbones Tactical Vest#/emphasis#\n#emphasis#\u002BDamage Reduction#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#\u002BSpirit#/emphasis#\n#emphasis#\u002BAttack Speed#/emphasis#\n#emphasis#\u002BCritical Hit Rating#/emphasis#\n#emphasis#\u002BBrutal Strike Rating#/emphasis#\n#emphasis#When defeated, you instead revive with full Health and Spirit#/emphasis#\n#emphasis#\u002BChance to become invulnerable for 5s when you hit#/emphasis#\n#emphasis#\u002BChance when you hit to gain \u002B1 to all Attributes for 5s. (15s cooldown)#/emphasis#\n\nRequired Materials:\n1 - Crossbones Tactical Vest\u0027s Ammo Pouch\n1 - Crossbones Tactical Vest\u0027s Small Ammo Pouch\n1 - Crossbones Tactical Vest\u0027s Armored Lining\n1 - Crossbones Tactical Vest\u0027s Belt\n1 - Crossbones Tactical Vest\u0027s Knife Holster\n1 - Crossbones Tactical Vest\u0027s Gun Holster"
+  },
+  "11168510421775484217": {
+    "en_us": "Transforms a level 13 to 24 Epic item usable by another hero into a new item usable by your current hero and binds it to you.\n\nRequired Materials:\n1 - Epic (Purple) Armor or Weapon\n1 - Nanotech Filament\n1 - Ionic Particle"
+  },
+  "17108796568370152761": {
+    "en_us": "Craft Bow of the Einherjar, a Level 60 Slot 1 Unique Item that is usable by Any Hero\n\n#emphasis#Bow of the Einherjar#/emphasis#\n#emphasis#\u002BDamage Rating#/emphasis#\n#emphasis#\u002BRanged Damage Rating#/emphasis#\n#emphasis#\u002BFighting#/emphasis#\n#emphasis#\u002BAttack Speed#/emphasis#\n#emphasis#\u002BBrutal Rating#/emphasis#\n#emphasis#\u002BBrutal Damage Rating#/emphasis#\n#emphasis#Chance when you Brutally Strike to gain Critical Rating#/emphasis#\n#emphasis#Chance when you hit to fire off a wave of arrows#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "13837469156055713041": {
+    "en_us": "Crafts a Bannertech Security Grid\n\nRequired Materials:\n2 - Gold Conduit\n2 - Gold Wires\n1 - Bannertech Casing\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element"
+  },
+  "2153771837286843718": {
+    "en_us": "Adds the #emphasis#Kevlar Weave#/emphasis# enhancement to any Upper Body or Lower Body item of Super Heroic or higher rarity, replacing any existing enchancements already on the item.\n\nThis enhancement grants #emphasis#25 - 100 Dodge Rating#/emphasis# based off of item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n20 - Spare Parts\n10 - Bulletproof Ceramics\n5 - Ionic Particle\n5 - Nanotech Filament\n1 - High Tech Fabric"
+  },
+  "5088186737645520185": {
+    "en_us": "Reconstructs the random cosmic affix on the artifact with another cosmic affix. This only replaces the cosmic affix, not any of the other affixes on the item.\n\nMaterials Required:\n\nRequired Materials:\n1 - Any Cosmic Artifact\n1 - Cosmic Fragment"
+  },
+  "13963668596778861883": {
+    "en_us": "Transforms an uncommon ring/insignia into a rare ring/insignia of the same and level.\nThe affixes from the uncommon ring/insignia will also be on the rare ring/insignia.\n\nRequired Materials:\n1 - Any Ring\n1 - Astral Essence\n1 - Enhanced Genome\n1 - Ionic Particle\n1 - Nanotech Filament\n1 - Unstable Molecules"
+  },
+  "362472159303959868": {
+    "en_us": "Builds a S.H.I.E.L.D. Training Manual - Clearance Level 5.\n\nThis Artifact grants the following:\nWhen you hit with a Power, reference the manual, gaining 600 damage Rating for 10s\n600 of one of your hero specific defense types.\n700 - 1000 Health\n1 to All Attributes\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n10 - Cloth\n10 - Futuristic Alloy\n10 - Energized Particles\n1 - Unstable Molecules"
+  },
+  "8980780409078678858": {
+    "en_us": "Adds the #emphasis#ENCHANTMENT NAME#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002BENCHANTMENT#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Alternate Reality Rune"
+  },
+  "5355551166181016840": {
+    "en_us": "Adds the Bounty of Bifrost visual effect to the Catalyst.\nReplaces any existing visual effect already on the Catalyst.\nThis Catalyst becomes bound after applying the visual.\n\nRequired Materials:\n1 - Catalyst"
+  },
+  "12688359787220764006": {
+    "en_us": "Creates a Super Heroic rarity upper body armor item for your current hero at their current level.\n\nRequired Materials:\n20 - Spare Parts\n10 - Scrap Metal\n10 - Cloth\n10 - Mechanical Components\n1 - Futuristic Alloy\n1 - High Tech Fabric"
+  },
+  "6845990309279696188": {
+    "en_us": "Trade 5 Large Character Experience Tokens for a random Extra Large Character Experience Token\n\nRequired Materials:\n1 - Any Large Character Experience Token\n1 - Any Large Character Experience Token\n1 - Any Large Character Experience Token\n1 - Any Large Character Experience Token\n1 - Any Large Character Experience Token"
+  },
+  "4875161560965055798": {
+    "en_us": "Transforms three of the same Unique into a Credit Chest worth 50,000 credits.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "14094172621175391547": {
+    "en_us": "Craft a Stark Sentinel Adaptive Reactor, a Level 60 Slot 3 Unique Item that is usable by Any Hero\n\n#emphasis#Stark Sentinel Adaptive Reactor#/emphasis#\n#emphasis#\u002BDamage Rating#/emphasis#\n#emphasis#\u002BDamage Reduction#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#\u002BMental Defense Rating#/emphasis#\n#emphasis#\u002BFighting#/emphasis#\n#emphasis#\u002BDurability#/emphasis#\n#emphasis#When you take Area Damage, gain 2% Area Damage reduction for 6s#/emphasis#\n#emphasis#When you take Melee Damage, gain 2% Melee Damage reduction for 6s#/emphasis#\n#emphasis#When you take Ranged Damage, gain 2% Ranged Damage reduction for 6s#/emphasis#\n#emphasis#\u002BChance to ignore Mental Damage when attacked#/emphasis#\n#emphasis#\u002BHealth Regeneration per second#/emphasis#\n\nRequired Materials:\n20 - Astral Essence\n20 - Enhanced Genome\n20 - Ionic Particle\n20 - Nanotech Filament\n4 - Unstable Molecules\n1 - Reforged Sentinel Armor Scrap"
+  },
+  "16717239294938776888": {
+    "en_us": "Crafts Stark Laser System\n\nRequired Materials:\n1 - Starktech Casing\n2 - Gold Conduit\n5 - Gold Wires"
+  },
+  "14832641932185306433": {
+    "en_us": "Transforms ingredients into an artifact that increases your Health and movement speed, plus gives you a chance to summon haste orbs when you attack.\n\nRequired Materials:\n10 - Spare Parts\n10 - Scrap Metal\n2 - Ionic Particle"
+  },
+  "11698579372539774222": {
+    "en_us": "This consumes your Legendary Item and gives you a chest of 1000 Legendary Marks in return. \n#orange#NOTE:#/orange# You can only exchange #orange#Level 80 Legendary Items#/orange# that were previously purchased for #orange#1,000 Legendary Marks#/orange#.\n\nRequired Materials:\n1 - Any Legendary"
+  },
+  "4493658153093235987": {
+    "en_us": "Transforms an Item Grade 63 PvP Ring for a stack of 60 Crowns of Valor.\n\nRequired Materials:\n1 - PvP Ring"
+  },
+  "1224519078201394443": {
+    "en_us": "Trade 3 Small Character Experience Tokens for a random Small Character Experience Token\n\nRequired Materials:\n1 - Any Small Character Experience Token\n1 - Any Small Character Experience Token\n1 - Any Small Character Experience Token"
+  },
+  "15263165163205362959": {
+    "en_us": "Research a Level 1 Starktech Research project.\n\nThe results will contain information that increases the level of your Logistics Division, Engineer, or Scientist and can increase the amount and variety of items they have for sale!\n\nIt requires the following materials to research:\n\nRequired Materials:\n1 - Cosmic Essence"
+  },
+  "5933402246647579916": {
+    "en_us": "Unbinds any Item (excluding Legendary items) from your hero.\n\nRequired Materials:\n1 - Any Ring, Medal, Relic, Legendary or Artifact item\n1 - Any Element\n2 - Unstable Molecules"
+  },
+  "5683744190154474815": {
+    "en_us": "Creates a set of Lightweight Armor Plating, usable in other construction.\n\nRequired Materials:\n5 - Spare Parts\n5 - Ionic Particle"
+  },
+  "8870010711427384641": {
+    "en_us": "Transforms two Rare Danger Room Scenarios into an Epic Danger Room Scenario.\n\nRequired Materials:\n1 - Danger Room Scenario\n1 - Danger Room Scenario"
+  },
+  "2827467037047719189": {
+    "en_us": "Crafts a Stark Powercube\n\nRequired Materials:\n1 - Starktech Casing\n2 - Gold Conduit\n5 - Gold Wires"
+  },
+  "1711064827595719940": {
+    "en_us": "Adds the Sight of the Nine Realms visual effect to the Catalyst.\nReplaces any existing visual effect already on the Catalyst.\nThis Catalyst becomes bound after applying the visual.\n\nRequired Materials:\n1 - Catalyst"
+  },
+  "15809761547606623496": {
+    "en_us": "Transforms Sentinel parts into a Mini-Sentinel Credit Item worth 25,000 Credits.\n\nRequired Materials:\n1 - Sentinel Head\n2 - Sentinel Limb\n1 - Sentinel Torso"
+  },
+  "9828381677966132535": {
+    "en_us": "Swaps a Runeword from one Uru-Forged Item to a target Uru-Forged Item.  The target Uru-Forged Item does not have to have a Runeword enchanted on it.  If the target Uru-Forged Item has an existing Runeword, they will swap.  This also unbinds both Runewords.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Any Uru-Forged Item"
+  },
+  "12942084859913504057": {
+    "en_us": "Builds a Repulsor Field Artifact.\n\n125 - 167 Deflect Rating\n125 - 167 Defense Rating\n335 - 500 Damage Rating to Gadget Powers\n\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Cloth"
+  },
+  "6406032585469330691": {
+    "en_us": "Craft an Fire Giant\u0027s Sword, a Level 60 Slot 1 Unique Item that is usable by Any Hero\n\n#emphasis#Fire Giant\u0027s Sword#/emphasis#\n#emphasis#\u002BDamage Rating#/emphasis#\n#emphasis#\u002BAttack Speed#/emphasis#\n#emphasis#\u002BCritical Rating#/emphasis#\n#emphasis#\u002BBrutal Damage Rating#/emphasis#\n#emphasis#Chance to cause Bleeding when you hit#/emphasis#\n#emphasis#Chance to gain damage vs. Bleeding enemies when you hit with an Energy Power#/emphasis#\n#emphasis#Chance to gain damage vs. Bleeding enemies when you hit with a Physical Power#/emphasis#\n#emphasis#Chance to summon a Fire Giant when you hit#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "5521267608867767615": {
+    "en_us": "Generate a Heroic Danger Room Scenario.\n\nHeroic Danger Room Scenarios can only be activated if you have completed the Heroic Trial.\n\nRequired Materials:\n10 - Spare Parts\n10 - Biological Samples"
+  },
+  "17295211033871516950": {
+    "en_us": "Creates 5 S.H.I.E.L.D. Med Kits\n\n#emphasis#Critical Success: You create twice as many of this item.#/emphasis#\n\nRequired Materials:\n1 - Any Element"
+  },
+  "1668997611572102470": {
+    "en_us": "Transforms a level 25 to 36 rare item into an epic item of the same slot and level.\nThe affixes from the rare item will also be on the epic item.\nRecipe does not accept Insignias or Rings, or items that are not for your current hero.\nIf your gear is older and has affixes that give bonuses or grants to a certain power that has since changed, those affixes may be re-rolled.\n\nRequired Materials:\n1 - Blue (Rare) Armor or Weapon\n1 - Any Element"
+  },
+  "9895744481840923900": {
+    "en_us": "Requires credits, 50 of each element, and 10 Unstable Molecules.\nDoes not change Item Grade or affixes. It only rerolls numbers that have a random range.\n\nRequired Materials:\n1 - Any Medallion\n50 - Astral Essence\n50 - Enhanced Genome\n50 - Ionic Particle\n50 - Nanotech Filament\n10 - Unstable Molecules"
+  },
+  "3738510006599288069": {
+    "en_us": "Transforms four Bloodstone Demonbands into a random Bloodstone Demonband\n\nRequired Materials:\n1 - Bloodstone Ring\n1 - Bloodstone Ring\n1 - Bloodstone Ring\n1 - Bloodstone Ring"
+  },
+  "13217596107031250235": {
+    "en_us": "Builds an Advanced Metasensory Array Artifact.\n\n5 - 8% Attack Speed \n250 - 300 Damage Rating to Energy Powers\n150 - 200 Critical Hit Rating\nWhen you use your Med Kit, release nanites in a 10 yard radius, weakening enemies caught in the area for 8s\n150 - 200 Damage Rating vs Weakened Enemies\n\n\nRequired Materials:\n10 - Spare Parts\n10 - Scrap Metal\n2 - Ionic Particle"
+  },
+  "12126409178211026291": {
+    "en_us": "Transforms different elements into a single Unstable Molecule.\n\nRequired Materials:\n5 - Astral Essence\n5 - Enhanced Genome\n5 - Ionic Particle\n5 - Nanotech Filament"
+  },
+  "5285653842039735672": {
+    "en_us": "Adds the #emphasis#Viking\u0027s Vitality#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B2000 Health#/emphasis#\n#emphasis#2% chance when you are attacked to regenerate 200 Health#/emphasis#\n#emphasis#When you drop below 20% Health, gain \u002B2000 Critical Hit Rating for 2s (20s cooldown)#/emphasis#\n\nLevel 25 items receive half bonus to Health, regeneration, and Critical Hit Rating.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Earth Rune\n1 - Lake Rune\n1 - Man Rune\n1 - Sun Rune"
+  },
+  "9611379318640608588": {
+    "en_us": "Rerolls the numbers on the existing #emphasis#Grade 1#/emphasis# affix on your Catalyst.\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "4924186091524195663": {
+    "en_us": "Adds a #emphasis#Grade 2#/emphasis# offensive affix to your Catalyst.\nReplaces any existing #emphasis#Grade 2#/emphasis# affix already in this Catalyst.\nAffix benefit will scale to match the level of any attached Catalyst!\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "3410457372288222476": {
+    "en_us": "Adds the #emphasis#Centaurian Auto Targeting#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Damage Rating to Arrow Powers#/emphasis#\n#emphasis#Critical Hit Rating#/emphasis#\n#emphasis#Bonus XP per enemy defeat#/emphasis#\n#emphasis#Brutal Strike Rating for 3s when you critically hit#/emphasis#\n#emphasis#% chance when you hit to release a wave of arrows dealing 20,000 physical damage across 9 arrows (30s cooldown)#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Magnetic Materials\n5 - Spare Parts\n10 - Mechanical Components\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "12099001845007058179": {
+    "en_us": "Enchants your #emphasis#Uru-Forged#/emphasis# gear.\nThis will remove and replace any enchantments you currently have. \n#emphasis#Surtur\u0027s Volanic Soul#/emphasis# enchants the item with #emphasis#\u002B500 Brutal Strike Rating#/emphasis#, #emphasis#\u002B1000 Brutal Strike Damage#/emphasis#, #emphasis#Your attacks apply burning for 400 physical damage twice a second for 5 seconds#/emphasis#, and a #emphasis#2% chance when you hit to summon a lava demon for 20 seconds, for a maximum of 5 at once.#/emphasis#\n\nRequired Materials:\n1 - Any Artifact"
+  },
+  "2628913379070575943": {
+    "en_us": "Adds the #emphasis#Surtur\u0027s Volcanic Soul#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 items receive these bonuses:\n#emphasis#\u002B200 Energy Defense Rating#/emphasis#\n#emphasis#\u002B200 Energy Damage Rating#/emphasis#\n#emphasis#\u002B200 Mental Defense Rating#/emphasis#\n#emphasis#\u002B200 Mental Damage Rating#/emphasis#\n#emphasis#\u002B200 Critical Hit Rating#/emphasis#\n#emphasis#\u002B200 Critical Damage Rating#/emphasis#\n#emphasis#\u002B200 Brutal Strike Rating#/emphasis#\n#emphasis#\u002B200 Brutal Damage Rating#/emphasis#\n#emphasis#\u002B1 rank of all powers#/emphasis#\n#emphasis#2% chance when you hit to summon a fiery Lava Demon to fight along side you for 20s (2m cooldown)#/emphasis#\n\nLevel 25 items receive half bonus to Energy Defense, Energy Damage, Mental Defense, Mental Damage, Critical Hit, Critical Damage, Brutal Strike, and Brutal Damage Ratings.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Ash Rune\n1 - Fire Rune\n1 - Surtur Rune\n1 - Sun Rune\n1 - Torch Rune"
+  },
+  "6507288960685835582": {
+    "en_us": "Swaps all Cybernetics Affixes from one pet to another.\n\nRequired Materials:\n1 - Any Pet\n1 - Any Pet"
+  },
+  "12210563908344612152": {
+    "en_us": "Craft Fire Giant\u0027s Aegis, a Level 60 Slot 2 Unique Item that is usable by Any Hero\n\n#emphasis#Fire Giant\u0027s Aegis#/emphasis#\n#emphasis#\u002BDefense Rating#/emphasis#\n#emphasis#\u002BPhysical Defense Rating#/emphasis#\n#emphasis#\u002BDamage Rating vs. Burning Targets#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#Cost Reduction#/emphasis#\n#emphasis#\u002BStrength#/emphasis#\n#emphasis#\u002BEnergy#/emphasis#\n#emphasis#\u002BDodge Rating#/emphasis#\n#emphasis#\u002BBlock Chance#/emphasis#\n#emphasis#Less Damage from Melee Powers#/emphasis#\n#emphasis#Chance to Burn your target when you hit#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "10615309575967737148": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Damage Upgrade#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item. This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B60 Damage Rating#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Alternate Reality Rune"
+  },
+  "5965588873410970983": {
+    "en_us": "Creates a heroic rarity leg armor item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Magnetic Materials\n5 - Mechanical Components\n5 - Energized Particles\n5 - Ionic Particle\n5 - Nanotech Filament"
+  },
+  "15026622330518373696": {
+    "en_us": "Adds the #emphasis#Starktech Impact Reduction#/emphasis# enhancement to any Upper Body or Lower Body item of Super Heroic or higher rarity, replacing any existing enhancements already on the item.\n\nThis enhancement grants #emphasis# 100 - 200 Defense Rating#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Biological Samples\n5 - Enhanced Genome\n1 - High Tech Fabric"
+  },
+  "2202896736974013808": {
+    "en_us": "Creates a set of High Tech Fabrics, usable in other construction.\n\nRequired Materials:\n5 - Bulletproof Ceramics\n5 - Enhanced Genome"
+  },
+  "7510152979443680518": {
+    "en_us": "Craft Fragment of Twilight, a Level 60 Slot 1 Unique Item that is usable by Any Hero\n\n#emphasis#Fragment of Twilight#/emphasis#\n#emphasis#\u002BDamage Rating#/emphasis#\n#emphasis#\u002BCritical Damage Rating#/emphasis#\n#emphasis#\u002BBrutal Damage Rating#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#\u002BHealth Regeneration when you hit#/emphasis#\n#emphasis#Revive when you are defeated#/emphasis#\n#emphasis#When you hit, gain Dodge and Defense Ratings (stacks up to 3 times)#/emphasis#\n#emphasis#When you critically hit, gain Critical Hit Rating and Brutal Strike Rating#/emphasis#\n#emphasis#When you brutally strike, incinerate enemies#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot\n1 - Surtur Rune"
+  },
+  "10407507633569465656": {
+    "en_us": "Builds an A.R.M.O.R. Issued Nano-Poison Artifact.\n\n50 - 100 Health Regeneration per second\n1 - 2 Fighting\nWhen you hit with a Melee power, you infect the target with the Nano-Poison, gain \u002B100 Brutal Strike Rating and \u002B275 Brutal Damage Rating for 6s. The Nano-Poison can stack up to 3 times\n1 - 2 Strength\n1 - 2 Durability\n\n\nRequired Materials:\n20 - Mechanical Components\n5 - Futuristic Alloy\n5 - Ionic Particle\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "7996639874973369664": {
+    "en_us": "Adds the #emphasis#Endurance Stimulator#/emphasis# enhancement to any Upper Body or Lower Body item of Super Heroic or higher rarity, replacing any existing enhancements already on the item.\n\nThis enhancement grants between #emphasis#5 - 20 Spirit#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Enhanced Genome\n5 - Ionic Particle\n1 - High Tech Fabric"
+  },
+  "9266260369762354486": {
+    "en_us": "Adds the #emphasis#Fire Rune#/emphasis# enchantment to any Slot 1 or 5 gear of Epic or higher rarity, replacing any existing enchantments already on the item.\n\nLevel 50-60 of this enchantment gives you:\n#emphasis#\u002B50 Energy Damage Rating#/emphasis#\n\nLevel 35-49 of this enchantment gives you:\n#emphasis#\u002B40 Energy Damage Rating#/emphasis#\n\nLevel 20-34 of this enchantment gives you:\n#emphasis#\u002B30 Energy Damage Rating#/emphasis#\n\nLevel 1-19 of this enchantment gives you:\n#emphasis#\u002B20 Energy Damage Rating#/emphasis#\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n1 - Fire Rune"
+  },
+  "10129970755342566737": {
+    "en_us": "Adds a #emphasis#Grade 4#/emphasis# offensive affix to your Catalyst.\nReplaces any existing #emphasis#Grade 4#/emphasis# affix already in this Catalyst.\nAffix benefit will scale to match the level of any attached Catalyst!\n\nRequired Materials:\n1 - Catalyst\n1 - Astral Essence\n1 - Enhanced Genome"
+  },
+  "8449708772361241912": {
+    "en_us": "Craft an Essence of Jinn, a Level 60 Slot 5 Unique Item that is usable by Any Hero\n\n#emphasis#Essence of Jinn#/emphasis#\n#emphasis#\u002BDamage Rating#/emphasis#\n#emphasis#\u002BDamage Reduction#/emphasis#\n#emphasis#\u002BDamage Rating to Ranged Powers#/emphasis#\n#emphasis#\u002BDamage Rating to Area Powers#/emphasis#\n#emphasis#\u002BCritical Hit Rating#/emphasis#\n#emphasis#\u002BCritical Damage Rating#/emphasis#\n#emphasis#\u002BPower Duration#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#\u002BChance when you Critically Hit with a Ranged Power, gain the Essence of Jinn, increasing your Energy Stat for 6s#/emphasis#\n\nRequired Materials:\n20 - Astral Essence\n20 - Enhanced Genome\n20 - Ionic Particle\n20 - Nanotech Filament\n4 - Unstable Molecules\n1 - Reforged Sentinel Armor Scrap"
+  },
+  "17707660144980460872": {
+    "en_us": "Creates 2 Health Balms\n\nConsuming this item increases your maximum Health by 100 and your Health Regeneration for 20 minutes.\n\n#emphasis#Critical Success: You create twice as many of this item.#/emphasis#\n\nRequired Materials:\n1 - Any Element"
+  },
+  "16135170333267002696": {
+    "en_us": "Transforms a level 37 to 48 rare item into an epic item of the same slot and level.\nThe affixes from the rare item will also be on the epic item.\nRecipe does not accept Insignias or Rings, or items that are not for your current hero.\nIf your gear is older and has affixes that give bonuses or grants to a certain power that has since changed, those affixes may be re-rolled.\n\nRequired Materials:\n1 - Blue (Rare) Armor or Weapon\n1 - Any Element"
+  },
+  "7910688066026014014": {
+    "en_us": "Upgrade an Item Grade 63 Unique or Cosmic item to Item Grade 66.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "7212468628715734331": {
+    "en_us": "Research a Level 2 Logistics Project.\n\nThe results will contain information that increases the level of your Logistics Division and can increase the amount and variety of items they have for sale!\n\nHigher level research projects grant more rewards!\n\nIt requires the following materials to research:\n\nRequired Materials:\n12 - Supplier Contact Information"
+  },
+  "12402831439373862217": {
+    "en_us": "Adds a core\u0027s affixes to the costume.\nReplaces any existing core\u0027s affixes already in the costume.\nSets costume to have the same level as the core.\n\nRequired Materials:\n1 - Costume\n1 - Catalyst"
+  },
+  "1174585831363314950": {
+    "en_us": "Generate an Omega Danger Room Scenario.\n\nOmega Danger Room Scenarios can only be activated if you have completed the Omega Trial.\n\nRequired Materials:\n15 - Mechanical Components\n15 - Energized Particles\n15 - Futuristic Alloy\n1 - Cosmic Fragment"
+  },
+  "16153468272628860226": {
+    "en_us": "Trade 3 Large Character Experience Tokens for a random Large Character Experience Token\n\nRequired Materials:\n1 - Any Large Character Experience Token\n1 - Any Large Character Experience Token\n1 - Any Large Character Experience Token"
+  },
+  "8888238754486617399": {
+    "en_us": "Builds an Extremis Serum Artifact.\n\nWhile below 30% Health, gain \u002B1,300 Energy Damage Rating, \u002B1,150 Defense Rating, and regenerate \u002B40 Health per second\n150 - 200 Brutal Strike Rating\nYou are now infused with Extremis, causing your Med Kit to heal your mind for 5% of your total spirit\n\n\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Cloth"
+  },
+  "17325992673631143179": {
+    "en_us": "Combines any 10 elements into an atomic element\n\nRequired Materials:\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element\n1 - Any Element"
+  },
+  "17477857889744192840": {
+    "en_us": "This recipe allows you to remove the visual effect from an Artifact, Catalyst, or piece of gear.\n(Note: Most Artifacts and gear don\u0027t have a visual effect. This recipe has no effect on such items.)\n\nRequired Materials:\n1 - Any Item With Visual Effect"
+  },
+  "2200435123656918343": {
+    "en_us": "Creates 2 Spirit Enhancers\n\nConsuming this item increases you spirit by 30 and your spirit regeneration for 20 minutes.\nRequires level 27.\n\n #emphasis#Critical Success: You create twice as many of this item. #/emphasis#\n\nRequired Materials:\n1 - Any Element"
+  },
+  "8901031692473861378": {
+    "en_us": "Unbinds a Unique item from a hero but doesn\u0027t change the heroes that can use it. Best when used on \u0022Any Hero\u0022 uniques. Item is still bound to your account.\n\nRequired Materials:\n1 - Unique Armor or Weapon\n1 - Unstable Molecules\n1 - Any Element"
+  },
+  "15272614091248567556": {
+    "en_us": "Upgrades an Epic or Cosmic Insignia to Item Grade 63.\n\nRequired Materials:\n1 - Epic Insignia"
+  },
+  "18379716557000672513": {
+    "en_us": "Transforms five of the same Unique into a Credit Chest worth 500,000 credits.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "6863229144066753850": {
+    "en_us": "Transforms a level 49 or lower Unique item into a level 50 version of the same Unique.\nThis does not re-roll affixes. Existing affixes are scaled to a higher level.\nRecipe does not accept Uniques that are not for your current hero.\n\nRequired Materials:\n1 - Unique Armor or Weapon\n1 - Ionic Particle\n1 - Nanotech Filament\n1 - Unstable Molecules"
+  },
+  "16701284393382577470": {
+    "en_us": "Builds an artifact that increases your movement speed and damage, and heals you when you use movement powers.\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Ionic Particle\n5 - Futuristic Alloy\n1 - Unstable Molecules"
+  },
+  "15566183124635026693": {
+    "en_us": "Transforms an extra Team-Up token into an Ultimate Upgrade token.\n\nRequired Materials:\n1 - Team-Up Token"
+  },
+  "13745646637970228539": {
+    "en_us": "Builds an artifact that increases your defenses and deals damage to attackers.\n\nRequired Materials:\n10 - Spare Parts\n10 - Scrap Metal\n2 - Ionic Particle"
+  },
+  "5637671599231665473": {
+    "en_us": "Upgrade an Item Grade 63 Unique or Cosmic item to Item Grade 66.\nThis does not re-roll your affixes, it scales them to a higher level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "13602059597730547006": {
+    "en_us": "Adds StarkTech Power Cube Socket to a lower level Artifact or other Artifact without one.\n\nRequired Materials:\n1 - Any Artifact"
+  },
+  "12173259067901805840": {
+    "en_us": "Adds a Fighting Challenge Bonus Affix to any Item Grade 63 or higher Unique or Cosmic item. This recipe can also be used to replace an existing Challenge Bonus Affix.\n\nRequired Materials:\n1 - Unique or Cosmic Armor or Weapon\n1 - Specific Challenge Bonus Upgrade Token"
+  },
+  "14496508295426344255": {
+    "en_us": "Builds a S.H.I.E.L.D. Training Manual - Clearance Level 3.\n\nThis Artifact grants the following:\nWhen you hit with a Power, reference the manual, gaining 350 damage Rating for 10s\n350 of one of your hero specific defense types.\n500 - 800 Health\n\nRequired Materials:\n20 - Spare Parts\n20 - Scrap Metal\n5 - Cloth\n5 - Futuristic Alloy"
+  },
+  "2666774151379617042": {
+    "en_us": "Adds the #emphasis#Mass Intensifier#/emphasis# enhancement to any Weapon or Accessory item of Super Heroic or higher rarity, replacing any existing enhancement already on the item.\n\nThis enhancement grants #emphasis#20 - 50 Melee Damage Rating#/emphasis# based on item level.\n\nMaterials Required:\n\nRequired Materials:\n1 - Weapon or Accessory of Super Heroic or Greater Rarity\n20 - Spare Parts\n10 - Mechanical Components\n5 - Magnetic Materials\n5 - Ionic Particle\n1 - Lightweight Armor Plate"
+  },
+  "12068477680007775555": {
+    "en_us": "Adds the #emphasis#Web Shooter Schematics#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Damage Rating to Web Powers#/emphasis#\n#emphasis#Critical Hit Rating#/emphasis#\n#emphasis#Fighting#/emphasis#\n#emphasis#Chance when you use a Power to web your enemies, slowing their move and attack speed by 20% for 5 seconds#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Enhanced Genome\n5 - Biological Samples\n10 - Mechanical Components\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "16489159098257245506": {
+    "en_us": "Transforms Flags into a Championship Soccer Ball, which can be used to buy a special Unique item at the Special Events Vendor.\n\nRequired Materials:\n1 - Any International Flag\n1 - Any International Flag\n1 - Any International Flag\n1 - Any International Flag\n1 - Any International Flag"
+  },
+  "4856522081522746699": {
+    "en_us": "Creates 2 Energetic Serums\n\nConsuming this item increases your damage by 25 for 20 minutes.\nRequires level 27.\n\n#emphasis#Critical Success: You create twice as many of this item.#/emphasis#\n\nRequired Materials:\n1 - Any Element"
+  },
+  "4774686612168639801": {
+    "en_us": "Craft an Overseer\u0027s Mace, a Level 60 Slot 1 Unique Item that is usable by Any Hero\n\n#emphasis#Overseer\u0027s Mace#/emphasis#\n#emphasis#\u002BDamage Rating#/emphasis#\n#emphasis#\u002BPhysical Defense Rating#/emphasis#\n#emphasis#\u002BMelee Damage Rating#/emphasis#\n#emphasis#\u002BCritical Damage Rating#/emphasis#\n#emphasis#Less damage from Area Powers#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#When you hit with a Melee Power, gain \u002B1 Strength for 10s (stacks up to 3 times)#/emphasis#\n#emphasis#Chance when you Critically Hit to gain \u002BDefense Rating for 5s (30s Cooldown)#/emphasis#\n#emphasis#When an ally dies, deal Physical Damage and Weaken all enemies around you#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "6237683757456033085": {
+    "en_us": "Adds the #emphasis#A.R.M.O.R. Spirit Upgrade#/emphasis# enchantment to any Slot 2, 3, or 4 gear of Epic or higher rarity, replacing any existing enchantments already on the item. This enchantment can only be used on item level 63 items and higher.\n\nLevel 60 enchantment gives you:\n#emphasis#\u002B30 Spirit#/emphasis#\n\nRequired Materials:\n1 - Upper Body or Lower Body item of Super Heroic or greater rarity\n1 - Alternate Reality Rune"
+  },
+  "15093718094930314609": {
+    "en_us": "Adds the #emphasis#Ultimate Guardian#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 Ultimate Guardian gives you:\n#emphasis#\u002B2000 Defense Rating#/emphasis#\n#emphasis#\u002B2 ranks of Ultimate powers#/emphasis#\n#emphasis#Regenerate 100% of your Health instantly when you use your Ultimate Power#/emphasis#\n\nLevel 25 items receive half bonus to Defense Rating.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Earth Rune\n1 - Odin Rune\n1 - Stone Rune\n1 - Thor Rune\n1 - Tyr Rune"
+  },
+  "5859870942016374082": {
+    "en_us": "Adds the #emphasis#Vibranium Fortification#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Health#/emphasis#\n#emphasis#Damage Rating to Force Powers#/emphasis#\n#emphasis#Critical Hit Rating to Force Powers#/emphasis#\n#emphasis#Damage Reduction from Area Powers#/emphasis#\n#emphasis#Damage Reduction from Ranged Powers#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Lightweight Armor Plate\n5 - Nanotech Filament\n10 - Futuristic Alloy\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "12718999710186865973": {
+    "en_us": "Craft Fire Giant\u0027s Horns, a Level 60 Slot 5 Unique Item that is usable by Any Hero\n\n#emphasis#Fire Giant\u0027s Horns#/emphasis#\n#emphasis#\u002BDefense Rating#/emphasis#\n#emphasis#\u002BPhysical Defense Rating#/emphasis#\n#emphasis#\u002BHealth#/emphasis#\n#emphasis#\u002BCritical Hit Rating#/emphasis#\n#emphasis#\u002BBrutal Strike Rating#/emphasis#\n#emphasis#\u002BFighting#/emphasis#\n#emphasis#\u002BIntelligence#/emphasis#\n#emphasis#\u002BSummoned Ally Damage#/emphasis#\n#emphasis#\u002BSummoned Ally Duration#/emphasis#\n#emphasis#When you hit, gain Attack Speed and Cost Reduction (stacks up to 2 times)#/emphasis#\n\nRequired Materials:\n1 - Asgardian Forged Ingot"
+  },
+  "1665136165379179831": {
+    "en_us": "Changes an artifact into a #emphasis#Modified Artifact#/emphasis# and adds a Specialist Modification to it, replacing  any existing mods already on the artifact.\nSpecialist Modification grants you #emphasis#bonus damage against Bosses#/emphasis# and #emphasis#\u002B1 to All Attributes#/emphasis# when you use any power. This bonus is only applied if you have an #red#Offensive Mod#/red#, #red#Defensive Mod#/red#, and #red#Utility Mod#/red# equipped at the same time.\n\nRequired Materials:\n1 - Any Artifact\n5 - Ionic Particle\n5 - Nanotech Filament\n10 - Spare Parts\n1 - Modification Installation Kit"
+  },
+  "4211796539181958458": {
+    "en_us": "Adds the #emphasis#Burstein Gene Therapy#/emphasis# enhancement to any #emphasis#Utility Slot Armor Item#/emphasis#, replacing any existing enhancements already on the item.\n\nThis enhancement grants the following:\n#emphasis#Defense Rating#/emphasis#\n#emphasis#Health#/emphasis#\n#emphasis#Durability#/emphasis#\n#emphasis#When an enemy hits you, reduce their Attack Speed by 40% for 4s#/emphasis#\n\nMaterials Required:\n\nRequired Materials:\n1 - Utility Slot Armor Item\n5 - Enhanced Genome\n5 - Nanotech Filament\n10 - Energized Particles\n1 - Unstable Molecules\n1 - Modification Installation Kit"
+  },
+  "2310411940211721488": {
+    "en_us": "Requires one of each element and two Unstable Molecules.\nDoes not change item level or affixes. It only rerolls numbers that have a random range.\n\nRequired Materials:\n1 - Unique Armor or Weapon\n1 - Astral Essence\n1 - Enhanced Genome\n1 - Ionic Particle\n1 - Nanotech Filament\n2 - Unstable Molecules"
+  },
+  "8208539714380301629": {
+    "en_us": "Transforms five of the same Unique into one Random Level 60 Unique that is usable by Any Hero.\nThe Uniques used for the input do not have to be the same level.\n\nRequired Materials:\n1 - Unique Armor or Weapon"
+  },
+  "18124373591617045832": {
+    "en_us": "Adds the #emphasis#Blood Barrage#/emphasis# runeword to any #emphasis#Uru-Forged item#/emphasis#, replacing any existing runeword already on the item and binding it to your account.\n\nLevel 50 Blood Barrage gives you:\n#emphasis#\u002B200 Physical Damage Rating#/emphasis#\n#emphasis#\u002B200 Ranged Damage Rating#/emphasis#\n#emphasis#2% chance for Ranged Powers to cause a bleed dealing 20,000 damage over 5s (20s cooldown)#/emphasis#\n\nLevel 25 items receive half bonus to Damage Ratings and bleed damage.\n\nRequired Materials:\n1 - Any Uru-Forged Item\n1 - Bow Rune\n1 - Earth Rune\n1 - Serpent Rune"
+  },
+  "18180567221495006579": {
+    "en_us": "Creates a heroic rarity utility armor item for your current hero at their current level.\n\nRequired Materials:\n10 - Spare Parts\n10 - Magnetic Materials\n5 - Mechanical Components\n5 - Energized Particles\n5 - Ionic Particle\n5 - Nanotech Filament"
+  },
+  "1869923753698395451": {
+    "en_us": "Upgrade a Spirit of Ymir into an Ymir Matrix.\n\n#emphasis#Critical Success: You create two of this item instead of one.#/emphasis#\n\nRequired Materials:\n1 - Spirit of Ymir\n1 - Any Element\n1 - Any Element\n1 - Any Element"
+  }
+}

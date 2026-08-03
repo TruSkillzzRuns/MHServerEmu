@@ -99,7 +99,14 @@ namespace MHServerEmu.Games.Locales
             _stringMap.Clear();
         }
 
-        public bool ImportStringStream(string streamName, Stream stream)
+        /// <param name="allowOverrides">
+        /// Suppresses the duplicate string id warning. Set for streams whose purpose is to replace
+        /// strings that already exist, i.e. the achievement string map buffers - AchievementStringMap
+        /// files are a general client string table push, and overriding an existing id there is
+        /// intentional (see the comment in AchievementDatabase.BuildStringBuffers). A duplicate
+        /// coming from the base Loco .string files still warns, because that is a real data problem.
+        /// </param>
+        public bool ImportStringStream(string streamName, Stream stream, bool allowOverrides = false)
         {
             using CalligraphyReader reader = new(stream, streamName);
 
@@ -147,8 +154,13 @@ namespace MHServerEmu.Games.Locales
 
                 string text = page.GetCString((int)(offset - stringPageOffset));
 
-                Verify.IsTrue(_stringMap.Remove(localeStringId, out LocaleDefaultString entry) == false,
-                    $"Duplicate string id {(ulong)localeStringId} found in string map.  Existing string = '{entry.String}', new string = '{text}'");
+                bool replacedExisting = _stringMap.Remove(localeStringId, out LocaleDefaultString entry);
+
+                if (allowOverrides == false)
+                {
+                    Verify.IsTrue(replacedExisting == false,
+                        $"Duplicate string id {(ulong)localeStringId} found in string map.  Existing string = '{entry.String}', new string = '{text}'");
+                }
 
                 entry = new(localeStringId, flagsProduced, text);
                 _stringMap.Add(localeStringId, entry);

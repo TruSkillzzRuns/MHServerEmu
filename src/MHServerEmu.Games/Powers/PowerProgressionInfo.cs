@@ -36,10 +36,6 @@ namespace MHServerEmu.Games.Powers
         public readonly PrototypeId[] PrerequisitePowerRefs { get => _progressionEntryPrototype?.GetPrerequisites(); }
         public readonly PrototypeId[] AntirequisitePowerRefs { get => _progressionEntryPrototype?.GetAntirequisites(); }
 #if GAME_VERSION_1_53
-        /// <summary>
-        /// The costume that has to be equipped for this power to be available, or
-        /// <see cref="PrototypeId.Invalid"/> if the power has no costume requirement.
-        /// </summary>
         public readonly PrototypeId CostumeRequiredRef { get => PowerProgressionEntryPrototype?.CostumeRequired ?? PrototypeId.Invalid; }
 #endif
         public readonly bool IsUltimatePower { get => PowerPrototype != null && Power.IsUltimatePower(PowerPrototype); }

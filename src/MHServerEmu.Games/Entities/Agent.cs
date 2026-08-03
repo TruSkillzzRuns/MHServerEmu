@@ -1073,12 +1073,7 @@ namespace MHServerEmu.Games.Entities
             if (Properties[PropertyEnum.PowersUnlockAll] == false)
             {
 #if GAME_VERSION_1_53
-                // Check the costume requirement. 1.53 ships nine costume powers (Psylocke,
-                // Storm, Hulk x2, Doctor Strange x3, Jean Grey, Magik) as ordinary power
-                // progression entries at Level 1 that additionally set CostumeRequired.
-                // Nothing read that field, so every one of those heroes had its costume
-                // power from level 1 whether or not it owned the costume, and unequipping
-                // the costume never took it away.
+                // Check costume requirement
                 PrototypeId costumeRequiredRef = powerInfo.CostumeRequiredRef;
                 if (costumeRequiredRef != PrototypeId.Invalid
                     && (this is not Avatar avatar || avatar.EquippedCostumeRef != costumeRequiredRef))

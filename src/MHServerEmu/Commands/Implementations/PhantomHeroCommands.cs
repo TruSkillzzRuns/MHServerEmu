@@ -179,6 +179,7 @@ namespace MHServerEmu.Commands.Implementations
             var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom enemy.");
             var avatar = pc.Player?.CurrentAvatar;
             if (avatar == null) return "No avatar in world.";
+            if (pc.Player.IsTrialGauntletActive) return "Trial of the Impossible is solo-only — no phantom summons.";
 
             int level = PhantomCommandUtil.ParseLevelClamp(@params, 1);
 
@@ -218,6 +219,7 @@ namespace MHServerEmu.Commands.Implementations
             var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom teamup.");
             var avatar = pc.Player?.CurrentAvatar;
             if (avatar == null) return "No avatar in world.";
+            if (pc.Player.IsTrialGauntletActive) return "Trial of the Impossible is solo-only — no phantom summons.";
             if (@params.Length < 1) return "Usage: !phantom teamup [name] [level] [enemy]";
 
             var all = Avatar.GetAllPhantomTeamUpRefs();

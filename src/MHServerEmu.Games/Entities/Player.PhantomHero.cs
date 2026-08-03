@@ -480,6 +480,19 @@ namespace MHServerEmu.Games.Entities
             RestoreCombatRangePrefsFromMigration(mig);
 
             if (mig.PhantomIntents.Count == 0) return 0;
+
+            // Trial of the Impossible is solo-only. StartTrialGauntlet already
+            // purges any live phantoms on entry (Player.TrialOfImpossible.cs),
+            // but this method runs afterward from Avatar.OnEnteredWorld and
+            // would otherwise immediately respawn the same intents from
+            // MigrationData, undoing the purge. Drop the queued intents
+            // instead of retrying them mid-trial.
+            if (IsTrialGauntletActive)
+            {
+                mig.PhantomIntents.Clear();
+                return 0;
+            }
+
             int spawned = 0;
             // Confirmed live 2026-07-26 — this used to Clear() the whole
             // list unconditionally after the loop, regardless of whether

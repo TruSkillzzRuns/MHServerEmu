@@ -25,17 +25,25 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
             string entityIdStr = PhantomsWebUtil.QueryParam(context, "entityId");
             bool useTeamUp = PhantomsWebUtil.QueryParam(context, "teamUp") == "1";
+            bool useAvatar = PhantomsWebUtil.QueryParam(context, "avatar") == "1";
             bool haveEntityId = ulong.TryParse(entityIdStr?.TrimStart('0', 'x', 'X'), System.Globalization.NumberStyles.HexNumber, null, out ulong entityId)
                 || ulong.TryParse(entityIdStr, out entityId);
 
-            if (haveEntityId == false && useTeamUp == false)
+            if (haveEntityId == false && useTeamUp == false && useAvatar == false)
             {
-                await context.SendJsonAsync(new { Ok = false, Error = "missing or invalid 'entityId' (hex or decimal), or pass teamUp=1 to resolve the current avatar's summoned team-up" });
+                await context.SendJsonAsync(new { Ok = false, Error = "missing or invalid 'entityId' (hex or decimal), or pass teamUp=1 / avatar=1 to resolve the current avatar or its summoned team-up" });
                 return;
             }
 
             object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
             {
+                if (useAvatar)
+                {
+                    if (p.CurrentAvatar == null)
+                        return new { Ok = false, Error = "no current avatar set on this player" };
+                    entityId = p.CurrentAvatar.Id;
+                }
+
                 if (useTeamUp)
                 {
                     var teamUpAgent = (p.CurrentAvatar as MHServerEmu.Games.Entities.Avatars.Avatar)?.CurrentTeamUpAgent;
@@ -96,6 +104,13 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         Radius = entity.Bounds.Radius,
                         HalfHeight = entity.Bounds.HalfHeight,
                     },
+#if GAME_VERSION_1_53
+                    EquipmentSetLevels = entity.Properties.IteratePropertyRange(MHServerEmu.Games.Properties.PropertyEnum.EquipmentSetLevel)
+                        .Select(kvp => { MHServerEmu.Games.GameData.PrototypeId setRef = default; MHServerEmu.Games.Properties.Property.FromParam(kvp.Key, 0, out setRef); return $"{GameDatabase.GetPrototypeName(setRef)} = {(int)kvp.Value}"; })
+                        .ToList(),
+#endif
+                    SuperCritDamageMult = (float)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.SuperCritDamageMult],
+                    CritDamageMult = (float)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.CritDamageMult],
                 };
             });
             await context.SendJsonAsync(result);

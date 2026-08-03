@@ -347,7 +347,12 @@ namespace MHServerEmu.Games.Achievements
             }
 
             using MemoryStream stream = new(buffer);
-            currentLocale.ImportStringStream("achievements", stream);
+
+            // allowOverrides: AchievementStringMap files are a general client string table push, not
+            // just achievement text, and replacing an existing locale string id is a supported use
+            // (BuildStringBuffers() explicitly allows it). Without this, every overridden string
+            // logs a duplicate-id warning at startup - 320 of them for the crafting tooltips alone.
+            currentLocale.ImportStringStream("achievements", stream, true);
         }
 
         /// <summary>

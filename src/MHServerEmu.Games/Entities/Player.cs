@@ -4638,6 +4638,14 @@ namespace MHServerEmu.Games.Entities
             if (avatar == null)
                 return;
 
+            // Trial of the Impossible is solo-only. CanFormParty() only stops a
+            // trial runner from forming a NEW party; a party formed before the
+            // trial started is untouched, so without this check a party member
+            // could still teleport-to-party-member straight into the arena.
+            Player targetPlayer = Game.EntityManager.GetEntityByDbGuid<Player>(targetPlayerDbId);
+            if (targetPlayer != null && targetPlayer.IsTrialGauntletActive)
+                return;
+
             PrototypeId teleportToPartyMemberPower = GameDatabase.GlobalsPrototype.TeleportToPartyMemberPower;
 
             PowerActivationSettings settings = new(avatar.Id, Vector3.Zero, avatar.RegionLocation.Position);

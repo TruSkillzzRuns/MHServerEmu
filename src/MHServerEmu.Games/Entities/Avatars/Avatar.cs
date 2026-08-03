@@ -4929,10 +4929,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             owner.Properties[PropertyEnum.AvatarLibraryCostume, 0, PrototypeDataRef] = costumeProtoRef;
 
 #if GAME_VERSION_1_53
-            // Costume powers (PowerProgressionEntryPrototype.CostumeRequired) become available or
-            // unavailable as the costume changes, so their ranks have to be recomputed here --
-            // nothing else observes CostumeCurrent. Powers not gated on a costume are unaffected
-            // because their computed rank does not change.
+            // Costume-gated powers need to be re-evaluated whenever the costume changes
             if (IsInWorld && TestStatus(EntityStatus.ExitingWorld) == false)
                 UpdatePowerProgressionPowers(false);
 #endif
