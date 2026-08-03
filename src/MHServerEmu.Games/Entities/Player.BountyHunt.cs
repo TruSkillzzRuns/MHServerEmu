@@ -5,11 +5,13 @@ using MHServerEmu.Core.Memory;
 using MHServerEmu.Core.VectorMath;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Games.Entities.Avatars;
+using MHServerEmu.Games.Entities.PowerCollections;
 using MHServerEmu.Games.Events;
 using MHServerEmu.Games.Events.Templates;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Loot;
+using MHServerEmu.Games.Powers;
 using MHServerEmu.Games.Properties;
 using MHServerEmu.Games.Regions;
 
@@ -70,6 +72,7 @@ namespace MHServerEmu.Games.Entities
         private readonly EventGroup _bountyHuntEvents = new();
         private readonly EventPointer<BountyHuntSpawnTickEvent> _bountyHuntSpawnTick = new();
         private readonly EventPointer<BountyHuntHazardTickEvent> _bountyHuntHazardTick = new();
+        private readonly EventPointer<PhantomRequiemTickEvent> _phantomRequiemTick = new();
 
         private bool _bountyHuntWarpPending;
         private ulong _bountyHuntHeroRef;
@@ -165,7 +168,24 @@ namespace MHServerEmu.Games.Entities
                 return $"too soon after your last bounty hunt — wait {waitSec}s and try again";
             }
 
-            RegionPrototypeId[] pool = GetValidTrialArenaPool();
+            // Board hunts run under the board's current theme (Bounty Board
+            // mode only) — arena comes from that theme's own region list
+            // instead of the full 57-arena pool. Personal-nemesis hunts
+            // (boardSlot < 0) always use the full pool, unchanged.
+            int themeIndex = boardSlot >= 0 ? _bountyThemeIndex : -1;
+
+            RegionPrototypeId[] pool;
+            if (themeIndex >= 0)
+            {
+                var themeRegions = GetThemeRegions(themeIndex);
+                // A theme whose arenas don't exist on this version falls back
+                // to the full pool rather than blocking the hunt outright.
+                pool = themeRegions.Count > 0 ? themeRegions.ToArray() : GetBountyHuntArenaPool();
+            }
+            else
+            {
+                pool = GetBountyHuntArenaPool();
+            }
             if (pool.Length == 0) return "no valid arena regions available";
 
             PrototypeId creditsProtoRef = GameDatabase.CurrencyGlobalsPrototype.Credits;
@@ -197,6 +217,11 @@ namespace MHServerEmu.Games.Entities
             _bountyHuntHeroRef = heroRef;
             _bountyHuntRank = rank;
             _bountyHuntBoardSlot = boardSlot;
+            // Snapshot the theme for THIS hunt so a board re-roll while the
+            // hunt is in flight can't swap the arena/powers/costume mid-fight.
+            _bountyHuntThemeIndex = themeIndex;
+            // Any portal left over from the previous hunt goes away now.
+            DespawnBountyReturnPortal();
             _bountyHuntRegion = null;
             _bountyHuntSpawnedId = 0;
             _bountyHuntWarpPending = true;
@@ -228,6 +253,7 @@ namespace MHServerEmu.Games.Entities
             mig.BountyHuntHeroRef = _bountyHuntHeroRef;
             mig.BountyHuntRank = _bountyHuntRank;
             mig.BountyHuntBoardSlot = _bountyHuntBoardSlot;
+            mig.BountyHuntThemeIndex = _bountyHuntThemeIndex;
             _bountyHuntWarpPending = false; // this Game instance is going away
         }
 
@@ -247,6 +273,7 @@ namespace MHServerEmu.Games.Entities
             _bountyHuntHeroRef = mig.BountyHuntHeroRef;
             _bountyHuntRank = mig.BountyHuntRank;
             _bountyHuntBoardSlot = mig.BountyHuntBoardSlot;
+            _bountyHuntThemeIndex = mig.BountyHuntThemeIndex;
             _bountyHuntRegion = region;
 
             // Baseline reward reuses the existing Bounty Board claim flow —
@@ -267,6 +294,13 @@ namespace MHServerEmu.Games.Entities
             int removed = ClearArena(avatar);
             if (removed > 0)
                 BountyHuntLogger.Info($"[BountyHunt] {GetName()}: arena sterilized — {removed} native entity(ies) removed");
+
+            // Themed board hunts refill the just-sterilized arena with
+            // faction-matched mobs. Board hunts only — a personal-nemesis hunt
+            // (_bountyHuntBoardSlot < 0) or an untheme(d) board keeps the
+            // existing empty-arena behaviour exactly as before.
+            if (_bountyHuntBoardSlot >= 0 && _bountyHuntThemeIndex >= 0)
+                RepopulateThemedArena(avatar, region, _bountyHuntThemeIndex, _bountyHuntRank);
 
             ScheduleBountyHuntSpawn();
 
@@ -360,7 +394,12 @@ namespace MHServerEmu.Games.Entities
             }
             else
             {
-                id = avatar.SpawnNemesisPhantomHero((PrototypeId)_bountyHuntHeroRef, 0, displayName, _bountyHuntRank, out err, escapeCount, grudge);
+                // Themed board hunts dress the target in the theme's costume
+                // (e.g. Thing/FearItself = Angrir). 0 = the existing random-
+                // costume behaviour, which is what every non-themed and every
+                // personal-nemesis hunt still passes.
+                ulong themedCostumeRef = ThemedCostumeForTarget(_bountyHuntThemeIndex, _bountyHuntHeroRef);
+                id = avatar.SpawnNemesisPhantomHero((PrototypeId)_bountyHuntHeroRef, 0, displayName, _bountyHuntRank, out err, escapeCount, grudge, themedCostumeRef);
             }
 
             if (id == 0)
@@ -386,6 +425,7 @@ namespace MHServerEmu.Games.Entities
             {
                 ApplyBountyBoardExtraScaling(id, _bountyHuntRank);
                 ScheduleBountyHuntHazardTick();
+                SchedulePhantomRequiemTick();
             }
 
             _bountyHuntSpawnedId = id;
@@ -464,6 +504,50 @@ namespace MHServerEmu.Games.Entities
             if (rank >= 7) return (0.65, 2, 3, 12_000, 20_000);  // high (med-high bounties): frequent, heavier
             if (rank >= BountyHuntHazardMinRank) return (0.35, 1, 1, 20_000, 32_000); // low-mid/medium: occasional, light
             return (0.0, 0, 0, 0, 0); // rank 1-2: no hazards
+        }
+
+        /// <summary>
+        /// Arenas a Bounty Hunt may warp into. This is the shared Trial arena
+        /// pool minus regions that are broken for combat, filtered on a COPY so
+        /// Trial of the Impossible's own pool is not modified.
+        ///
+        /// CH0305ReconPostRegion (S.H.I.E.L.D. Recon Post) is listed here as
+        /// defence in depth: nothing in that region can attack at all,
+        /// including the player, so a bounty there is unwinnable (reported live
+        /// 2026-08-03). It has ALSO been removed from s_trialArenaPool itself,
+        /// which fixes Trial of the Impossible for the same reason — this entry
+        /// just guarantees Bounty Board stays protected if it is ever re-added
+        /// upstream.
+        /// </summary>
+        private static readonly RegionPrototypeId[] s_bountyHuntArenaBlacklist =
+        {
+            RegionPrototypeId.CH0305ReconPostRegion,
+        };
+
+        private static RegionPrototypeId[] s_bountyHuntArenaPool;
+        private static readonly object s_bountyHuntArenaPoolLock = new();
+
+        private static RegionPrototypeId[] GetBountyHuntArenaPool()
+        {
+            if (s_bountyHuntArenaPool != null) return s_bountyHuntArenaPool;
+            lock (s_bountyHuntArenaPoolLock)
+            {
+                if (s_bountyHuntArenaPool != null) return s_bountyHuntArenaPool;
+
+                var trialPool = GetValidTrialArenaPool();
+                var filtered = new List<RegionPrototypeId>(trialPool.Length);
+                foreach (RegionPrototypeId id in trialPool)
+                {
+                    bool blocked = false;
+                    foreach (RegionPrototypeId bad in s_bountyHuntArenaBlacklist)
+                        if (id == bad) { blocked = true; break; }
+                    if (blocked == false) filtered.Add(id);
+                }
+
+                s_bountyHuntArenaPool = filtered.Count > 0 ? filtered.ToArray() : trialPool;
+                BountyHuntLogger.Info($"[BountyHunt] arena pool: {s_bountyHuntArenaPool.Length} of {trialPool.Length} trial arenas (blacklist removed {trialPool.Length - s_bountyHuntArenaPool.Length})");
+                return s_bountyHuntArenaPool;
+            }
         }
 
         private void ScheduleBountyHuntHazardTick()
@@ -552,9 +636,12 @@ namespace MHServerEmu.Games.Entities
 
                         if (spawnedNames.Count > 0)
                         {
-                            try { SendBannerLines($"⚠ HAZARDS — {string.Join(", ", spawnedNames)}, move!"); } catch { }
+                            // No banner — hazards and requiem strikes are
+                            // meant to be read off the arena itself in this
+                            // mode, not announced. Log line kept for diagnostics.
                             BountyHuntLogger.Info($"[BountyHunt] {GetName()}: board hazard(s) spawned — {string.Join(", ", spawnedNames)} (rank {_bountyHuntRank})");
                         }
+
                     }
                 }
             }
@@ -575,6 +662,300 @@ namespace MHServerEmu.Games.Entities
         private sealed class BountyHuntHazardTickEvent : CallMethodEvent<Player>
         {
             protected override CallbackDelegate GetCallback() => static (player) => player.OnBountyHuntHazardTick();
+        }
+
+        // Requiem strikes run on their own fast cadence (every ~2s), fully
+        // independent of the much slower ground-hotspot hazard tick they
+        // originally piggybacked on — riding that tick meant a strike only
+        // every 12-20s, far too sparse to read as a live barrage.
+        private const int PhantomRequiemIntervalMs = 2_000;
+
+        private void SchedulePhantomRequiemTick()
+        {
+            var scheduler = Game?.GameEventScheduler;
+            if (scheduler == null) return;
+            if (_bountyHuntRank < PhantomRequiemMinRank) return; // low/mid ranks: hotspot hazards only
+            if (_phantomRequiemTick.IsValid) scheduler.CancelEvent(_phantomRequiemTick);
+            scheduler.ScheduleEvent(_phantomRequiemTick, TimeSpan.FromMilliseconds(PhantomRequiemIntervalMs), _bountyHuntEvents);
+            _phantomRequiemTick.Get().Initialize(this);
+        }
+
+        private void CancelPhantomRequiemTick()
+        {
+            var scheduler = Game?.GameEventScheduler;
+            if (scheduler != null && _phantomRequiemTick.IsValid) scheduler.CancelEvent(_phantomRequiemTick);
+        }
+
+        private void OnPhantomRequiemTick()
+        {
+            try
+            {
+                if (_bountyHuntSpawnedId == 0 || _bountyHuntBoardSlot < 0) return;
+                if (_bountyHuntRank < PhantomRequiemMinRank) return;
+
+                Avatar avatar = CurrentAvatar;
+                if (avatar != null && avatar.IsInWorld && avatar.Region == _bountyHuntRegion)
+                    FirePhantomRequiemStrikes(avatar, avatar.Region, 1);
+            }
+            catch (Exception ex)
+            {
+                BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: requiem tick failed: {ex.Message}");
+            }
+            finally
+            {
+                if (_bountyHuntSpawnedId != 0 && _bountyHuntBoardSlot >= 0)
+                    SchedulePhantomRequiemTick();
+            }
+        }
+
+        private sealed class PhantomRequiemTickEvent : CallMethodEvent<Player>
+        {
+            protected override CallbackDelegate GetCallback() => static (player) => player.OnPhantomRequiemTick();
+        }
+
+        // ---------------- Board hazards: real-power ambient strikes ----------------
+        //
+        // "Requiem" strikes are a second, independent hazard layer only for
+        // med-high rank board hunts (rank >= PhantomRequiemMinRank): a real
+        // EnemyPowers power (an actual ice orb, fireball, etc. from the
+        // game's own data) fired at the player's position from an invisible,
+        // AI-disabled, harmless throwaway body instead of a scripted ground
+        // hotspot. Original implementation — spawns one of the game's own
+        // hazard caster entities, assigns a random real EnemyPowers missile
+        // power to it, fires it once at the avatar, then lets it expire via
+        // the native ResetLifespan timer. Every step is best-effort and
+        // independently wrapped — a power that fails to assign/activate is
+        // simply skipped, never crashes the tick.
+        //
+        // Caster body choice matters and was gotten wrong first: the initial
+        // attempt used Entity/Characters/Mobs/test/PracticeDummy, a genuinely
+        // VISIBLE and KILLABLE training dummy (Rank=Popcorn, its own
+        // DisplayName plate, a real dummy UnrealClass), and tried to patch it
+        // invisible/immortal with per-instance Properties after spawning.
+        // That does not work — confirmed live 2026-08-03 the dummies rendered
+        // in-world and the bounty target simply killed them before they could
+        // fire, because the prototype's own Rank and Properties are applied
+        // during entity initialization and win over settings patched around
+        // them. The real game already ships purpose-built casters for exactly
+        // this job under Powers/DangerRoomModifierPowers/HazardPowers/ (they
+        // are what the live Danger Room WreckingBall / FallingDebris /
+        // LightningStorm hazards cast from — players see the hazard, never a
+        // caster body). Verified live via /webapi/protoeditor/fields, each
+        // one has, in the prototype data itself: Rank=Mods/Ranks/
+        // InvulnerablePet, DisplayName=0 (no name plate), HealthBase=0, and
+        // Untargetable + Unaffectable + Invulnerable + InvalidBounceTarget +
+        // NoForcedMovement all true, plus Alliance=Entity/Alliances/
+        // Enemies.prototype (hostile to players only — so their powers hit
+        // the player, phantom heroes and team-ups, and nothing else).
+        // Nothing has to be patched on afterwards, and nothing can kill them.
+
+        private const int PhantomRequiemMinRank = 7;
+        private const float PhantomRequiemSpawnMaxDistance = 250f;
+        private const int PhantomRequiemCasterLifespanMs = 2_500;
+
+        /// <summary>
+        /// The game's own invisible hazard-power caster bodies. All three are
+        /// Alliance=Enemies; the sibling ThunderstormCasterEntity is
+        /// deliberately excluded because it is Alliance=Friendlies and would
+        /// fire at the wrong side.
+        /// </summary>
+        private static readonly string[] PhantomRequiemCasterBodyPaths =
+        {
+            "Powers/DangerRoomModifierPowers/HazardPowers/WreckingBallCasterEntity.prototype",
+            "Powers/DangerRoomModifierPowers/HazardPowers/FallingDebrisCasterEntity.prototype",
+            "Powers/DangerRoomModifierPowers/HazardPowers/LightningStormCasterEntity.prototype",
+        };
+
+        private static List<PrototypeId> s_phantomRequiemCasterBodyRefs;
+        private static readonly object s_phantomRequiemCasterBodyLock = new();
+
+        /// <summary>Resolves and caches whichever hazard caster bodies exist in the loaded data (paths are checked per game version rather than assumed).</summary>
+        private static List<PrototypeId> GetPhantomRequiemCasterBodyRefs()
+        {
+            if (s_phantomRequiemCasterBodyRefs != null) return s_phantomRequiemCasterBodyRefs;
+            lock (s_phantomRequiemCasterBodyLock)
+            {
+                if (s_phantomRequiemCasterBodyRefs != null) return s_phantomRequiemCasterBodyRefs;
+
+                var refs = new List<PrototypeId>(PhantomRequiemCasterBodyPaths.Length);
+                foreach (string path in PhantomRequiemCasterBodyPaths)
+                {
+                    PrototypeId bodyRef = GameDatabase.GetPrototypeRefByName(path);
+                    if (bodyRef != PrototypeId.Invalid && bodyRef.As<AgentPrototype>() != null)
+                        refs.Add(bodyRef);
+                }
+
+                s_phantomRequiemCasterBodyRefs = refs;
+                BountyHuntLogger.Info($"[BountyHunt] Requiem caster bodies resolved: {refs.Count}/{PhantomRequiemCasterBodyPaths.Length}");
+                return refs;
+            }
+        }
+
+        private static List<PrototypeId> s_phantomRequiemPowerPool;
+        private static readonly object s_phantomRequiemPowerPoolLock = new();
+
+        /// <summary>
+        /// Every real non-abstract MissilePowerPrototype under
+        /// Powers/EnemyPowers/ — actual thrown/launched projectiles (ice
+        /// orbs, fireballs, etc.), not the full EnemyPowers pool. Deliberately
+        /// narrower than "every power" for two reasons confirmed live
+        /// 2026-08-03: (1) generic/buff/condition/proc powers (auras, heals,
+        /// on-death triggers) fire successfully but have no visible strike —
+        /// nothing for the player to see or react to; (2) SummonPowerPrototype
+        /// entries spawn a real, persistent extra creature into the world
+        /// (e.g. a live Hydra from ViperSummonHydra) — the opposite of an
+        /// ephemeral environmental strike. A missile power's projectile visual
+        /// is tied to the missile's own prototype, not the caster's model, so
+        /// it renders correctly even fired from a generic proxy body. A pick
+        /// that still fails to assign/activate at runtime is simply skipped.
+        /// </summary>
+        private static List<PrototypeId> GetPhantomRequiemPowerPool()
+        {
+            if (s_phantomRequiemPowerPool != null) return s_phantomRequiemPowerPool;
+            lock (s_phantomRequiemPowerPoolLock)
+            {
+                if (s_phantomRequiemPowerPool != null) return s_phantomRequiemPowerPool;
+
+                var pool = new List<PrototypeId>(1_500);
+                foreach (PrototypeId powerRef in DataDirectory.Instance.IteratePrototypesInHierarchy<MissilePowerPrototype>(PrototypeIterateFlags.NoAbstract))
+                {
+                    if (powerRef == PrototypeId.Invalid) continue;
+
+                    string path = GameDatabase.GetPrototypeName(powerRef);
+                    if (string.IsNullOrEmpty(path)) continue;
+                    if (path.IndexOf("Powers/EnemyPowers/", StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                    // NormalPower only. Measured live 2026-08-03: 67 of the 278
+                    // EnemyPowers missile powers are PowerCategoryType.ComboEffect
+                    // — sub-powers that only ever exist as one step of a parent
+                    // power's combo sequence, never activated on their own.
+                    // Firing those standalone is invalid use: PowerCollection.
+                    // OnOwnerExitedWorld skips unassigning combo effects, so
+                    // every expiring caster that held one tripped the
+                    // "_owner is Avatar" Verify (visible in the log on exactly
+                    // the strike cadence), and the client was being sent
+                    // activations for powers it only expects mid-combo — the
+                    // prime suspect for the client-side fatal crash.
+                    var powerProto = powerRef.As<PowerPrototype>();
+                    if (powerProto == null) continue;
+                    if (Power.GetPowerCategory(powerProto) != PowerCategoryType.NormalPower) continue;
+
+                    pool.Add(powerRef);
+                }
+
+                s_phantomRequiemPowerPool = pool;
+                BountyHuntLogger.Info($"[BountyHunt] Requiem power pool built: {pool.Count} power(s)");
+                return pool;
+            }
+        }
+
+        /// <summary>
+        /// Spawns up to <paramref name="strikeCount"/> hazard casters near the
+        /// avatar, each firing one random real EnemyPowers missile power at
+        /// the avatar's position. Fully ephemeral — the caster bodies are the
+        /// game's own invisible/invulnerable hazard casters (see the block
+        /// comment above), their AI is disabled, and they self-expire, so
+        /// nothing here can leak into story or other game content.
+        /// </summary>
+        private void FirePhantomRequiemStrikes(Avatar avatar, Region region, int strikeCount)
+        {
+            var casterBodyRefs = GetPhantomRequiemCasterBodyRefs();
+            if (casterBodyRefs.Count == 0) return;
+
+            // Themed board hunts fire only their theme's powers (e.g. Winter's
+            // Wrath = Boss/Blizzard + FrostGiants + FrostGolem). Untheme(d) and
+            // personal-nemesis hunts use the full 211-power pool as before.
+            var pool = _bountyHuntThemeIndex >= 0
+                ? GetThemePowerPool(_bountyHuntThemeIndex)
+                : GetPhantomRequiemPowerPool();
+            if (pool.Count == 0) return;
+
+            var rng = Game.Random;
+            var struckNames = new List<string>();
+
+            for (int i = 0; i < strikeCount; i++)
+            {
+                Agent caster = null;
+                try
+                {
+                    var casterProto = casterBodyRefs[rng.Next(casterBodyRefs.Count)].As<AgentPrototype>();
+                    if (casterProto == null) continue;
+
+                    if (EntityHelper.GetSpawnPositionNearAvatar(avatar, region, casterProto.Bounds, PhantomRequiemSpawnMaxDistance, out Vector3 casterPos) == false)
+                        continue;
+
+                    Orientation orientation = Orientation.FromDeltaVector(avatar.RegionLocation.Position - casterPos);
+
+                    // Built here rather than via EntityHelper.CreateAgent only
+                    // so AI never starts and the level matches the avatar's —
+                    // the hidden/untargetable/invulnerable behaviour all comes
+                    // from the caster prototype itself, not from anything
+                    // patched on here (see the block comment above for why
+                    // patching a visible prototype does not work).
+                    using EntitySettings casterSettings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                    casterSettings.EntityRef = casterProto.DataRef;
+                    casterSettings.Position = casterPos;
+                    casterSettings.Orientation = orientation;
+                    casterSettings.RegionId = region.Id;
+
+                    using PropertyCollection casterProps = ObjectPoolManager.Instance.Get<PropertyCollection>();
+                    casterProps[PropertyEnum.CharacterLevel] = avatar.CharacterLevel;
+                    casterProps[PropertyEnum.CombatLevel] = avatar.CharacterLevel;
+                    casterProps[PropertyEnum.AIStartsEnabled] = false;
+                    casterSettings.Properties = casterProps;
+
+                    caster = Game.EntityManager.CreateEntity(casterSettings) as Agent;
+                    if (caster == null) continue;
+
+                    // Clear Dormant so the caster is simulated — CanActivatePower
+                    // hard-fails with OwnerNotSimulated otherwise.
+                    caster.Properties[PropertyEnum.Dormant] = false;
+                    caster.AIController?.SetIsEnabled(false);
+
+                    PrototypeId powerRef = pool[rng.Next(pool.Count)];
+                    Power power = caster.AssignPower(powerRef, new PowerIndexProperties(0, avatar.CharacterLevel, avatar.CharacterLevel));
+                    if (power == null)
+                    {
+                        BountyHuntLogger.Info($"[BountyHunt] requiem: AssignPower failed for {LeafHeroName(powerRef)}");
+                        caster.Destroy();
+                        continue;
+                    }
+
+                    Vector3 targetPos = avatar.RegionLocation.Position;
+                    PowerUseResult canUse = caster.CanActivatePower(power, avatar.Id, targetPos);
+                    if (canUse != PowerUseResult.Success)
+                    {
+                        BountyHuntLogger.Info($"[BountyHunt] requiem: CanActivatePower={canUse} for {LeafHeroName(powerRef)}");
+                        caster.Destroy();
+                        continue;
+                    }
+
+                    var activation = new PowerActivationSettings(avatar.Id, targetPos, caster.RegionLocation.Position);
+                    PowerUseResult activated = caster.ActivatePower(powerRef, ref activation);
+                    if (activated != PowerUseResult.Success)
+                    {
+                        BountyHuntLogger.Info($"[BountyHunt] requiem: ActivatePower={activated} for {LeafHeroName(powerRef)}");
+                        caster.Destroy();
+                        continue;
+                    }
+
+                    caster.ResetLifespan(TimeSpan.FromMilliseconds(PhantomRequiemCasterLifespanMs));
+                    struckNames.Add(LeafHeroName(powerRef));
+                }
+                catch (Exception ex)
+                {
+                    caster?.Destroy();
+                    BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: requiem strike failed: {ex.Message}");
+                }
+            }
+
+            if (struckNames.Count > 0)
+            {
+                // No banner here — at a 2s cadence a per-strike banner would
+                // spam the screen continuously. The projectiles themselves are
+                // the feedback; the log line stays for diagnostics.
+                BountyHuntLogger.Info($"[BountyHunt] {GetName()}: requiem strike(s) fired — {string.Join(", ", struckNames)} (rank {_bountyHuntRank})");
+            }
         }
 
         /// <summary>
@@ -599,6 +980,10 @@ namespace MHServerEmu.Games.Entities
             {
                 if (boardSlot >= 0)
                 {
+                    // Drop the way home where the bounty fell (board hunts only).
+                    if (evt.Defender != null && evt.Defender.IsInWorld)
+                        SpawnBountyReturnPortal(evt.Defender.Region, evt.Defender.RegionLocation.Position);
+
                     ResolveBountyBoardWin(boardSlot, heroRef);
                     try { SendBannerLines("💰 Bounty defeated — collect your reward from the Bounty Board!"); } catch { }
                     BountyHuntLogger.Info($"[BountyHunt] {GetName()}: board slot {boardSlot} defeated on '{((PrototypeId)heroRef).GetName()}', reward pending collection");
@@ -658,6 +1043,118 @@ namespace MHServerEmu.Games.Entities
         }
 
         /// <summary>Called from Avatar.DoDeathRelease instead of the normal checkpoint/corpse release, once IsBountyHuntDeathPending is confirmed true.</summary>
+        // ---------------- Victory return portal ----------------
+        //
+        // On a Bounty Board kill the arena is sterile and the player is a long
+        // way from anything, so a real base-game "return to town" Transition is
+        // dropped where the bounty died. Reuses the exact pattern
+        // Player.DangerRoomEndlessTerminal.cs's loot-break portal already
+        // proved out: spawn the Transition as a real entity and Avatar.cs's
+        // generic OnPlayerInteracted calls UseTransition() on it automatically
+        // (ReturnToLastTown -> Teleporter.TeleportToLastTown), so there's no
+        // manual destination wiring — only a just-in-time LastTownRegionForAccount
+        // override so it always lands on Avengers Tower specifically rather
+        // than whatever town the player happened to visit last.
+        //
+        // Board hunts only. A personal-nemesis hunt never spawns one.
+
+        private static readonly ulong[] s_bountyReturnPortalCandidates =
+        {
+            0x65013AB9D36D1394, // Entity/Transitions/ReturnToLastBaseDR.prototype        (1.48 / 1.52)
+            0x68F74D36E02D18A7, // Entity/Transitions/ReturnToLastBaseHolosimVisible.prototype (1.53)
+        };
+
+        private static PrototypeId? s_bountyReturnPortalResolved;
+        private ulong _bountyReturnPortalId;
+        private Region _bountyReturnPortalRegion;
+        private Event<PlayerInteractGameEvent>.Action _bountyReturnPortalAction;
+
+        private static PrototypeId GetValidBountyReturnPortalRef()
+        {
+            if (s_bountyReturnPortalResolved != null) return s_bountyReturnPortalResolved.Value;
+            foreach (ulong candidate in s_bountyReturnPortalCandidates)
+            {
+                if (GameDatabase.GetPrototype<Prototype>((PrototypeId)candidate) != null)
+                {
+                    s_bountyReturnPortalResolved = (PrototypeId)candidate;
+                    return s_bountyReturnPortalResolved.Value;
+                }
+            }
+            s_bountyReturnPortalResolved = PrototypeId.Invalid;
+            BountyHuntLogger.Warn("[BountyHunt] no return-portal Transition resolves on this version — victory portal disabled");
+            return PrototypeId.Invalid;
+        }
+
+        /// <summary>Drop the "return to Avengers Tower" portal where the defeated bounty fell.</summary>
+        private void SpawnBountyReturnPortal(Region region, Vector3 position)
+        {
+            if (region == null) return;
+
+            PrototypeId portalRef = GetValidBountyReturnPortalRef();
+            if (portalRef == PrototypeId.Invalid) return;
+
+            try
+            {
+                using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                settings.EntityRef = portalRef;
+                settings.Position = RegionLocation.ProjectToFloor(region, position);
+                settings.Orientation = Orientation.Zero;
+                settings.RegionId = region.Id;
+
+                WorldEntity portal = Game.EntityManager.CreateEntity(settings) as WorldEntity;
+                if (portal == null)
+                {
+                    BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: return portal spawn failed (CreateEntity returned null)");
+                    return;
+                }
+
+                portal.Properties[PropertyEnum.Interactable] = true;
+
+                _bountyReturnPortalId = portal.Id;
+                _bountyReturnPortalRegion = region;
+                _bountyReturnPortalAction ??= OnBountyReturnPortalInteract;
+                region.PlayerInteractEvent.AddActionBack(_bountyReturnPortalAction);
+
+                try { SendBannerLines("🌀 A way home has opened where they fell."); } catch { }
+                BountyHuntLogger.Info($"[BountyHunt] {GetName()}: return portal spawned (id={portal.Id:X})");
+            }
+            catch (Exception ex)
+            {
+                BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: return portal spawn threw: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Point LastTownRegionForAccount at Avengers Tower just before the
+        /// engine's own UseTransition() reads it (this handler runs first,
+        /// synchronously, inside the same PlayerInteractEvent.Invoke), so the
+        /// portal always lands there rather than whatever town the player last
+        /// visited. Same just-in-time override the Danger Room portal uses.
+        /// </summary>
+        private void OnBountyReturnPortalInteract(in PlayerInteractGameEvent evt)
+        {
+            if (_bountyReturnPortalId == 0 || evt.InteractableObject == null) return;
+            if (evt.InteractableObject.Id != _bountyReturnPortalId) return;
+
+            Properties[PropertyEnum.LastTownRegionForAccount] = (PrototypeId)(ulong)RegionPrototypeId.NPEAvengersTowerHUBRegion;
+            BountyHuntLogger.Info($"[BountyHunt] {GetName()}: return portal used — routing to Avengers Tower");
+            DespawnBountyReturnPortal();
+        }
+
+        private void DespawnBountyReturnPortal()
+        {
+            if (_bountyReturnPortalRegion != null && _bountyReturnPortalAction != null)
+                _bountyReturnPortalRegion.PlayerInteractEvent.RemoveAction(_bountyReturnPortalAction);
+            _bountyReturnPortalRegion = null;
+
+            if (_bountyReturnPortalId != 0)
+            {
+                var portal = Game?.EntityManager?.GetEntity<WorldEntity>(_bountyReturnPortalId);
+                try { portal?.Destroy(); } catch { }
+                _bountyReturnPortalId = 0;
+            }
+        }
+
         internal void EndBountyHuntFromDeath(Avatar avatar)
         {
             IsBountyHuntDeathPending = false;
@@ -677,6 +1174,14 @@ namespace MHServerEmu.Games.Entities
         {
             DetachBountyHuntDeadAction();
             CancelBountyHuntHazardTick();
+            CancelPhantomRequiemTick();
+            // NOTE: the return portal is deliberately NOT despawned here.
+            // ClearBountyHuntState runs at the tail of the same
+            // OnBountyHuntEntityDead that spawns the portal, so despawning it
+            // here destroyed the portal a few lines after it was created -
+            // confirmed live 2026-08-03 ("return portal spawned" logged, but
+            // nothing was ever visible in the arena). The portal is cleaned up
+            // when it is used, when the next hunt starts, or on logout.
             _bountyHuntHeroRef = 0;
             _bountyHuntRank = 0;
             _bountyHuntBoardSlot = -1;
@@ -689,6 +1194,10 @@ namespace MHServerEmu.Games.Entities
         {
             var scheduler = Game?.GameEventScheduler;
             if (scheduler != null && _bountyHuntSpawnTick.IsValid) scheduler.CancelEvent(_bountyHuntSpawnTick);
+            // Logout/disconnect — ClearBountyHuntState deliberately leaves the
+            // return portal alone (see its own note), so drop it here instead
+            // rather than leaking the PlayerInteractEvent subscription.
+            DespawnBountyReturnPortal();
             ClearBountyHuntState();
         }
 

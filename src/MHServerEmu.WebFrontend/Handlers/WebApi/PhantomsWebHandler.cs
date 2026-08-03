@@ -27,6 +27,7 @@ using MHServerEmu.Games.Entities;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
+using MHServerEmu.Games.Locales;
 using MHServerEmu.Games.Powers;
 
 namespace MHServerEmu.WebFrontend.Handlers.WebApi
@@ -894,6 +895,99 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             return candidates;
         }
 
+        /// <summary>
+        /// Costume ref -> portrait asset candidates. A themed Bounty Board
+        /// target wears a specific costume (e.g. Thing/FearItself = Angrir),
+        /// and the avatar's own PortraitPath always shows the DEFAULT look —
+        /// so the card would show plain Thing while the thing you actually
+        /// fight is Angrir. CostumePrototype carries its own portrait art, so
+        /// these are tried first and the avatar portrait stays as the fallback.
+        /// </summary>
+        internal static List<string> ResolveCostumePortraitCandidates(ulong costumeRef)
+        {
+            var candidates = new List<string>(4);
+            if (costumeRef == 0) return candidates;
+
+            var proto = ((PrototypeId)costumeRef).As<CostumePrototype>();
+            if (proto == null) return candidates;
+
+            void AddCandidate(AssetId assetId)
+            {
+                if (assetId == 0) return;
+                string assetName = GameDatabase.GetAssetName(assetId);
+                if (string.IsNullOrEmpty(assetName) == false && candidates.Contains(assetName) == false)
+                    candidates.Add(assetName);
+            }
+
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            AddCandidate(proto.PortraitIconPathHiRes);
+#endif
+            AddCandidate(proto.PortraitIconPath);
+            AddCandidate(proto.PartyPortraitIconPath);
+            AddCandidate(proto.IconPath);
+            AddCandidate(proto.StoreIconPath);
+
+            return candidates;
+        }
+
+        /// <summary>
+        /// Item ref -> the name the player actually sees in game, resolved
+        /// through the current locale. Falls back to the prototype leaf name
+        /// (e.g. "Legendary013") only when the item has no localized string,
+        /// which is what the Bounty Board card was showing before this.
+        /// </summary>
+        internal static string ResolveItemDisplayName(ulong itemRef)
+        {
+            if (itemRef == 0) return null;
+
+            var protoRef = (PrototypeId)itemRef;
+            var proto = protoRef.As<ItemPrototype>();
+            if (proto != null && proto.DisplayName != LocaleStringId.Invalid)
+            {
+                var locale = LocaleManager.Instance.CurrentLocale;
+                if (locale != null)
+                {
+                    string localized = locale.GetLocaleString(proto.DisplayName);
+                    if (string.IsNullOrWhiteSpace(localized) == false)
+                        return localized;
+                }
+            }
+
+            string path = GameDatabase.GetPrototypeName(protoRef);
+            if (string.IsNullOrEmpty(path)) return null;
+            return path.Split('/')[^1].Replace(".prototype", string.Empty);
+        }
+
+        /// <summary>
+        /// Item ref -> inventory icon asset candidates. Used by the Bounty
+        /// Board to show the exact guaranteed BiS piece a rank 9-10 bounty
+        /// will drop, so the player can see what they are hunting for.
+        /// </summary>
+        internal static List<string> ResolveItemIconCandidates(ulong itemRef)
+        {
+            var candidates = new List<string>(3);
+            if (itemRef == 0) return candidates;
+
+            var proto = ((PrototypeId)itemRef).As<ItemPrototype>();
+            if (proto == null) return candidates;
+
+            void AddCandidate(AssetId assetId)
+            {
+                if (assetId == 0) return;
+                string assetName = GameDatabase.GetAssetName(assetId);
+                if (string.IsNullOrEmpty(assetName) == false && candidates.Contains(assetName) == false)
+                    candidates.Add(assetName);
+            }
+
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            // ItemPrototype.IconPathHiRes doesn't exist on 1.48.
+            AddCandidate(proto.IconPathHiRes);
+#endif
+            AddCandidate(proto.IconPath);
+            AddCandidate(proto.StoreIconPath);
+            return candidates;
+        }
+
         /// <summary>Currency ref (Credits/EternitySplinters/etc.) -> icon asset candidates, same Icon/IconHiRes/IconSmall fields the vendor/inventory UI reads off CurrencyPrototype — lets the Bounty Board show a real currency icon next to its cost/reward numbers instead of a generic glyph.</summary>
         internal static List<string> ResolveCurrencyIconCandidates(PrototypeId currencyRef)
         {
@@ -1109,11 +1203,37 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         ? (((PrototypeId)e.HeroRef).GetName() ?? string.Empty)
                         : e.LastKillerName;
                     var portraitCandidates = NemesisWebHandler.ResolveNemesisPortraitCandidates(e.HeroRef, e.IsBoss);
+
+                    // Themed board: the target actually spawns wearing the
+                    // theme's costume, so show THAT art (and its themed alias)
+                    // rather than the avatar's default portrait/name. Costume
+                    // portraits go first, with the avatar portraits kept after
+                    // them as fallbacks so a costume with no art of its own
+                    // still renders something.
+                    var (themedCostumeRef, themedAlias) = p.GetBountyBoardThemedPresentation(e.HeroRef, e.IsBoss);
+                    if (themedCostumeRef != 0)
+                    {
+                        var costumeCandidates = NemesisWebHandler.ResolveCostumePortraitCandidates(themedCostumeRef);
+                        if (costumeCandidates.Count > 0)
+                        {
+                            costumeCandidates.AddRange(portraitCandidates);
+                            portraitCandidates = costumeCandidates;
+                        }
+                    }
+
                     slots.Add(new
                     {
                         SlotIndex = i,
                         HeroRef = "0x" + e.HeroRef.ToString("X"),
                         HeroName = heroName,
+                        ThemedName = themedAlias,
+                        CostumeRef = themedCostumeRef != 0 ? "0x" + themedCostumeRef.ToString("X") : null,
+                        // Rank 9-10 nemesis slots lock in one specific BiS
+                        // piece from their own hero's loadout; surface it so
+                        // the card can show exactly what will drop.
+                        GuaranteedBisRef = e.GuaranteedBisRef != 0 ? "0x" + e.GuaranteedBisRef.ToString("X") : null,
+                        GuaranteedBisName = NemesisWebHandler.ResolveItemDisplayName(e.GuaranteedBisRef),
+                        GuaranteedBisIconCandidates = NemesisWebHandler.ResolveItemIconCandidates(e.GuaranteedBisRef),
                         e.IsBoss,
                         e.Rank,
                         e.LossCount,
@@ -1128,11 +1248,18 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
                 int playerCredits = p.Properties[MHServerEmu.Games.Properties.PropertyEnum.Currency, GameDatabase.CurrencyGlobalsPrototype.Credits];
 
+                int themeIndex = p.BountyBoardThemeIndex;
+
                 return new
                 {
                     Ok = true,
                     Slots = slots,
                     PlayerCredits = playerCredits,
+                    // Theme this board was rolled under (Bounty Board mode
+                    // only). Null on an untheme(d)/legacy board so the client
+                    // can just hide the banner rather than special-casing.
+                    ThemeName = MHServerEmu.Games.Entities.Player.BountyThemeName(themeIndex),
+                    ThemeFlavor = MHServerEmu.Games.Entities.Player.BountyThemeFlavor(themeIndex),
                     MaxLosses = MHServerEmu.Games.Entities.Player.BountyBoardMaxLosses,
                     CurrencyIcons = new
                     {

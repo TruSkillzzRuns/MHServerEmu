@@ -88,6 +88,11 @@ namespace MHServerEmu.Games.Entities
                 {
                     foreach (var b in blob.BountyBoard) _bountyBoard.Add(b);
                 }
+                // Theme the saved board was rolled under (Bounty Board mode
+                // only) — without this a board restored after a full logout
+                // would keep its themed roster but lose the arena/costume/
+                // power/repopulation theming that goes with it.
+                _bountyThemeIndex = blob.BountyThemeIndex;
 
                 // Preferred powers
                 _preferredPowers.Clear();
@@ -140,6 +145,7 @@ namespace MHServerEmu.Games.Entities
                     Version = 1,
                     Nemeses = new List<NemesisEntry>(_nemeses),
                     BountyBoard = new List<BountyBoardEntry>(_bountyBoard),
+                    BountyThemeIndex = _bountyThemeIndex,
                     PreferredPowers = new Dictionary<ulong, ulong>(_preferredPowers),
                     RogueEncounterEnabled = _rogueEncounterEnabled,
                 };
@@ -164,6 +170,7 @@ namespace MHServerEmu.Games.Entities
             public int Version { get; set; }
             public List<NemesisEntry> Nemeses { get; set; }
             public List<BountyBoardEntry> BountyBoard { get; set; }
+            public int BountyThemeIndex { get; set; } = -1;
             public Dictionary<ulong, ulong> PreferredPowers { get; set; }
             public bool RogueEncounterEnabled { get; set; }
         }

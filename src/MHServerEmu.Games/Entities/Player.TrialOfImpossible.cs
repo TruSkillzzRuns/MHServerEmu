@@ -73,7 +73,11 @@ namespace MHServerEmu.Games.Entities
             RegionPrototypeId.CH0302HydraOutpostRegion,
             RegionPrototypeId.CH0303WatermillRegion,
             RegionPrototypeId.CH0304PoisonGladeRegion,
-            RegionPrototypeId.CH0305ReconPostRegion,
+            // CH0305ReconPostRegion (S.H.I.E.L.D. Recon Post) removed 2026-08-03:
+            // nothing in that region can attack at all, including the player,
+            // so any arena run that rolled it was unwinnable. Reported live
+            // from Bounty Board and applies equally to Trial of the Impossible,
+            // which draws from this same pool.
             RegionPrototypeId.CH0306PrincessBarRegion,
             RegionPrototypeId.CH0307HandTowerRegion,
             RegionPrototypeId.CH0403MGHStorageRegion,

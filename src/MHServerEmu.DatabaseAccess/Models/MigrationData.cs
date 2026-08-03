@@ -128,6 +128,17 @@ namespace MHServerEmu.DatabaseAccess.Models
         public int BountyHuntBoardSlot { get; set; } = -1;
 
         /// <summary>
+        /// Theme index the IN-FLIGHT hunt was launched under. Separate from
+        /// BountyThemeIndex (which tracks the board itself) and required for
+        /// the same reason BountyHuntBoardSlot is: the arrival handler runs in
+        /// a NEW Game instance after the region transfer, so a plain Player
+        /// field is already back to -1 by the time the arena is sterilized.
+        /// Without this the themed arena repopulation and themed Phantom
+        /// Requiem pool both silently no-op. Bounty Board mode only.
+        /// </summary>
+        public int BountyHuntThemeIndex { get; set; } = -1;
+
+        /// <summary>
         /// RegionPrototypeId (as ulong) of the arena the player's last
         /// Bounty Hunt warp landed them in, or 0 if none yet. Excluded from
         /// the random pick on the NEXT hunt so two hunts in a row can't
@@ -157,6 +168,16 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// history. See Player.BountyBoard.cs.
         /// </summary>
         public List<BountyBoardEntry> BountyBoard { get; } = new();
+
+        /// <summary>
+        /// Index into BountyThemes.All for the board's current themed roll, or
+        /// -1 for an untheme(d)/legacy board. Has to ride along with the board
+        /// itself — the theme drives arena, costume, hazard powers and arena
+        /// repopulation for every hunt launched off that board, so losing it
+        /// on a region transfer would silently untheme an in-progress board.
+        /// Bounty Board mode only. See Player.BountyThemes.cs.
+        /// </summary>
+        public int BountyThemeIndex { get; set; } = -1;
 
         public MigrationData() { }
 
@@ -200,9 +221,11 @@ namespace MHServerEmu.DatabaseAccess.Models
             BountyHuntHeroRef = 0;
             BountyHuntRank = 0;
             BountyHuntBoardSlot = -1;
+            BountyHuntThemeIndex = -1;
             LastBountyHuntRegionId = 0;
             LastBountyHuntStartMs = 0;
             BountyBoard.Clear();
+            BountyThemeIndex = -1;
         }
     }
 
@@ -317,6 +340,17 @@ namespace MHServerEmu.DatabaseAccess.Models
 
         /// <summary>Display name captured at spawn time, same purpose as NemesisEntry.LastKillerName.</summary>
         public string LastKillerName;
+
+        /// <summary>
+        /// The exact BiS piece this bounty is guaranteed to drop, rolled ONCE
+        /// when the slot first reaches BountyBoardGuaranteedBisRank so the card
+        /// can show the player which specific item they are hunting for and
+        /// the drop matches it. 0 = none (boss slots, or below that rank).
+        /// Rolled from the BOUNTY'S OWN hero loadout, not the player's - you
+        /// kill Psylocke, you take a piece of Psylocke's kit.
+        /// Bounty Board mode only.
+        /// </summary>
+        public ulong GuaranteedBisRef;
     }
 
     /// <summary>
