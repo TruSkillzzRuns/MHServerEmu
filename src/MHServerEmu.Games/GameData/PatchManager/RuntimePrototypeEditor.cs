@@ -261,7 +261,11 @@ namespace MHServerEmu.Games.GameData.PatchManager
         private static object SummarizeScalar(object value)
         {
             if (value == null) return null;
-            if (value is Prototype p) return $"<Prototype:{p.GetType().Name}>";
+            if (value is Prototype p)
+            {
+                string name = p.DataRef != PrototypeId.Invalid ? GameDatabase.GetPrototypeName(p.DataRef) : null;
+                return string.IsNullOrEmpty(name) == false ? $"<{p.GetType().Name}:{name}>" : $"<Prototype:{p.GetType().Name}>";
+            }
 
             Type type = value.GetType();
             if (type.IsPrimitive || type == typeof(string) || type.IsEnum

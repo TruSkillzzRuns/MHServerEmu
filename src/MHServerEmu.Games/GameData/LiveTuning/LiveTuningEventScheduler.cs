@@ -48,6 +48,15 @@ namespace MHServerEmu.Games.GameData.LiveTuning
             return true;
         }
 
+        /// <summary>
+        /// Re-reads Events.json/EventSchedule.json (and EventsOverride.json/EventScheduleOverride.json,
+        /// if present) from disk and rebuilds the in-memory event/rule index. <see cref="InitializeEvents"/>
+        /// otherwise only runs once at server startup, so without this the OmegaDev2 Live Events tool's
+        /// activate/deactivate calls would write a valid override file that the running server never
+        /// actually notices until its next restart.
+        /// </summary>
+        public void RefreshEventIndex() => InitializeEvents();
+
         public LiveTuningEvent GetEvent(string eventName)
         {
             if (_events.TryGetValue(eventName, out LiveTuningEvent @event) == false)
@@ -81,27 +90,46 @@ namespace MHServerEmu.Games.GameData.LiveTuning
 
         public void GetLiveTuningSettings(List<NetStructLiveTuningSettingProtoEnumValue> settings)
         {
-            if (_rules.Count == 0)
-                return;
-
             DateTime now = GetCurrentDateTime();
             SortedDictionary<string, int> activeEvents = new();
             List<string> activeDisplayNames = new();
             HashSet<PrototypeId> dailyGifts = new();
 
-            Logger.Info($"Checking Live Tuning events (now=[{now}])...");
-
-            foreach (LiveTuningEventRule rule in _rules)
+            if (_rules.Count > 0)
             {
-                int addedCount = rule.GetActiveEvents(now, activeEvents);
-                if (addedCount > 0)
-                    Logger.Info($"{addedCount} {(addedCount == 1 ? "event matches" : "events match")} rule {rule}");
+                Logger.Info($"Checking Live Tuning events (now=[{now}])...");
+
+                foreach (LiveTuningEventRule rule in _rules)
+                {
+                    int addedCount = rule.GetActiveEvents(now, activeEvents);
+                    if (addedCount > 0)
+                        Logger.Info($"{addedCount} {(addedCount == 1 ? "event matches" : "events match")} rule {rule}");
+                }
             }
 
             int loadedCount = 0;
 
             foreach (var kvp in activeEvents)
                 loadedCount += AddActiveEvent(kvp.Key, kvp.Value, activeDisplayNames, dailyGifts, settings);
+
+            // When running under the OmegaDev2 override tool (IsUsingOverrideSchedule), make forced
+            // events exclusive: explicitly force eLTTV_Enabled=0 for every OTHER known event's loot
+            // table(s). Without this, a non-active event's tuning var sits at the "unset" sentinel
+            // (LiveTuningData.DefaultTuningVarValue), which LootTablePrototype.IsLiveTuningEnabled()
+            // then resolves to that table's own baked-in LiveTuningDefaultEnabled default -- which is
+            // true for most special-event tables, so their loot kept dropping even while "off" in the
+            // tool. Deliberately does NOT apply under the normal calendar-driven schedule, so stock
+            // server behavior is unchanged when the override tool isn't in use.
+            if (IsUsingOverrideSchedule)
+            {
+                foreach (string eventName in _events.Keys)
+                {
+                    if (activeEvents.ContainsKey(eventName))
+                        continue;
+
+                    AddInactiveEventLootDisable(eventName, settings);
+                }
+            }
 
             lock (_currentDailyGifts)
             {
@@ -131,10 +159,44 @@ namespace MHServerEmu.Games.GameData.LiveTuning
             ServerManager.Instance.SendMessageToService(GameServiceType.GroupingManager, message);
         }
 
+        /// <summary>Forces eLTTV_Enabled=0 for every loot table the given (non-active) event's own data file
+        /// would otherwise enable, so it can't fall back to that table's baked-in default-enabled state.</summary>
+        private void AddInactiveEventLootDisable(string eventName, List<NetStructLiveTuningSettingProtoEnumValue> settings)
+        {
+            LiveTuningEvent inactiveEvent = GetEvent(eventName);
+            if (inactiveEvent == null)
+                return;
+
+            string filePath = Path.Combine(LiveTuningManager.LiveTuningDataDirectory, inactiveEvent.FilePath);
+            if (!File.Exists(filePath))
+                return;
+
+            LiveTuningUpdateValue[] updateValues = FileHelper.DeserializeJson<LiveTuningUpdateValue[]>(filePath);
+            if (updateValues == null)
+                return;
+
+            foreach (LiveTuningUpdateValue value in updateValues)
+            {
+                if (value.Setting != "eLTTV_Enabled")
+                    continue;
+
+                LiveTuningUpdateValue disableValue = new(value.Prototype, value.Setting, 0f);
+                NetStructLiveTuningSettingProtoEnumValue protobuf = disableValue.ToProtobuf();
+                if (protobuf != null)
+                    settings.Add(protobuf);
+            }
+        }
+
+        /// <summary>True if the currently loaded schedule came from EventScheduleOverride.json (the
+        /// OmegaDev2 override tool) rather than the normal calendar-driven EventSchedule.json.</summary>
+        public bool IsUsingOverrideSchedule { get; private set; }
+
         private void InitializeEvents()
         {
             _events.Clear();
             _rules.Clear();
+
+            IsUsingOverrideSchedule = File.Exists(EventScheduleOverrideFilePath);
 
             // Live Tuning events are not critical, so allow server initialization to proceed if any of the configuration files are missing or borked.
             string eventListFilePath = GetBaseFileOrOverride(EventListFilePath, EventListOverrideFilePath);

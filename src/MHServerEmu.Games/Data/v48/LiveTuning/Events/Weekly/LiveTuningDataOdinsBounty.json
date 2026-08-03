@@ -50,7 +50,7 @@
     "Value": 2.0
   },
   {
-    "Prototype": "Events/GlobalEvents/EventPowerConditions/OdinsBountyEventPowerCondition.prototype",
+    "Prototype": "Entity/Items/Orbs/PowerUps/Effects/OdinsBountyEventPowerCondition.prototype",
     "Setting": "eCTV_Enabled",
     "Value": 2.0
   }

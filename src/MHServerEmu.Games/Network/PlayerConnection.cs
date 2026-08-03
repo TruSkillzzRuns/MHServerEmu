@@ -738,6 +738,8 @@ namespace MHServerEmu.Games.Network
                 case ClientToGameServerMessage.NetMessageUISystemLockState:                 OnUISystemLockState(message); break;
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
                 case ClientToGameServerMessage.NetMessageEnableTalentPower:                 OnEnableTalentPower(message); break;
+#elif GAME_VERSION_1_48
+                case ClientToGameServerMessage.NetMessageEnableSpecializationPower:         OnEnableTalentPower(message); break;
 #endif
                 case ClientToGameServerMessage.NetMessageStashInventoryViewed:              OnStashInventoryViewed(message); break;
                 case ClientToGameServerMessage.NetMessageStashCurrentlyOpen:                OnStashCurrentlyOpen(message); break;
@@ -1594,7 +1596,14 @@ namespace MHServerEmu.Games.Network
             PrototypeId bodysliderPowerRef = region.GetBodysliderPowerRef();
             if (!Verify.IsTrue(bodysliderPowerRef != PrototypeId.Invalid)) return;
 
+            // Bodyslide arrives as NetMessageReturnToHub (a UI request), not as a power
+            // activation, so unlike a normal power the client never activated anything
+            // locally and has nothing to predict. Power.ActivateInternal() excludes the
+            // owner from the activation broadcast unless NotifyOwner is set, so without
+            // this flag the client is never told the power started and plays no bodyslide
+            // animation -- the avatar just stands still for the 1.5s charge and teleports.
             PowerActivationSettings settings = new(avatar.Id, avatar.RegionLocation.Position, avatar.RegionLocation.Position);
+            settings.Flags |= PowerActivationSettingsFlags.NotifyOwner;
             avatar.ActivatePower(bodysliderPowerRef, ref settings);
         }
 
@@ -2471,10 +2480,18 @@ namespace MHServerEmu.Games.Network
         }
 
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
-        // V48_FIXME (Specialization power)
         private void OnEnableTalentPower(in MailboxMessage message)
         {
             var enableTalentPower = message.As<NetMessageEnableTalentPower>();
+#elif GAME_VERSION_1_48
+        // 1.48 sent this same request as NetMessageEnableSpecializationPower rather than
+        // NetMessageEnableTalentPower -- renamed in 1.52+, but the field set is identical
+        // (AvatarId, PrototypeId, Enable, Spec), so the handler body below is shared.
+        private void OnEnableTalentPower(in MailboxMessage message)
+        {
+            var enableTalentPower = message.As<NetMessageEnableSpecializationPower>();
+#endif
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
             if (!Verify.IsNotNull(enableTalentPower)) return;
 
             Avatar avatar = Game.EntityManager.GetEntity<Avatar>(enableTalentPower.AvatarId);

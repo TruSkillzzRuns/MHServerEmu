@@ -265,6 +265,15 @@ namespace MHServerEmu.Games.Powers
         {
             if (IsNormalPower() == false || Owner == null) return;
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            // Despawning the controlled agent when its control power leaves the action bar is
+            // BUE behavior. Originally unguarded, which meant it also applied on 1.48 -- gated
+            // here because this is the only control-power/action-bar interaction in this file
+            // with no version branch at all (contrast SlotAbility/UnslotAbility, which are
+            // explicitly split per version), and it was added in a single commit (7ab553234)
+            // with no version consideration.
+            // Confirmed by playtest on 1.48 (2026-08-02): with this gated off, removing the
+            // control power from the action bar correctly leaves the summon in world.
             if (IsControlPower && Owner is Avatar avatar)
             {
                 var controlledAgent = avatar.ControlledAgent;
@@ -274,6 +283,7 @@ namespace MHServerEmu.Games.Powers
                     controlledAgent.ExitWorld();
                 }
             }
+#endif
         }
 
         public void OnOwnerEnteredWorld()

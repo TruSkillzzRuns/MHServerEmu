@@ -6,6 +6,7 @@ using MHServerEmu.Core.Memory;
 using MHServerEmu.Core.System.Time;
 using MHServerEmu.Core.VectorMath;
 using MHServerEmu.Games.Behavior;
+using MHServerEmu.Games.Common;
 using MHServerEmu.Games.Dialog;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.Entities.Inventories;
@@ -1071,6 +1072,22 @@ namespace MHServerEmu.Games.Entities
 
             if (Properties[PropertyEnum.PowersUnlockAll] == false)
             {
+#if GAME_VERSION_1_53
+                // Check the costume requirement. 1.53 ships nine costume powers (Psylocke,
+                // Storm, Hulk x2, Doctor Strange x3, Jean Grey, Magik) as ordinary power
+                // progression entries at Level 1 that additionally set CostumeRequired.
+                // Nothing read that field, so every one of those heroes had its costume
+                // power from level 1 whether or not it owned the costume, and unequipping
+                // the costume never took it away.
+                PrototypeId costumeRequiredRef = powerInfo.CostumeRequiredRef;
+                if (costumeRequiredRef != PrototypeId.Invalid
+                    && (this is not Avatar avatar || avatar.EquippedCostumeRef != costumeRequiredRef))
+                {
+                    filteredByPrereq = true;
+                    return PowerProgressionInfo.RankLocked;
+                }
+#endif
+
                 // Check prerequisites
                 PrototypeId[] prereqs = powerInfo.PrerequisitePowerRefs;
                 if (prereqs.HasValue())
@@ -1203,6 +1220,21 @@ namespace MHServerEmu.Games.Entities
             PrototypeId powerProtoRef = powerProto.DataRef;
 
             int rankOldBest = GetPowerRank(powerProtoRef);
+
+            // A granted-power affix (PowerGrantRank) can put a power at an active,
+            // non-zero rankCurrentBest even though the character never naturally
+            // unlocked it (rankBase == PowerProgressionInfo.RankLocked, i.e. -1).
+            // Persisting/replicating a Locked base underneath an active ranked Power
+            // is a self-contradictory state -- the client isn't expecting a power it
+            // considers nonexistent to be running, and this was what locked up the
+            // whole ability bar the moment a below-level granted power went active.
+            // The grant is supposed to make the power usable regardless of level, so
+            // fix the contradiction by unlocking the base (0, not -1) rather than by
+            // blocking the grant -- 0 unspent points is exactly what a legitimately
+            // unlocked-but-uninvested power looks like.
+            if (rankBase == PowerProgressionInfo.RankLocked && rankCurrentBest > 0)
+                rankBase = 0;
+
             Properties[PropertyEnum.PowerRankBase, powerProtoRef] = rankBase;
 
             // Unassign if needed
@@ -1392,17 +1424,26 @@ namespace MHServerEmu.Games.Entities
             if (!Verify.IsNotNull(powerProto)) return false;
 
             int rankBefore = GetPowerRank(powerInfo.PowerRef);
-            
+
             if (UpdatePowerRank(ref powerInfo, false) == false)
                 return false;
 
-            // Show HUD tutorial for power-granting items if needed
+            // Show the power-granting item tutorial if needed. On 1.48 this has to go through
+            // TutorialSystem.ShowTip: UIGlobals.PowerGrantItemTutorialTip is a TipPrototype
+            // there, not a HUDTutorialPrototype, and routing it into ShowHUDTutorial made
+            // SetTutorialProps read AllowPowerUsage -- a field TipPrototype doesn't have, so it
+            // defaulted to false and set PropertyEnum.TutorialPowerLock, locking every power on
+            // the ability bar until the avatar re-entered the world. Confirmed live 2026-08-02.
             if (rankBefore <= 0 && powerProto.Activation != PowerActivationType.Passive)
             {
                 Player player = GetOwnerOfType<Player>();
                 if (!Verify.IsNotNull(player)) return false;
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
                 player.ShowHUDTutorial(GameDatabase.UIGlobalsPrototype.PowerGrantItemTutorialTip);
+#else
+                TutorialSystem.ShowTip(player, GameDatabase.UIGlobalsPrototype.PowerGrantItemTutorialTip);
+#endif
             }
 
             return true;

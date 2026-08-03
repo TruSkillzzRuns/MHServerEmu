@@ -24,15 +24,26 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             }
 
             string entityIdStr = PhantomsWebUtil.QueryParam(context, "entityId");
-            if (ulong.TryParse(entityIdStr?.TrimStart('0', 'x', 'X'), System.Globalization.NumberStyles.HexNumber, null, out ulong entityId) == false
-                && ulong.TryParse(entityIdStr, out entityId) == false)
+            bool useTeamUp = PhantomsWebUtil.QueryParam(context, "teamUp") == "1";
+            bool haveEntityId = ulong.TryParse(entityIdStr?.TrimStart('0', 'x', 'X'), System.Globalization.NumberStyles.HexNumber, null, out ulong entityId)
+                || ulong.TryParse(entityIdStr, out entityId);
+
+            if (haveEntityId == false && useTeamUp == false)
             {
-                await context.SendJsonAsync(new { Ok = false, Error = "missing or invalid 'entityId' (hex or decimal)" });
+                await context.SendJsonAsync(new { Ok = false, Error = "missing or invalid 'entityId' (hex or decimal), or pass teamUp=1 to resolve the current avatar's summoned team-up" });
                 return;
             }
 
             object result = await PhantomsWebUtil.RunOnGameThread(player, p =>
             {
+                if (useTeamUp)
+                {
+                    var teamUpAgent = (p.CurrentAvatar as MHServerEmu.Games.Entities.Avatars.Avatar)?.CurrentTeamUpAgent;
+                    if (teamUpAgent == null)
+                        return new { Ok = false, Error = "no team-up agent set on the current avatar" };
+                    entityId = teamUpAgent.Id;
+                }
+
                 var entity = p.Game.EntityManager.GetEntity<WorldEntity>(entityId);
                 if (entity == null)
                     return new { Ok = false, Error = "entity not found (destroyed or never existed on this Game instance)" };

@@ -1,6 +1,11 @@
 ﻿[
   {
-    "Prototype": "Loot/Tables/Events/WealthOfKingsCounty.prototype",
+    "Prototype": "Loot/Tables/Mob/Bosses/BundlesofCashTable.prototype",
+    "Setting": "eLTTV_Enabled",
+    "Value": 2.0
+  },
+  {
+    "Prototype": "Loot/Tables/Mob/Bosses/BundlesofCashCosmicTable.prototype",
     "Setting": "eLTTV_Enabled",
     "Value": 2.0
   },

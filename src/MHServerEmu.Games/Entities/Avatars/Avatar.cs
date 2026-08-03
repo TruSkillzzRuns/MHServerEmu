@@ -39,9 +39,8 @@ namespace MHServerEmu.Games.Entities.Avatars
     public partial class Avatar : Agent
     {
         private const int MaxNumTransientAbilityKeyMappings = 1;
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
         private const uint TalentGroupIndexInvalid = 0;
-#else
+#if GAME_VERSION_1_48
         private const int NumAbilityKeyMappings = 3;
         private const int SlottableTransformKeyMappingIndex = 2;
 #endif
@@ -1702,6 +1701,13 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             UpdatePowerProgressionPowers(false);
 
+#if GAME_VERSION_1_53
+            // Forced, because set entries commonly grant proc powers and those cannot be assigned
+            // while out of world -- equipment changes made in the library would otherwise leave the
+            // tiers looking up to date with no procs actually assigned.
+            UpdateEquipmentSetBonuses(true);
+#endif
+
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
             UpdateTravelPower();
 #endif
@@ -2333,7 +2339,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Refresh powers
             if (IsInWorld)
             {
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
                 UpdateTalentPowers();
 #endif
                 UpdatePowerProgressionPowers(true);
@@ -2396,9 +2402,7 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         #region Talents (Specialization Powers)
 
-// V48_TODO: specialization powers
-
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         public void GetTalentPowersForSpec(int specIndex, List<PrototypeId> talentPowerList)
         {
             foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.AvatarSpecializationPower, specIndex))
@@ -2409,14 +2413,14 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         public bool IsTalentPowerEnabledForSpec(PrototypeId talentPowerRef, int specIndex)
         {
             return Properties[PropertyEnum.AvatarSpecializationPower, specIndex, talentPowerRef];
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         public bool EnableTalentPower(PrototypeId talentPowerRef, int specIndex, bool enable)
         {
             if (!Verify.IsTrue(talentPowerRef != PrototypeId.Invalid)) return false;
@@ -2426,6 +2430,11 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             if (enable)
             {
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+                // Talent groups (mutual-exclusion within a group) are a 1.52+ data concept -- 1.48's
+                // client schema has no TalentGroupPrototype/TalentGroups at all, so this whole check
+                // is skipped there and a 1.48 avatar can simply have multiple specialization powers
+                // enabled at once with no group-exclusivity enforcement.
                 if (Game.CustomGameOptions.AllowSameGroupTalents == false)
                 {
                     // Turn off mutually exclusive talents (belonging to the same group)
@@ -2444,6 +2453,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                             UnassignTalentPower(talentPowerRefToCheck, specIndex);
                     }
                 }
+#endif
 
                 // Enable
                 AssignTalentPower(talentPowerRef, specIndex);
@@ -2458,7 +2468,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         public CanToggleTalentResult CanToggleTalentPower(PrototypeId talentPowerRef, int specIndex, bool enteringWorld, bool enable)
         {
             SpecializationPowerPrototype talentPowerProto = talentPowerRef.As<SpecializationPowerPrototype>();
@@ -2477,9 +2487,12 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (CharacterLevel < talentPowerInfo.GetRequiredLevel())
                 return CanToggleTalentResult.LevelRequirement;
 
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            // Talent groups don't exist in 1.48's client schema -- see EnableTalentPower for the same gate.
             uint talentGroupIndex = GameDataTables.Instance.PowerOwnerTable.GetTalentGroupIndex(PrototypeDataRef, talentPowerRef);
             if (!Verify.IsTrue(talentGroupIndex != TalentGroupIndexInvalid, $"Talent missing its talent group index for some reason!\nTalent: {talentPowerProto}\nOwner: [{this}]\nenteringWorld: {enteringWorld}"))
                 return CanToggleTalentResult.GenericError;
+#endif
 
             // Skip eval check if this avatar is entering the world
             if (enable && enteringWorld == false && talentPowerProto.EvalCanEnable.HasValue())
@@ -2500,7 +2513,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         private bool AssignTalentPower(PrototypeId talentPowerRef, int specIndex)
         {
             if (!Verify.IsTrue(talentPowerRef != PrototypeId.Invalid)) return false;
@@ -2525,7 +2538,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         private bool UnassignTalentPower(PrototypeId talentPowerRef, int specIndex, bool isSwitchingSpec = false)
         {
             if (!Verify.IsTrue(talentPowerRef != PrototypeId.Invalid)) return false;
@@ -2552,7 +2565,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
         private void UpdateTalentPowers()
         {
             int specIndex = GetPowerSpecIndexActive();
@@ -2717,6 +2730,7 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             return true;
         }
+
 
         public void UnassignAllMappedPowers()
         {
@@ -4401,7 +4415,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Unlock new powers
             if (IsInWorld)
             {
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
                 UpdateTalentPowers();
 #endif
                 UpdatePowerProgressionPowers(false);
@@ -4757,9 +4771,9 @@ namespace MHServerEmu.Games.Entities.Avatars
                 PowerIndexProperties indexProps = new(0, characterLevel, combatLevel, itemLevel, itemVariation);
 
                 Power itemPower = AssignPower(powerProtoRef, indexProps);
-                Verify.IsNotNull(itemPower, $"Failed to assign item power {powerProtoRef.GetName()} to avatar {this}");            
+                Verify.IsNotNull(itemPower, $"Failed to assign item power {powerProtoRef.GetName()} to avatar {this}");
             }
-            
+
             OnChangeInventory(item);
         }
 
@@ -4913,6 +4927,15 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Update avatar library
             // NOTE: Avatar mode is hardcoded to 0 since hardcore and ladder avatars never got implemented
             owner.Properties[PropertyEnum.AvatarLibraryCostume, 0, PrototypeDataRef] = costumeProtoRef;
+
+#if GAME_VERSION_1_53
+            // Costume powers (PowerProgressionEntryPrototype.CostumeRequired) become available or
+            // unavailable as the costume changes, so their ranks have to be recomputed here --
+            // nothing else observes CostumeCurrent. Powers not gated on a costume are unaffected
+            // because their computed rank does not change.
+            if (IsInWorld && TestStatus(EntityStatus.ExitingWorld) == false)
+                UpdatePowerProgressionPowers(false);
+#endif
 
             return true;
         }
@@ -5412,15 +5435,17 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         private void RestoreMissionRewardProperties(Player player)
         {
+            using var rewardPropsHandle = ListPool<PropertyId>.Instance.Get(out List<PropertyId> rewardProps);
+
             foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.MissionRewardReceived))
-            {
-                Property.FromParam(kvp.Key, 0, out PrototypeId missionProtoRef);
-                RestoreMissionRewardProperties(player, missionProtoRef);
-            }
+                rewardProps.Add(kvp.Key);
 
             foreach (var kvp in player.Properties.IteratePropertyRange(PropertyEnum.MissionRewardReceived))
+                rewardProps.Add(kvp.Key);
+
+            foreach (PropertyId propId in rewardProps)
             {
-                Property.FromParam(kvp.Key, 0, out PrototypeId missionProtoRef);
+                Property.FromParam(propId, 0, out PrototypeId missionProtoRef);
                 RestoreMissionRewardProperties(player, missionProtoRef);
             }
         }
@@ -6945,6 +6970,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                     break;
 #endif
 
+#if GAME_VERSION_1_53
+                // Equipped item properties aggregate onto the avatar, so equipping or unequipping
+                // a piece carrying a set affix lands here as an EquipmentSetLevel change.
+                case PropertyEnum.EquipmentSetLevel:
+                case PropertyEnum.EquipmentSetLevelBonus:
+                    UpdateEquipmentSetBonuses();
+                    break;
+#endif
+
                 case PropertyEnum.AvatarMappedPower:
                     Property.FromParam(id, 0, out PrototypeId originalPowerRef);
                     PowerPrototype originalPowerProto = originalPowerRef.As<PowerPrototype>();
@@ -7472,7 +7506,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                         player.UnlockWaypoint(waypointUnlockRef);
             }
 
-#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+#if GAME_VERSION_1_48 || GAME_VERSION_1_52 || GAME_VERSION_1_53
             UpdateTalentPowers();
 #endif
 
@@ -7557,6 +7591,11 @@ namespace MHServerEmu.Games.Entities.Avatars
         public override void OnExitedWorld()
         {
             base.OnExitedWorld();
+
+#if GAME_VERSION_1_53
+            // Drop set bonuses so their proc powers go away with everything else
+            ClearEquipmentSetBonuses();
+#endif
 
             // Cancel the phantom-hero follow/attack tick — it drove itself
             // off this Avatar's position, so it must not fire on a torn-down

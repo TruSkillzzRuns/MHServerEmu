@@ -26,9 +26,10 @@ namespace MHServerEmu.Games.Entities
         // Five minutes between successful encounters is the tightest window
         // that still lets the previous fight fully resolve.
         private const long RogueEncounterCooldownMs = 5 * 60_000;
-        // 25% roll chance per eligibility check → expected value ~1 encounter
-        // every 4 minutes of active play, floored by the cooldown above.
-        private const double RogueEncounterRollChance = 0.25;
+        // 50% roll chance per eligibility check → expected value ~2 minutes
+        // to roll true, floored by the 5-minute cooldown above (so actual
+        // spawns are still at most one per 5 minutes).
+        private const double RogueEncounterRollChance = 0.50;
         // Per-slot chance a rogue phantom is drawn from the team-up pool
         // instead of the avatar pool. Kept low so avatar phantoms remain
         // the "canonical" rogue face but team-up cameos happen occasionally.

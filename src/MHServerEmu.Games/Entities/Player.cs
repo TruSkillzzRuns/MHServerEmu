@@ -614,6 +614,17 @@ namespace MHServerEmu.Games.Entities
             GameplayOptions newOptions = new(clientOptions.OptionsData);
             GameplayOptions = newOptions;
 
+#if GAME_VERSION_1_53
+            // TEMP DEBUG (2026-07-31) -- diagnosing a report that auto-loot
+            // credits / lower-rarity gear vaporization isn't working for
+            // another player on 1.53 even though it works fine here. Dumps
+            // the full toggle + per-slot vaporize-threshold state every time
+            // the client sends an update, so we can see from their log
+            // whether the settings are actually reaching the server enabled.
+            // Remove once diagnosed.
+            Logger.Info($"[VaporizeDebug] {GetName()}: GameplayOptions updated:\n{newOptions}");
+#endif
+
             // TODO: Update chat channels
             CurrentAvatar?.UpdateAvatarSynergyExperienceBonus();
         }
@@ -4199,11 +4210,26 @@ namespace MHServerEmu.Games.Entities
 
         public void SetTipSeen(PrototypeId tipDataRef)
         {
-            if (tipDataRef == PrototypeId.Invalid) return;
-            Properties[PropertyEnum.TutorialHasSeenTip, tipDataRef] = true;
-        }
+            if (!Verify.IsTrue(tipDataRef != PrototypeId.Invalid)) return;
 
-        // V48_TODO: TutorialSystem::ShowTip() for TipPrototype separate from ShowHUDTutorial
+#if GAME_VERSION_1_52 || GAME_VERSION_1_53
+            Properties[PropertyEnum.TutorialHasSeenTip, tipDataRef] = true;
+#else
+            TipPrototype tipProto = tipDataRef.As<TipPrototype>();
+            if (!Verify.IsNotNull(tipProto)) return;
+
+            if (tipProto.ShowForEachAvatar)
+            {
+                Avatar avatar = CurrentAvatar;
+                if (avatar != null)
+                    avatar.Properties[PropertyEnum.TutorialHasSeenTip, tipDataRef] = true;
+            }
+            else
+            {
+                Properties[PropertyEnum.TutorialHasSeenTip, tipDataRef] = true;
+            }
+#endif
+        }
 
         public void ShowHUDTutorial(HUDTutorialPrototype hudTutorialProto)
         {

@@ -110,11 +110,21 @@ namespace MHServerEmu.Games.Entities
                     int level = entry.Level > 0 ? Math.Clamp(entry.Level, 1, 100) : (CurrentAvatar?.CharacterLevel ?? 60);
                     PrototypeId rarityRef = (PrototypeId)entry.RarityProtoRef;
 
+                    // Costumes are authored as non-droppable: they fail the rarity restriction
+                    // for every rarity under LootContext.Drop, so ItemResolver.ResolveRarity()
+                    // returns Invalid, the ItemSpec fails IsValid, and UpdateAffixes() errors out
+                    // before anything is created. They do pass under CashShop/Crafting/Vendor,
+                    // which is how they are actually obtained. Roll them as CashShop items so the
+                    // Gear Picker can hand them over. Verified against 1.53 data 2026-08-02.
+                    LootContext lootContext = itemProtoRef.As<CostumePrototype>() != null
+                        ? LootContext.CashShop
+                        : LootContext.Drop;
+
                     for (int i = 0; i < count; i++)
                     {
                         try
                         {
-                            ItemSpec itemSpec = lootManager.CreateItemSpec(itemProtoRef, LootContext.Drop, this, level, rarityRef);
+                            ItemSpec itemSpec = lootManager.CreateItemSpec(itemProtoRef, lootContext, this, level, rarityRef);
                             if (itemSpec == null)
                             {
                                 result.StatusCode = 422;

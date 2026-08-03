@@ -1,6 +1,6 @@
 ﻿[
   {
-    "Prototype": "Loot/Tables/Events/Anniversary2017Loot.prototype",
+    "Prototype": "Loot/Tables/Mob/Bosses/AnniversaryCakeDropTable.prototype",
     "Setting": "eLTTV_Enabled",
     "Value": 2.0
   },

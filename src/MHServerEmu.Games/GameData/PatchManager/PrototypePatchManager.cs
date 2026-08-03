@@ -211,6 +211,15 @@ namespace MHServerEmu.Games.GameData.PatchManager
 
                 if (protoRef.HasValue)
                 {
+                    // Same guard GetElementValue() already applies on the array path: patch
+                    // data is shared across game versions, so an entry can reference a
+                    // PrototypeId that simply doesn't exist on this one. Without this,
+                    // GetPrototype() trips two Verify failures and dumps a full stack trace
+                    // per entry at startup, even though UpdateValue()'s catch is already set
+                    // up to treat this as an expected, quiet skip.
+                    if (GameDatabase.PrototypeExists(protoRef.Value) == false)
+                        throw new PrototypeRefNotFoundException(protoRef.Value);
+
                     PatchContext contextBefore = Instance.CreateSubContext();
 
                     Prototype proto = GameDatabase.GetPrototype<Prototype>(protoRef.Value);

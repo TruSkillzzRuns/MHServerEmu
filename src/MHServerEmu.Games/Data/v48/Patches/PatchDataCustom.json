@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "Enabled": true,
     "Prototype": "Resource/Cells/DistrictCells/Avengers_Tower/AvengersTowerNPE_HUB.cell",
@@ -13,7 +13,11 @@
     "Path": "MarkerSet.Markers[27].Position",
     "Description": "Change Dagger position",
     "ValueType": "Vector3",
-    "Value": [ -694.76, 2003.63, 160.97 ]
+    "Value": [
+      -694.76,
+      2003.63,
+      160.97
+    ]
   },
   {
     "Enabled": true,
@@ -27,8 +31,8 @@
     "Enabled": true,
     "Prototype": "Loot/Tables/Achievements/StarkTechPowerCube.prototype",
     "Path": "Choices[0].Item",
-    "Description": "Set Bifrost Visual in LootTable",
+    "Description": "Set Bifrost Visual in LootTable (1.48 path: Recipes/Tab2Costumes)",
     "ValueType": "PrototypeId",
-    "Value": 12620726227893559387
+    "Value": 17274509741983146090
   }
 ]

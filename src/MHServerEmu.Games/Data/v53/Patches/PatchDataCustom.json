@@ -25,10 +25,26 @@
   },
   {
     "Enabled": true,
+    "Prototype": "Resource/Cells/DistrictCells/Avengers_Tower/AvengersTowerNPE_HUB.cell",
+    "Path": "MarkerSet.Markers[28].Position",
+    "Description": "Move Cloak next to Dagger (Dagger is Markers[27] at -694.76, 2003.63, 160.97)",
+    "ValueType": "Vector3",
+    "Value": [ -754.75, 2037.75, 179.0 ]
+  },
+  {
+    "Enabled": true,
     "Prototype": "Loot/Tables/Achievements/StarkTechPowerCube.prototype",
     "Path": "Choices[0].Item",
     "Description": "Set Bifrost Visual in LootTable",
     "ValueType": "PrototypeId",
     "Value": 12620726227893559387
+  },
+  {
+    "Enabled": false,
+    "Prototype": "Entity/Items/Costumes/Prototypes/Storm/HorsemanPestilence.prototype",
+    "Path": "DesignState",
+    "Description": "DISABLED - proven ineffective 2026-08-02. The costume closet lists only DesignState=Live costumes, and 'You do not meet the requirements to use that item' on a costume item is generated entirely client-side (InteractionValidateResult is never sent to the client; using the item produced zero server log activity). Patching DesignState to Live here made ApprovedForUse true server-side and changed nothing in the client, which reads its own Calligraphy copy. Fixing the closet requires editing the client's .sip, not the server. Kept as a record so this is not retried.",
+    "ValueType": "Enum",
+    "Value": "Live"
   }
 ]

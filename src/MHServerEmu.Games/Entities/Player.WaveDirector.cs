@@ -1356,16 +1356,6 @@ namespace MHServerEmu.Games.Entities
 
             try
             {
-                PrototypeId chestRef = GameDatabase.GetPrototypeRefByName(EndlessChestProtoPath);
-                if (chestRef == PrototypeId.Invalid)
-                {
-                    WaveLogger.Warn($"[WaveDirector] {GetName()}: Endless chest prototype not found ({EndlessChestProtoPath}) — no chest, no loot this milestone");
-                    return;
-                }
-
-                var chestProto = chestRef.As<WorldEntityPrototype>();
-                if (chestProto == null) return;
-
                 // Spread multiple simultaneous chests 120° apart around the
                 // player instead of stacking on top of each other (max is 3,
                 // at tier-3 milestones).
@@ -1373,24 +1363,15 @@ namespace MHServerEmu.Games.Entities
                 Vector3 fallback = avatar.RegionLocation.Position + avatar.Forward * 150f
                     + new Vector3(MathF.Cos(angle) * 80f, MathF.Sin(angle) * 80f, 0f);
 
-                Vector3 pos;
-                if (EntityHelper.GetSpawnPositionNearAvatar(avatar, avatar.Region, chestProto.Bounds, 250f, out pos) == false)
-                    pos = fallback;
-
-                using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
-                settings.EntityRef = chestRef;
-                settings.Position = pos;
-                settings.Orientation = avatar.RegionLocation.Orientation;
-                settings.RegionId = avatar.Region.Id;
-
-                WorldEntity chest = Game.EntityManager.CreateEntity(settings) as WorldEntity;
+                // Shared with Trial of the Impossible's finale chest -- see
+                // SpawnRewardChestEntity's doc comment (Player.TrialOfImpossible.cs).
+                WorldEntity chest = SpawnRewardChestEntity(avatar, EndlessChestProtoPath, fallback, out string chestErr);
                 if (chest == null)
                 {
-                    WaveLogger.Warn($"[WaveDirector] {GetName()}: Endless chest CreateEntity failed — no chest, no loot this milestone");
+                    WaveLogger.Warn($"[WaveDirector] {GetName()}: Endless chest spawn failed: {chestErr} — no chest, no loot this milestone");
                     return;
                 }
 
-                chest.Properties[PropertyEnum.Interactable] = true;
                 _pendingChestLoot[chest.Id] = (rolls, allowedRarities);
 
                 Region region = avatar.Region;
