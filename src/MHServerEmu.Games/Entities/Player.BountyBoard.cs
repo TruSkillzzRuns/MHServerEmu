@@ -36,8 +36,18 @@ namespace MHServerEmu.Games.Entities
 
         public const int BountyBoardSize = 6;
         public const int BountyBoardMaxLosses = 3;
-        private const int BountyBoardInitialRankMin = 1;
-        private const int BountyBoardInitialRankMax = 3;
+
+        // Rank bands a fresh roll draws from — 2 slots per band across the
+        // 6-slot board, so there's always a real spread of difficulty to
+        // choose from instead of everything clustering at 1-3. Bounties
+        // only climb ABOVE their rolled band from there via loss-driven
+        // rank-ups (ResolveBountyBoardLoss), never on generation.
+        private static readonly (int Min, int Max)[] s_bountyBoardRankBands =
+        {
+            (1, 3), (1, 3),   // low
+            (4, 6), (4, 6),   // medium
+            (7, 10), (7, 10), // high
+        };
 
         private readonly List<BountyBoardEntry> _bountyBoard = new();
         public IReadOnlyList<BountyBoardEntry> BountyBoardEntries => _bountyBoard;
@@ -49,18 +59,35 @@ namespace MHServerEmu.Games.Entities
         /// rank 10 purely from losses, without the player ever choosing
         /// that tier themselves — the curve needs to keep pace with
         /// NemesisHealthMultForRank's own acceleration past rank 3-4.
-        ///   Rank   1    2    3     4     5     6     7     8     9     10
-        ///   Cost   100  300  600   1000  1500  2100  2800  3600  4500  5500
+        /// Bumped 10x from the original 50/tier curve — the old top rank
+        /// (5,500) was trivial pocket change against typical credit
+        /// balances (six/seven figures), so the "wager" barely registered.
+        ///   Rank   1     2     3     4      5      6      7      8      9      10
+        ///   Cost   1000  3000  6000  10000  15000  21000  28000  36000  45000  55000
         /// </summary>
         public static int BountyBoardAcceptCost(int rank)
         {
             int r = Math.Clamp(rank, 1, EndlessMaxRank);
-            return 50 * r * (r + 1);
+            return 500 * r * (r + 1);
         }
 
-        /// <summary>Returns the current board, generating one first if it's empty or every slot is already Resolved.</summary>
+        /// <summary>
+        /// Returns the current board, generating one first if it's empty or
+        /// every slot is already Resolved. Suppresses the empty-board
+        /// auto-generate until _phantomPersistLoaded is true — otherwise a
+        /// poll landing in the window right after a region transfer (new
+        /// Player instance, _bountyBoard not yet restored from either
+        /// MigrationData or the PhantomPersist sidecar) would see Count==0,
+        /// force-roll a throwaway board, and then have it silently
+        /// overwritten a moment later once the real one restores. That
+        /// showed up live as "the board flips to new bounties, then
+        /// reverts" — and if a Post/Collect click landed in that same
+        /// window, it acted on a slot that was about to be replaced,
+        /// posting a fresh bounty and warping instead of collecting.
+        /// </summary>
         public IReadOnlyList<BountyBoardEntry> GetBountyBoard()
         {
+            if (_phantomPersistLoaded == false) return _bountyBoard;
             MaybeRerollBountyBoard(force: _bountyBoard.Count == 0);
             return _bountyBoard;
         }
@@ -238,6 +265,16 @@ namespace MHServerEmu.Games.Entities
                 combined.Add(((ulong)bossRef, true, displayName));
             if (combined.Count == 0) return;
 
+            // Shuffle the fixed low/low/medium/medium/high/high band set so
+            // which slot index gets which band varies roll to roll, while
+            // still guaranteeing one of each band pair is always present.
+            var shuffledBands = ((int Min, int Max)[])s_bountyBoardRankBands.Clone();
+            for (int i = shuffledBands.Length - 1; i > 0; i--)
+            {
+                int j = rng.Next(i + 1);
+                (shuffledBands[i], shuffledBands[j]) = (shuffledBands[j], shuffledBands[i]);
+            }
+
             var used = new HashSet<ulong>();
             int guard = 0;
             while (_bountyBoard.Count < BountyBoardSize && guard++ < BountyBoardSize * 20)
@@ -245,11 +282,12 @@ namespace MHServerEmu.Games.Entities
                 var (heroRef, isBoss, displayName) = combined[rng.Next(combined.Count)];
                 if (used.Add(heroRef) == false) continue;
 
+                var (bandMin, bandMax) = shuffledBands[_bountyBoard.Count];
                 _bountyBoard.Add(new BountyBoardEntry
                 {
                     HeroRef = heroRef,
                     IsBoss = isBoss,
-                    Rank = rng.Next(BountyBoardInitialRankMin, BountyBoardInitialRankMax + 1),
+                    Rank = rng.Next(bandMin, bandMax + 1),
                     LossCount = 0,
                     Defeated = false,
                     Fled = false,

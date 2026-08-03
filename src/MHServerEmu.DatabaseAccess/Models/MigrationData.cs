@@ -128,6 +128,20 @@ namespace MHServerEmu.DatabaseAccess.Models
         public int BountyHuntBoardSlot { get; set; } = -1;
 
         /// <summary>
+        /// RegionPrototypeId (as ulong) of the arena the player's last
+        /// Bounty Hunt warp landed them in, or 0 if none yet. Excluded from
+        /// the random pick on the NEXT hunt so two hunts in a row can't
+        /// send the player back into a region that may not have fully torn
+        /// down yet — confirmed live 2026-08-02 as a real complaint
+        /// ("sent to a region I've already been to that hasn't reset").
+        /// Persisted here (not a plain Player field) because a region
+        /// transfer destroys/recreates the Player/Game instance, so this
+        /// needs to survive the exact hop it's meant to inform the next
+        /// pick after.
+        /// </summary>
+        public ulong LastBountyHuntRegionId { get; set; }
+
+        /// <summary>
         /// The Bounty Board — 6 randomly-rolled nemeses shown at once,
         /// independent of the player's personal Nemesis roster/kill
         /// history. See Player.BountyBoard.cs.
@@ -176,6 +190,7 @@ namespace MHServerEmu.DatabaseAccess.Models
             BountyHuntHeroRef = 0;
             BountyHuntRank = 0;
             BountyHuntBoardSlot = -1;
+            LastBountyHuntRegionId = 0;
             BountyBoard.Clear();
         }
     }

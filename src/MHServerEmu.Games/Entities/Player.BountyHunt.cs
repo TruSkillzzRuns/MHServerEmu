@@ -82,6 +82,16 @@ namespace MHServerEmu.Games.Entities
         private int _bountyHuntBoardSlot = -1;
 
         /// <summary>
+        /// RegionPrototypeId (as ulong) of the arena the LAST Bounty Hunt
+        /// warp landed the player in — excluded from the pick on the next
+        /// hunt so two hunts in a row can't send them back into a region
+        /// that may not have fully torn down. Snapshotted to/restored from
+        /// MigrationData.LastBountyHuntRegionId since it needs to survive
+        /// the very transfer it's about to inform.
+        /// </summary>
+        private ulong _lastBountyHuntRegionId;
+
+        /// <summary>
         /// Start a Bounty Hunt against an existing active (non-Defeated)
         /// nemesis roster entry at the given tier (1-10). Validates the same
         /// way SetBountyTarget does, then hands off to StartBountyHuntInternal
@@ -125,7 +135,22 @@ namespace MHServerEmu.Games.Entities
                 return $"not enough credits — bounty costs {cost}, you have {currentCredits}";
             Properties.AdjustProperty(-cost, new(PropertyEnum.Currency, creditsProtoRef));
 
-            RegionPrototypeId chosen = pool[Game.Random.Next(pool.Length)];
+            // Exclude the region the last hunt landed in, if any and if the
+            // pool is big enough to still leave a real choice — avoids
+            // sending the player right back into a region that may not
+            // have fully torn down from that last visit yet.
+            RegionPrototypeId chosen;
+            if (_lastBountyHuntRegionId != 0 && pool.Length > 1)
+            {
+                var filtered = new List<RegionPrototypeId>(pool.Length - 1);
+                foreach (var r in pool) if ((ulong)r != _lastBountyHuntRegionId) filtered.Add(r);
+                chosen = filtered.Count > 0 ? filtered[Game.Random.Next(filtered.Count)] : pool[Game.Random.Next(pool.Length)];
+            }
+            else
+            {
+                chosen = pool[Game.Random.Next(pool.Length)];
+            }
+            _lastBountyHuntRegionId = (ulong)chosen;
 
             DetachBountyHuntDeadAction();
             _bountyHuntHeroRef = heroRef;
@@ -141,12 +166,22 @@ namespace MHServerEmu.Games.Entities
             return $"hunt started on {((PrototypeId)heroRef).GetName()} (tier {rank}) — warping...";
         }
 
-        /// <summary>Snapshot the pending Bounty Hunt warp onto MigrationData so it survives the cross-region Game-instance destroy/recreate. Called from PlayerConnection.BeginRegionTransfer.</summary>
+        /// <summary>
+        /// Snapshot the pending Bounty Hunt warp onto MigrationData so it
+        /// survives the cross-region Game-instance destroy/recreate. Called
+        /// from PlayerConnection.BeginRegionTransfer — unconditionally,
+        /// on EVERY transfer (not just a bounty-hunt-triggered one), since
+        /// _lastBountyHuntRegionId needs to keep riding along through any
+        /// unrelated hops the player takes between hunts, not just the
+        /// hunt's own warp.
+        /// </summary>
         internal void SnapshotBountyHuntForTransfer()
         {
-            if (_bountyHuntWarpPending == false) return;
             var mig = PlayerConnection?.MigrationData;
             if (mig == null) return;
+            mig.LastBountyHuntRegionId = _lastBountyHuntRegionId;
+
+            if (_bountyHuntWarpPending == false) return;
             mig.PendingBountyHuntWarp = true;
             mig.BountyHuntHeroRef = _bountyHuntHeroRef;
             mig.BountyHuntRank = _bountyHuntRank;
@@ -160,7 +195,10 @@ namespace MHServerEmu.Games.Entities
             if (region == null || avatar == null) return;
 
             var mig = PlayerConnection?.MigrationData;
-            if (mig == null || mig.PendingBountyHuntWarp == false) return;
+            if (mig == null) return;
+            _lastBountyHuntRegionId = mig.LastBountyHuntRegionId;
+
+            if (mig.PendingBountyHuntWarp == false) return;
 
             mig.PendingBountyHuntWarp = false;
             _bountyHuntHeroRef = mig.BountyHuntHeroRef;
