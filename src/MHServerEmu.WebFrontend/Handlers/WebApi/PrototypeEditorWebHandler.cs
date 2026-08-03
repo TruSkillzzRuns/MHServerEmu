@@ -22,6 +22,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             var qs = HttpUtility.ParseQueryString(context.QueryString ?? string.Empty);
             string baseType = (qs.Get("baseType") ?? "MetaGame").Trim();
             string query = (qs.Get("q") ?? string.Empty).Trim();
@@ -92,6 +94,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             var qs = HttpUtility.ParseQueryString(context.QueryString ?? string.Empty);
             string protoRefStr = qs.Get("protoRef");
             PrototypeId protoRef = (PrototypeId)PhantomsWebUtil.ParseRef(protoRefStr);

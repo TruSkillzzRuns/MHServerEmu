@@ -18,6 +18,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string typeFromAssetIdStr = PhantomsWebUtil.QueryParam(context, "typeFromAssetId");
             string name = PhantomsWebUtil.QueryParam(context, "name");
 

@@ -16,8 +16,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         private static readonly Logger Logger = LogManager.CreateLogger();
 
-        protected override Task Get(WebRequestContext context)
+        protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             var qs = System.Web.HttpUtility.ParseQueryString(context.QueryString ?? string.Empty);
             int lines = int.TryParse(qs["lines"], out int requested)
                 ? System.Math.Clamp(requested, 50, 5000)
@@ -27,7 +29,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             {
                 string logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
                 if (!Directory.Exists(logsDir))
-                    return context.SendJsonAsync(new { ok = false, error = $"Logs directory not found at {logsDir}" });
+                {
+                    await context.SendJsonAsync(new { ok = false, error = $"Logs directory not found at {logsDir}" });
+                    return;
+                }
 
                 var newest = new DirectoryInfo(logsDir)
                     .EnumerateFiles("*.log", SearchOption.TopDirectoryOnly)
@@ -35,12 +40,15 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     .FirstOrDefault();
 
                 if (newest == null)
-                    return context.SendJsonAsync(new { ok = true, path = logsDir, count = 0, lines = System.Array.Empty<string>() });
+                {
+                    await context.SendJsonAsync(new { ok = true, path = logsDir, count = 0, lines = System.Array.Empty<string>() });
+                    return;
+                }
 
                 // Read shared-write so we don't lock the live logger out.
                 var last = ReadLastLines(newest.FullName, lines);
 
-                return context.SendJsonAsync(new
+                await context.SendJsonAsync(new
                 {
                     ok = true,
                     file = newest.Name,
@@ -51,7 +59,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             }
             catch (System.Exception ex)
             {
-                return context.SendJsonAsync(new { ok = false, error = $"{ex.GetType().Name}: {ex.Message}" });
+                await context.SendJsonAsync(new { ok = false, error = $"{ex.GetType().Name}: {ex.Message}" });
             }
         }
 

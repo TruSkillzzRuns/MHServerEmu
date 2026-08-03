@@ -19,6 +19,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             EnemyCatalogResponse cat = GetOrBuild();
             var qs = HttpUtility.ParseQueryString(context.QueryString ?? string.Empty);
             string q = qs.Get("q");

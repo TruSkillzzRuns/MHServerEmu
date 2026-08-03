@@ -16,6 +16,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             string protoRefStr = PhantomsWebUtil.QueryParam(context, "protoRef");
             PrototypeId protoRef = (PrototypeId)PhantomsWebUtil.ParseRef(protoRefStr);
             if (protoRef == PrototypeId.Invalid)

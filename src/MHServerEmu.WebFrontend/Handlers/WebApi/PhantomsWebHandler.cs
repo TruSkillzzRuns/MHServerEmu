@@ -38,6 +38,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string heroParam = PhantomsWebUtil.QueryParam(context, "hero");
             if (string.IsNullOrWhiteSpace(heroParam) == false)
             {
@@ -174,6 +175,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -213,6 +215,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null;
@@ -306,6 +309,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
             PhantomsWebUtil.ParseTarget(body, out string playerName, out string playerDbId);
 
@@ -325,6 +329,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null, phantomQuery = null, costume = null;
@@ -367,6 +372,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null, phantomQuery = null;
@@ -403,6 +409,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -417,6 +424,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null, playerDbId = null, op = null, name = null;
@@ -494,6 +502,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         //   body: { playerName, trigger: true }         — fire one now
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -512,6 +521,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null;
@@ -584,6 +594,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         //     Omit combatRange to leave the existing preference untouched.
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string playerQ = PhantomsWebUtil.QueryParam(context, "player");
             string heroQ = PhantomsWebUtil.QueryParam(context, "hero");
 
@@ -682,6 +693,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null;
@@ -771,6 +783,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         //   body: { playerName, action: "bounty-clear" }
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -906,6 +919,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null;
@@ -1071,6 +1085,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {
@@ -1137,6 +1152,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         protected override async Task Post(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             string body = await context.ReadUtf8StringAsync();
 
             string playerName = null;
@@ -1210,6 +1226,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Avatar.RunEnemyPhantomPowerAudit(out int heroCount, out int powerCount, out var dangerous);
             await context.SendJsonAsync(new
             {
@@ -1245,6 +1262,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
     {
         protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
             Player player = PhantomsWebUtil.FindTargetPlayer(PhantomsWebUtil.QueryParam(context, "player"), null, out string error);
             if (player == null)
             {

@@ -31,8 +31,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             { "Trace", 0 }, { "Debug", 1 }, { "Info", 2 }, { "Warn", 3 }, { "Error", 4 }, { "Fatal", 5 },
         };
 
-        protected override Task Get(WebRequestContext context)
+        protected override async Task Get(WebRequestContext context)
         {
+            if (!await LocalOnlyGuard.CheckAsync(context)) return;
+
             try
             {
                 // Parse query params from the raw path. WebRequestContext doesn't expose
@@ -52,7 +54,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
                 string logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
                 if (!Directory.Exists(logsDir))
-                    return context.SendJsonAsync(new { latestSeq = -1L, entries = System.Array.Empty<object>() });
+                {
+                    await context.SendJsonAsync(new { latestSeq = -1L, entries = System.Array.Empty<object>() });
+                    return;
+                }
 
                 var newest = new DirectoryInfo(logsDir)
                     .EnumerateFiles("*.log", SearchOption.TopDirectoryOnly)
@@ -60,7 +65,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     .FirstOrDefault();
 
                 if (newest == null)
-                    return context.SendJsonAsync(new { latestSeq = -1L, entries = System.Array.Empty<object>() });
+                {
+                    await context.SendJsonAsync(new { latestSeq = -1L, entries = System.Array.Empty<object>() });
+                    return;
+                }
 
                 var entries = new List<object>();
                 long latestSeq = -1;
@@ -104,11 +112,11 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 // If more entries matched than max, trim to the newest `max`
                 if (entries.Count > max) entries = entries.GetRange(entries.Count - max, max);
 
-                return context.SendJsonAsync(new { latestSeq, entries });
+                await context.SendJsonAsync(new { latestSeq, entries });
             }
             catch (Exception ex)
             {
-                return context.SendJsonAsync(new { latestSeq = -1L, entries = System.Array.Empty<object>(), error = ex.Message });
+                await context.SendJsonAsync(new { latestSeq = -1L, entries = System.Array.Empty<object>(), error = ex.Message });
             }
         }
 
