@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using MHServerEmu.Core.Logging;
+using MHServerEmu.Core.Memory;
+using MHServerEmu.Core.VectorMath;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.Events;
 using MHServerEmu.Games.Events.Templates;
 using MHServerEmu.Games.GameData;
+using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Loot;
 using MHServerEmu.Games.Properties;
 using MHServerEmu.Games.Regions;
@@ -66,6 +69,7 @@ namespace MHServerEmu.Games.Entities
 
         private readonly EventGroup _bountyHuntEvents = new();
         private readonly EventPointer<BountyHuntSpawnTickEvent> _bountyHuntSpawnTick = new();
+        private readonly EventPointer<BountyHuntHazardTickEvent> _bountyHuntHazardTick = new();
 
         private bool _bountyHuntWarpPending;
         private ulong _bountyHuntHeroRef;
@@ -379,7 +383,10 @@ namespace MHServerEmu.Games.Entities
             // this is the "way stronger" half of that fix; CollectBountyBoardReward
             // is the loot-quality half.
             if (_bountyHuntBoardSlot >= 0)
+            {
                 ApplyBountyBoardExtraScaling(id, _bountyHuntRank);
+                ScheduleBountyHuntHazardTick();
+            }
 
             _bountyHuntSpawnedId = id;
             DetachBountyHuntDeadAction();
@@ -427,6 +434,147 @@ namespace MHServerEmu.Games.Entities
             {
                 BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: board extra scaling failed: {ex.Message}");
             }
+        }
+
+        // ---------------- Board hazards: random environmental effects ----------------
+        //
+        // Reuses the exact real Danger Room ground-hazard hotspots (fire/ice/
+        // poison patches, traps) Player.WaveDirector.cs's Endless Challenge
+        // hazard tick already spawns — same technique (a casterless
+        // HotspotPrototype WorldEntity via EntitySettings+CreateEntity, no
+        // visible enemy), same s_endlessHazardHotspots pool (this file and
+        // Player.WaveDirector.cs are both partial Player, so it's directly
+        // visible here without duplicating the array). Board hunts only
+        // (_bountyHuntBoardSlot >= 0) — personal-nemesis Bounty Hunt is
+        // untouched.
+        //
+        // Gated by rank band per 2026-08-03 design: none at rank 1-2 (keep
+        // "Trivial"/"Easy" actually easy), light presence from rank 3
+        // ("lower to mid" bounties) up through a much heavier presence at
+        // rank 7-10 ("med-high" bounties).
+
+        private const int BountyHuntHazardMinRank = 3;
+        private const int BountyHuntHazardLifespanSec = 10;
+        private const float BountyHuntHazardPlacementSlack = 300f;
+        private const float BountyHuntHazardBoundsInset = 0.15f;
+
+        /// <summary>Per-tick (chance to fire, hazard count, next-tick delay range) for the given rank — see the rank-band comment above.</summary>
+        private static (double Chance, int MinCount, int MaxCount, int MinDelayMs, int MaxDelayMs) BountyHuntHazardProfileForRank(int rank)
+        {
+            if (rank >= 7) return (0.65, 2, 3, 12_000, 20_000);  // high (med-high bounties): frequent, heavier
+            if (rank >= BountyHuntHazardMinRank) return (0.35, 1, 1, 20_000, 32_000); // low-mid/medium: occasional, light
+            return (0.0, 0, 0, 0, 0); // rank 1-2: no hazards
+        }
+
+        private void ScheduleBountyHuntHazardTick()
+        {
+            var scheduler = Game?.GameEventScheduler;
+            if (scheduler == null) return;
+            var profile = BountyHuntHazardProfileForRank(_bountyHuntRank);
+            if (profile.Chance <= 0.0) return; // rank too low — hazards off entirely
+            if (_bountyHuntHazardTick.IsValid) scheduler.CancelEvent(_bountyHuntHazardTick);
+            int delayMs = Game.Random.Next(profile.MinDelayMs, profile.MaxDelayMs);
+            scheduler.ScheduleEvent(_bountyHuntHazardTick, TimeSpan.FromMilliseconds(delayMs), _bountyHuntEvents);
+            _bountyHuntHazardTick.Get().Initialize(this);
+        }
+
+        private void CancelBountyHuntHazardTick()
+        {
+            var scheduler = Game?.GameEventScheduler;
+            if (scheduler != null && _bountyHuntHazardTick.IsValid) scheduler.CancelEvent(_bountyHuntHazardTick);
+        }
+
+        private void OnBountyHuntHazardTick()
+        {
+            try
+            {
+                // Hunt already resolved (win/loss/left) between scheduling
+                // and firing — nothing to do, and no more ticks to chain.
+                if (_bountyHuntSpawnedId == 0 || _bountyHuntBoardSlot < 0) return;
+
+                var profile = BountyHuntHazardProfileForRank(_bountyHuntRank);
+                if (profile.Chance <= 0.0) return;
+
+                if (Game.Random.NextDouble() < profile.Chance)
+                {
+                    Avatar avatar = CurrentAvatar;
+                    if (avatar != null && avatar.IsInWorld && avatar.Region == _bountyHuntRegion)
+                    {
+                        Region region = avatar.Region;
+                        var rng = Game.Random;
+
+                        var regionAabb = region.Aabb;
+                        float insetX = regionAabb.Width * BountyHuntHazardBoundsInset;
+                        float insetY = regionAabb.Length * BountyHuntHazardBoundsInset;
+                        float minX = regionAabb.Min.X + insetX, maxX = regionAabb.Max.X - insetX;
+                        float minY = regionAabb.Min.Y + insetY, maxY = regionAabb.Max.Y - insetY;
+
+                        int spawnCount = rng.Next(profile.MinCount, profile.MaxCount + 1);
+                        var spawnedNames = new List<string>();
+
+                        for (int i = 0; i < spawnCount; i++)
+                        {
+                            ulong hotspotRef = s_endlessHazardHotspots[rng.Next(s_endlessHazardHotspots.Length)];
+                            var hotspotProto = ((PrototypeId)hotspotRef).As<WorldEntityPrototype>();
+                            if (hotspotProto == null) continue;
+
+                            float x = minX + (float)(rng.NextDouble() * Math.Max(0f, maxX - minX));
+                            float y = minY + (float)(rng.NextDouble() * Math.Max(0f, maxY - minY));
+                            Vector3 candidateCenter = new(x, y, avatar.RegionLocation.Position.Z);
+
+                            MHServerEmu.Games.Entities.Bounds entityBounds = new();
+                            entityBounds.InitializeFromPrototype(hotspotProto.Bounds);
+                            entityBounds.Center = candidateCenter;
+
+                            if (region.ChoosePositionAtOrNearPoint(ref entityBounds, avatar.Locomotor.PathFlags,
+                                PositionCheckFlags.CanBeBlockedEntity, BlockingCheckFlags.None,
+                                BountyHuntHazardPlacementSlack, out Vector3 pos, maxPositionTests: 32) == false)
+                            {
+                                continue;
+                            }
+
+                            pos = RegionLocation.ProjectToFloor(region, pos);
+
+                            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                            settings.EntityRef = (PrototypeId)hotspotRef;
+                            settings.Position = pos;
+                            settings.Orientation = Orientation.Zero;
+                            settings.RegionId = region.Id;
+                            settings.Lifespan = TimeSpan.FromSeconds(BountyHuntHazardLifespanSec);
+
+                            WorldEntity hazard = Game.EntityManager.CreateEntity(settings) as WorldEntity;
+                            if (hazard != null)
+                            {
+                                string name = LeafHeroName((PrototypeId)hotspotRef).Replace("Hotspot", "").Replace("Entity", "");
+                                spawnedNames.Add(name);
+                            }
+                        }
+
+                        if (spawnedNames.Count > 0)
+                        {
+                            try { SendBannerLines($"⚠ HAZARDS — {string.Join(", ", spawnedNames)}, move!"); } catch { }
+                            BountyHuntLogger.Info($"[BountyHunt] {GetName()}: board hazard(s) spawned — {string.Join(", ", spawnedNames)} (rank {_bountyHuntRank})");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: hazard tick failed: {ex.Message}");
+            }
+            finally
+            {
+                // Keep chaining as long as the hunt is still in flight —
+                // ClearBountyHuntState (win/loss/leave) is what actually
+                // stops this via CancelBountyHuntHazardTick.
+                if (_bountyHuntSpawnedId != 0 && _bountyHuntBoardSlot >= 0)
+                    ScheduleBountyHuntHazardTick();
+            }
+        }
+
+        private sealed class BountyHuntHazardTickEvent : CallMethodEvent<Player>
+        {
+            protected override CallbackDelegate GetCallback() => static (player) => player.OnBountyHuntHazardTick();
         }
 
         /// <summary>
@@ -528,6 +676,7 @@ namespace MHServerEmu.Games.Entities
         private void ClearBountyHuntState()
         {
             DetachBountyHuntDeadAction();
+            CancelBountyHuntHazardTick();
             _bountyHuntHeroRef = 0;
             _bountyHuntRank = 0;
             _bountyHuntBoardSlot = -1;
