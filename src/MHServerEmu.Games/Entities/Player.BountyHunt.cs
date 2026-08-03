@@ -196,22 +196,32 @@ namespace MHServerEmu.Games.Entities
         private void ScheduleBountyHuntSpawn()
         {
             var scheduler = Game?.GameEventScheduler;
-            if (scheduler == null) return;
+            if (scheduler == null)
+            {
+                BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: ScheduleBountyHuntSpawn — no GameEventScheduler available, spawn will never fire");
+                return;
+            }
             if (_bountyHuntSpawnTick.IsValid) scheduler.CancelEvent(_bountyHuntSpawnTick);
             int delayMs = Game.Random.Next(BountyHuntSpawnMinDelayMs, BountyHuntSpawnMaxDelayMs);
             scheduler.ScheduleEvent(_bountyHuntSpawnTick, TimeSpan.FromMilliseconds(delayMs), _bountyHuntEvents);
             _bountyHuntSpawnTick.Get().Initialize(this);
+            BountyHuntLogger.Info($"[BountyHunt] {GetName()}: spawn tick scheduled in {delayMs}ms");
         }
 
         private void OnBountyHuntSpawnTick()
         {
-            if (_bountyHuntHeroRef == 0 || _bountyHuntRegion == null) return;
+            if (_bountyHuntHeroRef == 0 || _bountyHuntRegion == null)
+            {
+                BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: spawn tick fired with no hunt in flight (heroRef=0x{_bountyHuntHeroRef:X}, region={(_bountyHuntRegion == null ? "null" : _bountyHuntRegion.PrototypeName)}) — bailing");
+                return;
+            }
 
             Avatar avatar = CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false || avatar.Region != _bountyHuntRegion)
             {
                 // Left before the hunt triggered — bounty flag stays set
                 // (no penalty), but this specific hunt attempt is over.
+                BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: spawn tick bailed — avatar={(avatar == null ? "null" : "present")}, inWorld={avatar?.IsInWorld}, avatarRegion={avatar?.Region?.PrototypeName ?? "null"}, expectedRegion={_bountyHuntRegion.PrototypeName}");
                 ClearBountyHuntState();
                 return;
             }
@@ -225,12 +235,14 @@ namespace MHServerEmu.Games.Entities
             {
                 if (_bountyHuntBoardSlot >= _bountyBoard.Count)
                 {
+                    BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: spawn tick bailed — board slot {_bountyHuntBoardSlot} out of range (board has {_bountyBoard.Count} slots)");
                     ClearBountyHuntState();
                     return;
                 }
                 BountyBoardEntry slot = _bountyBoard[_bountyHuntBoardSlot];
                 if (slot.HeroRef != _bountyHuntHeroRef || slot.Defeated || slot.Fled)
                 {
+                    BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: spawn tick bailed — board slot {_bountyHuntBoardSlot} mismatch (slot.HeroRef=0x{slot.HeroRef:X}, expected=0x{_bountyHuntHeroRef:X}, Defeated={slot.Defeated}, Fled={slot.Fled})");
                     ClearBountyHuntState();
                     return;
                 }
@@ -243,6 +255,7 @@ namespace MHServerEmu.Games.Entities
                 foreach (var n in _nemeses) { if (n.HeroRef == _bountyHuntHeroRef) { entry = n; break; } }
                 if (entry == null || entry.Defeated)
                 {
+                    BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: spawn tick bailed — nemesis roster entry for 0x{_bountyHuntHeroRef:X} {(entry == null ? "not found" : "already Defeated")}");
                     ClearBountyHuntState();
                     return;
                 }
