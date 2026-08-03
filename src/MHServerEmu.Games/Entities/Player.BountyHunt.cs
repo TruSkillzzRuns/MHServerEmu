@@ -366,6 +366,21 @@ namespace MHServerEmu.Games.Entities
                 return;
             }
 
+            // Board-only extra toughness, stacked ON TOP of the normal
+            // rank curve — deliberately NOT folded into
+            // NemesisHealthMultForRank/NemesisDmgBoostForRank/
+            // BossNemesisExtraHealthMultForRank/BossNemesisExtraDamageMultForRank
+            // themselves, since those are shared by Endless Wave, Rogue
+            // Encounter, and personal-nemesis Bounty Hunt too — this only
+            // applies when _bountyHuntBoardSlot >= 0, so every other mode's
+            // difficulty is completely untouched. Confirmed live 2026-08-03:
+            // a rank 10 board bounty felt no tougher than the personal-hunt
+            // equivalent and its reward didn't feel like a real BiS drop —
+            // this is the "way stronger" half of that fix; CollectBountyBoardReward
+            // is the loot-quality half.
+            if (_bountyHuntBoardSlot >= 0)
+                ApplyBountyBoardExtraScaling(id, _bountyHuntRank);
+
             _bountyHuntSpawnedId = id;
             DetachBountyHuntDeadAction();
             _bountyHuntDeadAction = OnBountyHuntEntityDead;
@@ -373,6 +388,45 @@ namespace MHServerEmu.Games.Entities
 
             try { SendBannerLines($"🎯 {displayName} has found you!"); } catch { }
             BountyHuntLogger.Info($"[BountyHunt] {GetName()}: {displayName} spawned (id={id:X}), tier {_bountyHuntRank}");
+        }
+
+        /// <summary>
+        /// Extra HP/damage multiplier applied ON TOP of the entity's normal
+        /// rank curve, board hunts only. Barely moves rank 1 (board bounties
+        /// should still feel "Trivial"); scales hard toward rank 10 so the
+        /// top of the board is a genuinely dangerous fight, not just a
+        /// bigger number on the same curve every other mode already uses.
+        ///   Rank        1     3     5     7     10
+        ///   HP mult     1.0x  2.0x  3.0x  4.0x  5.5x
+        ///   Dmg mult    1.0x  1.7x  2.4x  3.1x  4.15x
+        /// </summary>
+        private static float BountyBoardExtraHealthMultForRank(int rank) => 1f + (Math.Clamp(rank, 1, EndlessMaxRank) - 1) * 0.5f;
+        private static float BountyBoardExtraDamageMultForRank(int rank) => 1f + (Math.Clamp(rank, 1, EndlessMaxRank) - 1) * 0.35f;
+
+        private void ApplyBountyBoardExtraScaling(ulong entityId, int rank)
+        {
+            try
+            {
+                WorldEntity entity = Game?.EntityManager?.GetEntity<WorldEntity>(entityId);
+                if (entity == null) return;
+
+                float extraHealthMult = BountyBoardExtraHealthMultForRank(rank);
+                float extraDamageMult = BountyBoardExtraDamageMultForRank(rank);
+                if (extraHealthMult <= 1f && extraDamageMult <= 1f) return; // rank 1 — nothing to add
+
+                float currentHealthMult = entity.Properties[PropertyEnum.HealthMaxMult];
+                entity.Properties[PropertyEnum.HealthMaxMult] = (currentHealthMult <= 0f ? 1f : currentHealthMult) * extraHealthMult;
+                entity.Properties[PropertyEnum.Health] = entity.Properties[PropertyEnum.HealthMax];
+
+                float currentDamageMult = entity.Properties[PropertyEnum.DamageMult];
+                entity.Properties[PropertyEnum.DamageMult] = (currentDamageMult <= 0f ? 1f : currentDamageMult) * extraDamageMult;
+
+                BountyHuntLogger.Info($"[BountyHunt] {GetName()}: board extra scaling applied — rank {rank}, HP x{extraHealthMult:0.00}, DMG x{extraDamageMult:0.00}");
+            }
+            catch (Exception ex)
+            {
+                BountyHuntLogger.Warn($"[BountyHunt] {GetName()}: board extra scaling failed: {ex.Message}");
+            }
         }
 
         /// <summary>

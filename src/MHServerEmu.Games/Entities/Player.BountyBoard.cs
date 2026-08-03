@@ -187,7 +187,18 @@ namespace MHServerEmu.Games.Entities
                 {
                     var pool = new List<PrototypeId>(bisSlots.Values);
                     PrototypeId itemRef = pool[Game.Random.Next(pool.Count)];
-                    gotBis = Game.LootManager.GiveItem(itemRef, LootContext.Drop, this);
+
+                    // GiveItem's default overload rolls the item at level 1
+                    // with whatever rarity a level-1 roll produces (usually
+                    // Common/Uncommon) -- the curated BiS PrototypeId is the
+                    // right ITEM, but without an explicit level/rarity
+                    // override it was landing nowhere near BiS quality.
+                    // Force the player's real level and top rarity instead.
+                    var lootGlobals = GameDatabase.LootGlobalsPrototype;
+                    PrototypeId rarityRef = lootGlobals.RarityCosmic != PrototypeId.Invalid
+                        ? lootGlobals.RarityCosmic
+                        : lootGlobals.RarityUnique;
+                    gotBis = Game.LootManager.GiveItem(itemRef, LootContext.Drop, this, avatar.CharacterLevel, rarityRef);
                 }
             }
 
