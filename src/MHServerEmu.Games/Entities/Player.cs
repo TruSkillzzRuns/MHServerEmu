@@ -4679,10 +4679,12 @@ namespace MHServerEmu.Games.Entities
             // CheckPhantomSquadGate). Joining a real party retires any that
             // are already out - otherwise the spawn-time gate could be walked
             // straight around by grouping up afterwards.
-            // Endless Challenge is exempt from the solo-only rule (it has its
-            // own higher co-op cap), so joining a party mid-run must not
-            // retire that mode's phantoms.
-            if (party != null && party.NumMembers > 1 && IsEndlessChallengeActive == false)
+            // BOUNTY BOARD ONLY. Joining a party mid-bounty retires the
+            // phantoms, because a bounty is a three-member fight and phantoms
+            // are the solo alternative to real teammates. Outside an active
+            // board hunt this does nothing - normal play, Trial and Endless
+            // keep their squads.
+            if (party != null && party.NumMembers > 1 && IsBountyBoardHuntActive)
             {
                 int retired = PurgePhantoms();
                 if (retired > 0)

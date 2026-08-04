@@ -5185,17 +5185,12 @@ namespace MHServerEmu.Games.Entities.Avatars
                 int endlessCap = Player.GetEndlessPhantomSlotCap(region, host);
                 bool inEndlessArena = endlessCap != int.MaxValue;
 
-                // Endless Challenge keeps its own deliberately higher arena
-                // cap (4 total) and is NOT subject to the solo-only/3-member
-                // squad rule - that rule is scoped to normal play and must not
-                // change how any other mode already behaves.
-                if (inEndlessArena == false)
-                {
-                    string squadGate = CheckPhantomSquadGate(host);
-                    if (squadGate != null) { error = squadGate; return 0; }
-                }
+                // The squad gate no-ops outside an active Bounty Board hunt,
+                // so Endless Challenge (and everything else) is unaffected.
+                string squadGate = CheckPhantomSquadGate(host);
+                if (squadGate != null) { error = squadGate; return 0; }
 
-                int cap = inEndlessArena ? endlessCap : Math.Min(GetPhantomPartyCap(region), PhantomMaxSquadSize);
+                int cap = inEndlessArena ? endlessCap : GetPhantomPartyCap(region);
                 // Confirmed live 2026-07-26 — this was ">= cap", an off-by-
                 // one that rejected the LAST legitimate slot instead of only
                 // rejecting once actually over cap: with cap=3 and 2 already
@@ -5517,7 +5512,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// three enemy categories on this same override alliance makes them
         /// mutually friendly while all three stay hostile to the player.
         /// </summary>
-        // ---------------- Squad size / solo-only gate ----------------
+        // ---------------- Squad size / solo-only gate (BOUNTY BOARD ONLY) ----------------
         //
         // Design rule: a squad is at most THREE members total, and phantom
         // heroes are a SOLO feature. So the only legal shapes are:
@@ -5544,10 +5539,33 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         /// <summary>
         /// Null when this host may spawn one more friendly phantom, otherwise
-        /// the reason they may not. Checked by both friendly spawn paths
-        /// (SpawnPhantomHeroCore and SpawnTeamUpPhantomHero).
+        /// the reason they may not.
+        ///
+        /// BOUNTY BOARD ONLY. Returns null immediately outside an active board
+        /// hunt, so normal play, Trial of the Impossible and Endless Challenge
+        /// all keep unrestricted phantom counts exactly as before. Checked by
+        /// both friendly spawn paths (SpawnPhantomHeroCore and
+        /// SpawnTeamUpPhantomHero).
         /// </summary>
         public static string CheckPhantomSquadGate(Player host)
+        {
+            if (host == null) return "no player host";
+            if (host.IsBountyBoardHuntActive == false) return null;   // not a board hunt - no limit
+            return CheckPhantomSquadGateForBountyBoard(host, spawningAnother: true);
+        }
+
+        /// <summary>
+        /// The Bounty Board squad rule itself, with no mode check of its own so
+        /// the caller decides when it applies. A bounty is a three-member
+        /// fight: one player plus two phantoms, or two/three real players with
+        /// no phantoms.
+        /// </summary>
+        /// <param name="spawningAnother">
+        /// True when about to add one more phantom (so the cap is checked
+        /// against current + 1), false when validating the squad as it stands
+        /// - e.g. at the moment a bounty is posted.
+        /// </param>
+        public static string CheckPhantomSquadGateForBountyBoard(Player host, bool spawningAnother)
         {
             if (host == null) return "no player host";
 
@@ -5556,12 +5574,15 @@ namespace MHServerEmu.Games.Entities.Avatars
             var party = host.GetParty();
             int realPlayers = party != null && party.NumMembers > 0 ? party.NumMembers : 1;
 
-            if (realPlayers > 1)
-                return $"phantom heroes are solo-only — you're grouped with {realPlayers - 1} other player(s). Leave the party to field phantoms.";
+            if (realPlayers > 1 && host.PhantomHeroCount > 0)
+                return $"bounties are solo-only for phantom squads — you're grouped with {realPlayers - 1} other player(s). Retire your phantoms or leave the party.";
 
-            int currentSquad = 1 + host.PhantomHeroCount;   // player + phantoms already out
-            if (currentSquad >= PhantomMaxSquadSize)
-                return $"squad full ({currentSquad}/{PhantomMaxSquadSize}) — a squad is capped at {PhantomMaxSquadSize} (you + {PhantomMaxForSoloPlayer} phantoms)";
+            if (realPlayers > PhantomMaxSquadSize)
+                return $"party too large for a bounty ({realPlayers}/{PhantomMaxSquadSize})";
+
+            int squad = realPlayers + host.PhantomHeroCount + (spawningAnother ? 1 : 0);
+            if (squad > PhantomMaxSquadSize)
+                return $"squad too large for a bounty ({squad}/{PhantomMaxSquadSize}) — you + {PhantomMaxForSoloPlayer} phantoms, or up to {PhantomMaxSquadSize} players";
 
             return null;
         }
@@ -5671,14 +5692,10 @@ namespace MHServerEmu.Games.Entities.Avatars
                     int endlessCap = Player.GetEndlessPhantomSlotCap(region, capHost);
                     bool inEndlessArena = endlessCap != int.MaxValue;
 
-                    // Endless Challenge exempt - see the other call site.
-                    if (inEndlessArena == false)
-                    {
-                        string squadGate = CheckPhantomSquadGate(capHost);
-                        if (squadGate != null) { error = squadGate; return 0; }
-                    }
+                    string squadGate = CheckPhantomSquadGate(capHost);
+                    if (squadGate != null) { error = squadGate; return 0; }
 
-                    int cap = inEndlessArena ? endlessCap : Math.Min(GetPhantomPartyCap(region), PhantomMaxSquadSize);
+                    int cap = inEndlessArena ? endlessCap : GetPhantomPartyCap(region);
                     // See the other call site's comment — off-by-one fixed:
                     // a cap of N should allow N phantoms, not N-1.
                     if (1 + capHost.PhantomHeroCount > cap)

@@ -127,6 +127,14 @@ namespace MHServerEmu.Games.Entities
         internal bool IsBountyHuntDeathPending { get; private set; }
 
         /// <summary>
+        /// True while a BOUNTY BOARD hunt is in flight (board slot 0-5). False
+        /// for personal-nemesis hunts and for normal play. This is what scopes
+        /// the squad-size / solo-only rule to Bounty Board mode - everywhere
+        /// else phantom counts are unrestricted, exactly as before.
+        /// </summary>
+        internal bool IsBountyBoardHuntActive => _bountyHuntBoardSlot >= 0;
+
+        /// <summary>
         /// Start a Bounty Hunt against an existing active (non-Defeated)
         /// nemesis roster entry at the given tier (1-10). Validates the same
         /// way SetBountyTarget does, then hands off to StartBountyHuntInternal
@@ -173,6 +181,16 @@ namespace MHServerEmu.Games.Entities
             // instead of the full 57-arena pool. Personal-nemesis hunts
             // (boardSlot < 0) always use the full pool, unchanged.
             int themeIndex = boardSlot >= 0 ? _bountyThemeIndex : -1;
+
+            // Bounty Board only: a bounty is a 3-member fight (you + 2
+            // phantoms, or a party of up to 3 real players). Checked here so
+            // the player is told BEFORE paying, rather than having their squad
+            // silently trimmed on arrival. Personal-nemesis hunts skip this.
+            if (boardSlot >= 0)
+            {
+                string boardSquadGate = Avatar.CheckPhantomSquadGateForBountyBoard(this, spawningAnother: false);
+                if (boardSquadGate != null) return boardSquadGate;
+            }
 
             RegionPrototypeId[] pool;
             if (themeIndex >= 0)
