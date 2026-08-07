@@ -97,6 +97,23 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             if (!await LocalOnlyGuard.CheckAsync(context)) return;
 
             var qs = HttpUtility.ParseQueryString(context.QueryString ?? string.Empty);
+
+            string assetIdStr = qs.Get("assetId");
+            if (!string.IsNullOrEmpty(assetIdStr))
+            {
+                ulong rawAssetId = PhantomsWebUtil.ParseRef(assetIdStr);
+                MHServerEmu.Games.GameData.AssetId assetId = (MHServerEmu.Games.GameData.AssetId)rawAssetId;
+                MHServerEmu.Games.GameData.Calligraphy.AssetType assetType = MHServerEmu.Games.GameData.Calligraphy.AssetDirectory.Instance.GetAssetType(assetId);
+                await context.SendJsonAsync(new
+                {
+                    Ok = true,
+                    AssetId = assetIdStr,
+                    Name = GameDatabase.GetAssetName(assetId),
+                    AssetTypeName = assetType != null ? GameDatabase.GetAssetTypeName(assetType.AssetTypeRef) : null,
+                });
+                return;
+            }
+
             string protoRefStr = qs.Get("protoRef");
             PrototypeId protoRef = (PrototypeId)PhantomsWebUtil.ParseRef(protoRefStr);
             if (protoRef == PrototypeId.Invalid)
