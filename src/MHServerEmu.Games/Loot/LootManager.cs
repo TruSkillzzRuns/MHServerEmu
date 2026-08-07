@@ -49,8 +49,21 @@ namespace MHServerEmu.Games.Loot
         /// </summary>
         public void SpawnLootFromTable(PrototypeId lootTableProtoRef, LootInputSettings inputSettings, int recipientId)
         {
+            SpawnLootFromTable(lootTableProtoRef, inputSettings, recipientId, out _);
+        }
+
+        /// <summary>
+        /// As above, but reports how many drops the roll produced. A table can
+        /// legitimately roll nothing, and the void overload swallows that — which
+        /// makes "I pointed at the right table but no items appeared" impossible to
+        /// tell apart from "the table rolled and produced nothing".
+        /// </summary>
+        public void SpawnLootFromTable(PrototypeId lootTableProtoRef, LootInputSettings inputSettings, int recipientId, out int numDrops)
+        {
             using LootResultSummary lootResultSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
             RollLootTable(lootTableProtoRef, inputSettings, lootResultSummary);
+
+            numDrops = lootResultSummary.NumDrops;
 
             if (lootResultSummary.HasAnyResult == false) return;
 

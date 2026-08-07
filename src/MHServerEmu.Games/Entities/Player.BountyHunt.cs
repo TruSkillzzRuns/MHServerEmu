@@ -1156,14 +1156,30 @@ namespace MHServerEmu.Games.Entities
 
             Properties[PropertyEnum.LastTownRegionForAccount] = (PrototypeId)(ulong)RegionPrototypeId.NPEAvengersTowerHUBRegion;
             BountyHuntLogger.Info($"[BountyHunt] {GetName()}: return portal used — routing to Avengers Tower");
-            DespawnBountyReturnPortal();
+
+            // Detach the hook, but DO NOT destroy the portal entity here.
+            // Avatar.UseInteractableObject fires PlayerInteractEvent.Invoke
+            // (this handler) BEFORE it calls transition.UseTransition(player),
+            // and Teleporter.CanTeleport re-checks
+            // avatar.InInteractRange(TransitionEntity). A destroyed portal is
+            // out of world, so that range check fails and the teleport is
+            // abandoned with no log line at all — confirmed live 2026-08-04:
+            // "return portal used" was logged and the player never left the
+            // arena. The portal dies with the instance a moment later anyway.
+            DetachBountyReturnPortalHook();
+            _bountyReturnPortalId = 0;
         }
 
-        private void DespawnBountyReturnPortal()
+        private void DetachBountyReturnPortalHook()
         {
             if (_bountyReturnPortalRegion != null && _bountyReturnPortalAction != null)
                 _bountyReturnPortalRegion.PlayerInteractEvent.RemoveAction(_bountyReturnPortalAction);
             _bountyReturnPortalRegion = null;
+        }
+
+        private void DespawnBountyReturnPortal()
+        {
+            DetachBountyReturnPortalHook();
 
             if (_bountyReturnPortalId != 0)
             {

@@ -2176,6 +2176,37 @@ namespace MHServerEmu.Games.Entities
             return true;
         }
 
+        private static readonly Logger ImmunityLogger = LogManager.CreateLogger();
+
+        /// <summary>
+        /// Names the conditions currently granting an immunity-ish property, so a
+        /// "took 0 damage" report points at a source instead of a symptom.
+        /// </summary>
+        private string DescribeImmunityConditions()
+        {
+            if (ConditionCollection == null) return "<none>";
+
+            List<string> names = new();
+            foreach (Condition condition in ConditionCollection)
+            {
+                if (condition.Properties[PropertyEnum.Invulnerable] == false
+                    && condition.Properties[PropertyEnum.Unaffectable] == false
+                    && condition.Properties[PropertyEnum.Untargetable] == false
+                    && condition.Properties[PropertyEnum.TutorialInvulnerable] == false)
+                {
+                    continue;
+                }
+
+                PrototypeId src = condition.CreatorPowerPrototypeRef != PrototypeId.Invalid
+                    ? condition.CreatorPowerPrototypeRef
+                    : condition.ConditionPrototypeRef;
+
+                names.Add($"{src.GetNameFormatted()}(finite={condition.IsFinite},left={(condition.IsFinite ? condition.TimeRemaining.ToString() : "inf")})");
+            }
+
+            return names.Count == 0 ? "<none>" : string.Join(", ", names);
+        }
+
         private bool ApplyHealthPowerResults(PowerResults powerResults, WorldEntity ultimateOwner)
         {
             Region region = Region;
@@ -2202,8 +2233,33 @@ namespace MHServerEmu.Games.Entities
             }
 
             // Check for invulnerability
-            if (powerResults.TestFlag(PowerResultFlags.Hostile) && Properties[PropertyEnum.Invulnerable])
+            bool nullifiedByInvulnerable = powerResults.TestFlag(PowerResultFlags.Hostile) && Properties[PropertyEnum.Invulnerable];
+            if (nullifiedByInvulnerable)
                 healthDelta = 0;
+
+            // Deathmatch damage-immunity diagnostic. Two separate reports —
+            // a phantom Nick Fury Skrull whose invulnerability never lifts, and a
+            // phantom Magik that takes no damage at all — have different possible
+            // causes, and only this point can tell them apart:
+            //   * Invulnerable set   => the stuck-invulnerability watchdog's problem
+            //   * damage already 0   => nothing to nullify; the payload arrived empty,
+            //                           so the cause is upstream (resistance, absorb,
+            //                           a shield condition, or damage scaling)
+            // Logged only for hostile hits that land for nothing, so it is quiet
+            // unless something is actually wrong. Toggled with !dmdata dmgloghere.
+            if (Powers.PowerPayload.DeathmatchDamageLogging
+                && powerResults.TestFlag(PowerResultFlags.Hostile)
+                && healthDelta == 0
+                && IsInPvPMatch)
+            {
+                ImmunityLogger.Info($"[TDM:IMMUNE] {PrototypeName} (id={Id}) took 0 from a hostile hit — " +
+                                    $"Invulnerable={Properties[PropertyEnum.Invulnerable]} " +
+                                    $"Unaffectable={Properties[PropertyEnum.Unaffectable]} " +
+                                    $"Untargetable={Properties[PropertyEnum.Untargetable]} " +
+                                    $"TutorialInvuln={Properties[PropertyEnum.TutorialInvulnerable]} " +
+                                    $"nullifiedByInvulnerable={nullifiedByInvulnerable} " +
+                                    $"conditions={DescribeImmunityConditions()}");
+            }
 
             // Check procs (even if invulnerable)
             if (powerResults.TestFlag(PowerResultFlags.Hostile) && powerResults.IsAtMaxRecursionDepth() == false)

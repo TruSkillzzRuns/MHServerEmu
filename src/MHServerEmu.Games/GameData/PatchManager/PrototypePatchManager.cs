@@ -243,8 +243,19 @@ namespace MHServerEmu.Games.GameData.PatchManager
             // numeric value first so any of these wrapper types can convert
             // into any other — needed to patch e.g. a WorldEntityPrototype's
             // UnrealClass (AssetId) field from a plain numeric input.
-            if (rawValue is Enum && targetType.IsEnum)
+            // Enum targets. Convert.ChangeType cannot produce an enum from an
+            // int or a string ("Invalid cast from 'System.Int32' to '<enum>'"),
+            // so every enum-typed field was silently unpatchable — a patch would
+            // register, match its field, then throw inside UpdateValue. Accept
+            // the three forms a patch file can realistically supply: an enum
+            // already, the member name, or the underlying numeric value.
+            if (targetType.IsEnum)
+            {
+                if (rawValue is string enumName)
+                    return Enum.Parse(targetType, enumName, ignoreCase: true);
+
                 return Enum.ToObject(targetType, Convert.ToUInt64(rawValue));
+            }
 
             return Convert.ChangeType(rawValue, targetType);
         }

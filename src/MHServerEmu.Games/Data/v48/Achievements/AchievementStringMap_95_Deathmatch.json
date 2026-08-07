@@ -1,0 +1,74 @@
+{
+  "9910000000000001": {
+    "en_us": "Cloak - Deathmatch"
+  },
+  "9910000000000002": {
+    "en_us": "Solos is a three-way free-for-all - three fighters, nobody friendly. Start it, or look at the other bracket."
+  },
+  "9910000000000003": {
+    "en_us": "Solos  -  1v1v1"
+  },
+  "9910000000000004": {
+    "en_us": "Teams  -  5v5"
+  },
+  "9910000000000006": {
+    "en_us": "Not right now"
+  },
+  "9910000000000010": {
+    "en_us": "VICTORY"
+  },
+  "9910000000000011": {
+    "en_us": "DEFEAT"
+  },
+  "9910000000000020": {
+    "en_us": "FIGHT!"
+  },
+  "9910000000000021": {
+    "en_us": "3"
+  },
+  "9910000000000022": {
+    "en_us": "2"
+  },
+  "9910000000000023": {
+    "en_us": "1"
+  },
+  "9910000000000030": {
+    "en_us": "Solos - 1v1v1. Three fighters, every one of them hostile. How long should it run?"
+  },
+  "9910000000000031": {
+    "en_us": "Quick  -  first to 5 kills"
+  },
+  "9910000000000032": {
+    "en_us": "Standard  -  first to 10 kills"
+  },
+  "9910000000000033": {
+    "en_us": "Marathon  -  first to 20 kills"
+  },
+  "9910000000000034": {
+    "en_us": "Teams - 5v5. Two squads, shared score. How long should it run?"
+  },
+  "9910000000000035": {
+    "en_us": "Quick  -  first to 15 kills"
+  },
+  "9910000000000036": {
+    "en_us": "Standard  -  first to 30 kills"
+  },
+  "9910000000000037": {
+    "en_us": "Marathon  -  first to 50 kills"
+  },
+  "9910000000000038": {
+    "en_us": "Back"
+  },
+  "9910000000000039": {
+    "en_us": "Other bracket..."
+  },
+  "9910000000000040": {
+    "en_us": "Quick match - half the kills to win"
+  },
+  "9910000000000041": {
+    "en_us": "Teams is five a side - two squads, one shared score. Start it, or back out."
+  },
+  "9910000000000050": {
+    "en_us": "ARENA"
+  }
+}

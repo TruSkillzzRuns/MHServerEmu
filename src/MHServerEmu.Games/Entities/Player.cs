@@ -3748,6 +3748,31 @@ namespace MHServerEmu.Games.Entities
             // the rest of the encounter.
             if (PlayerConnection == null) return;
 
+            // Deathmatch suppresses cutscenes entirely — same failure this method's
+            // comment above already describes, but hitting the HUMAN rather than a
+            // phantom's synthetic Player.
+            //
+            // A blocking kismet sets FullScreenMoviePlaying and only clears when the
+            // client sends NetMessagePlayKismetSeqDone. While it is set, every
+            // ActivatePower is rejected with PowerUseResult.FullscreenMovie
+            // (Agent.cs:499) — so an arena whose start target carries an
+            // IntroKismetSeq stalls match setup and the phantoms never come up.
+            //
+            // The arena pool added several story regions (Shipping Yard,
+            // Construction, Cannery, Hell's Kitchen) which is exactly where intro
+            // cutscenes live, so this is not hypothetical.
+            //
+            // BOTH conditions are needed, not just IsDeathmatchActive: the warp is
+            // issued before _deathmatchActive is set (Player.Deathmatch.cs:204 warps,
+            // :252 sets the flag on arrival), so during the transfer the only marker
+            // is MigrationData.PendingDeathmatchWarp. The region intro fires in that
+            // window.
+            if (IsDeathmatchActive || PlayerConnection.MigrationData?.PendingDeathmatchWarp == true)
+            {
+                Logger.Info($"[Deathmatch] suppressed kismet {kismetSeq.GetNameFormatted()} for {GetName()} — cutscenes are disabled in deathmatch");
+                return;
+            }
+
             var kismetProto = GameDatabase.GetPrototype<KismetSequencePrototype>(kismetSeq);
             if (kismetProto == null) return;
 
@@ -3823,6 +3848,16 @@ namespace MHServerEmu.Games.Entities
 
         public void SendPlayKismetSeq(PrototypeId kismetSeqRef)
         {
+            // Log EVERY kismet that actually reaches a client. The deathmatch
+            // suppression gates log when they block one, but a cutscene still
+            // played with neither gate firing and no arena in the rotation pool
+            // declaring one (audited with !dmdata regionkismet — 0 of 16 have an
+            // IntroKismetSeq or KismetSequenceOnActivate). So this records what
+            // went out and to whom, which is the only way to identify a path that
+            // is not one of the two known senders.
+            Logger.Info($"[Kismet] SENT {kismetSeqRef.GetNameFormatted()} to {GetName()} " +
+                        $"(deathmatchActive={IsDeathmatchActive}, pendingWarp={PlayerConnection?.MigrationData?.PendingDeathmatchWarp == true})");
+
             SendMessage(NetMessagePlayKismetSeq.CreateBuilder()
                 .SetKismetSeqPrototypeId((ulong)kismetSeqRef)
                 .Build());
