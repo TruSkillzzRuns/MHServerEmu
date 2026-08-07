@@ -1,4 +1,4 @@
-﻿using MHServerEmu.Core.Logging;
+using MHServerEmu.Core.Logging;
 using MHServerEmu.Games.GameData.Prototypes;
 
 namespace MHServerEmu.Games.GameData.Tables
@@ -59,32 +59,6 @@ namespace MHServerEmu.Games.GameData.Tables
                     }
                 }
             }
-        }
-
-        /// <summary>
-        /// TEMPORARY DIAGNOSTIC (Midtown Deathmatch investigation).
-        ///
-        /// Forces a hostility bit on server-side only. The CLIENT builds this
-        /// same table from the same prototype data, so after calling this the
-        /// two sides deliberately DISAGREE. That is the whole point: it isolates
-        /// whether the client independently blocks attacks on an entity its own
-        /// data says is friendly, or whether it defers to the server.
-        ///
-        /// The answer decides whether an 8-way free-for-all is possible at all:
-        /// stock data has only three mutually hostile PvP alliances
-        /// (PVPTeam1RED / 2WHITE / 3BLUE) and no alliance is hostile to itself,
-        /// so FFA beyond 3 players needs the client to defer to the server.
-        ///
-        /// Remove this once the question is answered.
-        /// </summary>
-        public bool ForceHostileForTesting(AlliancePrototype lhs, AlliancePrototype rhs, bool hostile = true)
-        {
-            if (lhs == null || rhs == null) return false;
-            if (lhs.EnumValue >= _hostileLookup.Length || rhs.EnumValue >= _hostileLookup.Length) return false;
-
-            _hostileLookup[lhs.EnumValue][rhs.EnumValue] = hostile;
-            _hostileLookup[rhs.EnumValue][lhs.EnumValue] = hostile;
-            return true;
         }
 
         public bool IsFriendlyTo(AlliancePrototype lhsAllianceProto, AlliancePrototype rhsAllianceProto)
