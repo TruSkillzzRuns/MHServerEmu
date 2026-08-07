@@ -357,7 +357,39 @@ namespace MHServerEmu.Games.MetaGames.GameModes
         {
             if (kismetSeqRef == PrototypeId.Invalid) return;
             var message = NetMessagePlayKismetSeq.CreateBuilder().SetKismetSeqPrototypeId((ulong)kismetSeqRef).Build();
-            SendMessage(message);
+
+            // Deathmatch suppresses cutscenes. This is the SECOND kismet path —
+            // Player.PlayKismetSeq is the other, and gating it there does not cover
+            // this one because this builds and sends NetMessagePlayKismetSeq
+            // directly, never touching Player. Verified live 2026-08-06: with the
+            // Player-side gate in place a cutscene still played and no
+            // "suppressed kismet" line appeared, which means the message came from
+            // here (MetaGameModeIdle.cs:53 is the caller).
+            //
+            // A blocking kismet sets FullScreenMoviePlaying on the client and only
+            // clears on NetMessagePlayKismetSeqDone; while set, every ActivatePower
+            // is rejected with PowerUseResult.FullscreenMovie (Agent.cs:499), which
+            // is what stalls phantom setup.
+            //
+            // Sent per-player so only deathmatch participants are skipped —
+            // everyone else in the metagame still gets their cutscene.
+            bool anySuppressed = false;
+            foreach (Player player in MetaGame.Players)
+            {
+                if (player == null) continue;
+
+                if (player.IsDeathmatchActive || player.PlayerConnection?.MigrationData?.PendingDeathmatchWarp == true)
+                {
+                    anySuppressed = true;
+                    continue;
+                }
+
+                Logger.Info($"[Kismet] SENT (metagame) {kismetSeqRef.GetNameFormatted()} to {player.GetName()}");
+                SendMessage(message, player);
+            }
+
+            if (anySuppressed)
+                Logger.Info($"[Deathmatch] suppressed metagame kismet {kismetSeqRef.GetNameFormatted()} — cutscenes are disabled in deathmatch");
         }
 
         #endregion

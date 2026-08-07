@@ -1,4 +1,4 @@
-﻿using MHServerEmu.Core.Logging;
+using MHServerEmu.Core.Logging;
 using MHServerEmu.Games.GameData.Prototypes;
 
 namespace MHServerEmu.Games.GameData.Tables

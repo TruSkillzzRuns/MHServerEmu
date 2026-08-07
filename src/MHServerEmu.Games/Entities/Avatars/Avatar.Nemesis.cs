@@ -19,6 +19,19 @@ namespace MHServerEmu.Games.Entities.Avatars
             Player victimPlayer = GetOwnerOfType<Player>();
             if (victimPlayer == null || victimPlayer.PlayerConnection == null) return;
 
+            // Deathmatch combatants are not nemeses. Registering them here means a
+            // rank 4/5 entry, and a rank 4/5 entry ESCAPES on its next kill —
+            // EscapeEnemyPhantom destroys the phantom outright and unregisters it,
+            // so nothing is left to respawn. Observed live 2026-08-05:
+            //   [PhantomHero:Nemesis] Colossus   escaped after killing TruSkillzzz
+            //   [PhantomHero:Nemesis] HumanTorch escaped after killing TruSkillzzz
+            // which emptied the arena and left the player alone in the region.
+            //
+            // The roster is the human's PvE revenge list; a match opponent that
+            // respawns every few seconds has no business on it.
+            if (victimPlayer.IsDeathmatchActive)
+                return;
+
             Agent killerAgent = ResolveNemesisKillerAgent(killer, directKiller);
             if (killerAgent == null) return;
 

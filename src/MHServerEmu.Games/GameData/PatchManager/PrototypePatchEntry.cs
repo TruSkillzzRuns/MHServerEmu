@@ -119,6 +119,11 @@ namespace MHServerEmu.Games.GameData.PatchManager
                 ValueType.PrototypeId or 
                 ValueType.PrototypeDataRef => new SimpleValue<PrototypeId>((PrototypeId)jsonElement.GetUInt64(), valueType),
                 ValueType.LocaleStringId => new SimpleValue<LocaleStringId>((LocaleStringId)jsonElement.GetUInt64(), valueType),
+                // AssetId fields (the VO / audio-theme refs on PvPPrototype and
+                // MetaGameModePrototype) had no ValueType at all, so they could
+                // not be patched. Same shape as LocaleStringId: a raw ulong.
+                ValueType.AssetId => new SimpleValue<AssetId>((AssetId)jsonElement.GetUInt64(), valueType),
+                ValueType.AssetIdArray => new ArrayValue<AssetId>(jsonElement, valueType, x => (AssetId)x.GetUInt64()),
                 ValueType.PrototypeIdArray or
                 ValueType.PrototypeDataRefArray => new ArrayValue<PrototypeId>(jsonElement, valueType, x => (PrototypeId)x.GetUInt64()),
                 ValueType.Prototype => new JsonPrototype(jsonElement),
@@ -301,6 +306,8 @@ namespace MHServerEmu.Games.GameData.PatchManager
         PrototypeId,
         PrototypeIdArray,
         LocaleStringId,
+        AssetId,
+        AssetIdArray,
         PrototypeDataRef,
         PrototypeDataRefArray,
         Prototype,

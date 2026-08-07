@@ -1,0 +1,177 @@
+[
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvPTrainingRoom.prototype",
+    "Path": "ScoreSchemaPlayer",
+    "Description": "Deathmatch: give the (otherwise unused) PvPTrainingRoom metagame a real player score schema, so its ScoreTable is created and the PvP scoreboard has rows to send. Reuses DefenderPvP's own schema rather than inventing one.",
+    "ValueType": "PrototypeDataRef",
+    "Value": 15780407601110453639
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvPTrainingRoom.prototype",
+    "Path": "Teams",
+    "Description": "Deathmatch: THREE mutually hostile PvP teams — FactionTeam1/2/3Tier1, carrying PVPTeam1RED / PVPTeam2WHITE / PVPTeam3BLUE respectively (all verified mutually hostile). Three is the hard ceiling: no alliance in the data is hostile to itself, and the client refuses to target anything its own alliance table calls friendly, so a 4th faction is impossible. PvPTeam applies each team's alliance override on join. PvPTrainingRoom is used by NO region and has zero GameModes, so nothing auto-activates.",
+    "ValueType": "PrototypeDataRefArray",
+    "Value": [
+      10307719420152517877,
+      12016963631974847734,
+      624950659048150263
+    ]
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvPTrainingRoom.prototype",
+    "Path": "MiniMapFilter",
+    "Description": "Deathmatch: the same minimap filter both shipped PvP metagames use (DefenderPvPTier5 and FactionPvPTier1 both set this exact ref). It is what distinguishes allies from enemies on the minimap during a match, so a player can tell their duo partner from the four rivals. The three FactionTeam prototypes already carry distinct IconPath values; StartHealingAura is 0 on all of them, so there is no shipped team aura to enable.",
+    "ValueType": "PrototypeDataRef",
+    "Value": 834208491162832352
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvPTrainingRoom.prototype",
+    "Path": "GameModes",
+    "Description": "Deathmatch: give the metagame exactly ONE mode. MetaGameMode.OnActivate is the only thing that ever sends NetMessageShowPvPScoreboard (it is gated on ShowScoreboard), so a metagame with no modes can never open the panel — verified live: the message was sent by hand with a real MetaGame, teams and a populated ScoreTable, and the client ignored it. PvEGameFade is used by NO metagame (checked against the GameModes array of every PvPPrototype in the data).",
+    "ValueType": "PrototypeDataRefArray",
+    "Value": [
+      7661784003333593289
+    ]
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvEWaveBase/PvEWaveShared/Modes/PvEGameFade.prototype",
+    "Path": "ShowScoreboard",
+    "Description": "Deathmatch: the whole point — MetaGameMode.OnActivate sends NetMessageShowPvPScoreboard only when this is true. No shipped mode sets it, which is why the panel has never appeared.",
+    "ValueType": "Boolean",
+    "Value": true
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvEWaveBase/PvEWaveShared/Modes/PvEGameFade.prototype",
+    "Path": "DurationMS",
+    "Description": "Deathmatch: 3000 -> 0 so the mode NEVER advances. MetaGameModeIdle.ScheduleNextMode returns early when the offset is <= 0, so a zero duration makes this a permanent state. NextMode is already -1.",
+    "ValueType": "Integer",
+    "Value": 0
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvEWaveBase/PvEWaveShared/Modes/PvEGameFade.prototype",
+    "Path": "KismetSequenceOnActivate",
+    "Description": "Deathmatch: suppress the cutscene this mode would otherwise play on activate.",
+    "ValueType": "PrototypeDataRef",
+    "Value": 0
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvEWaveBase/PvEWaveShared/Modes/PvEGameFade.prototype",
+    "Path": "EventHandler",
+    "Description": "Deathmatch: point at MainTier5's PvPScoreEventHandler (KillsEntry=0, DeathsEntry=1, AssistsEntry=2, KillingSpreeEntry=8) so kills/deaths/assists are written into the ScoreTable automatically by the shipped handler, instead of being pushed by hand. MetaGame.InitializeEventHandler builds it from modeProto.EventHandler on activate.",
+    "ValueType": "PrototypeDataRef",
+    "Value": 14954325146542807564
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvEWaveBase/PvEWaveShared/Modes/PvEGameFade.prototype",
+    "Path": "AvatarOnKilledInfoOverride",
+    "Description": "Deathmatch: MainTier5's PvP death info. This drives the on-screen 'Defeated! You can rejoin the match in N seconds' dialog and its button — RespawnLockoutMS=10000 is literally the 10 seconds seen in the original PvP. MetaGameMode.OnActivate pushes it via SendAvatarOnKilledInfoOverride. Previously cleared to 0 by mistake, which removed the PvP death UI entirely.",
+    "ValueType": "PrototypeDataRef",
+    "Value": 5639626486720960629
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Regions/Story/CH06FortStryker/Areas/ArmyBase/zzzArmyBaseInstances/SCSewer2Region.prototype",
+    "Path": "Behavior",
+    "Description": "Deathmatch HYPOTHESIS TEST: the real PvP region (PvPDefenderTier5Region) is Behavior=4 (MatchPlay); our arenas are 2 (PrivateStory) / 1 (PublicCombatZone). The client accepted AvatarOnKilledInfoOverride from MetaGameMode.OnActivate (the respawn dialog appears) but discarded NetMessageShowPvPScoreboard sent from the SAME method — so the message arrives and is rejected on a condition the mode does not control. Region behaviour is the clearest remaining difference. Server-side impact checked: TuningTable only special-cases PublicCombatZone, Avatar.cs:880 only tests != Town, and GetPhantomPartyCap has no MatchPlay case so it returns uncapped.",
+    "ValueType": "Integer",
+    "Value": 4
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Regions/EndGame/TierX/PatrolMidtown/AltRegions/MidtownPatrolL1to60Region.prototype",
+    "Path": "Behavior",
+    "Description": "Deathmatch: MatchPlay behaviour, same test as SCSewer2Region. The real PvP region (PvPDefenderTier5Region) is Behavior=4; the client accepts AvatarOnKilledInfoOverride from MetaGameMode.OnActivate but discards NetMessageShowPvPScoreboard sent from the same method, so region behaviour is the current candidate for that gate. Both the Cosmic alt region and the band it resolves into are patched, because a Midtown warp lands in the band. [1.53] Region renamed in 1.53: XManhattanRegion60Cosmic.prototype does not exist; resolved to MidtownPatrolL1to60Region.prototype via !lookup region Midtown on a running 1.53 server.",
+    "ValueType": "Integer",
+    "Value": 4
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Regions/EndGame/TierX/PatrolMidtown/MidtownPatrolRegionBand.prototype",
+    "Path": "Behavior",
+    "Description": "Deathmatch: MatchPlay behaviour, same test as SCSewer2Region. The real PvP region (PvPDefenderTier5Region) is Behavior=4; the client accepts AvatarOnKilledInfoOverride from MetaGameMode.OnActivate but discards NetMessageShowPvPScoreboard sent from the same method, so region behaviour is the current candidate for that gate. Both the Cosmic alt region and the band it resolves into are patched, because a Midtown warp lands in the band. [1.53] Region renamed in 1.53: XManhattanRegionBand.prototype does not exist; resolved to MidtownPatrolRegionBand.prototype via !lookup region Midtown on a running 1.53 server.",
+    "ValueType": "Integer",
+    "Value": 4
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvPTrainingRoom.prototype",
+    "Path": "VOKillSpreeList",
+    "Description": "Deathmatch: the killing-spree announcer. MetaGameEventHandler.cs:98-106 already fires VOKillSpreeList[spree-1] on every kill, but PvPTrainingRoom shipped with the array EMPTY (verified by !dmdata pvp) so it announced nothing. These are DefenderPvPTier5's exact 8 entries: PvP_NoVO, then KillSpree2..8. Index 0 is deliberately the silent one - a first kill is not a spree.",
+    "ValueType": "AssetIdArray",
+    "Value": [
+      10662545157886513886,
+      11154405456960230211,
+      8989002994766320305,
+      18391903625358152506,
+      11733235678157083365,
+      6530696450547192545,
+      6137665775654474419,
+      9362217519427883702
+    ]
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvPTrainingRoom.prototype",
+    "Path": "VOKillSpreeShutdown",
+    "Description": "Deathmatch: PvP_Shutdown, played when a player on a spree of 2+ is killed (MetaGameEventHandler.cs:69-74). Taken from DefenderPvPTier5; PvPTrainingRoom shipped with it unset.",
+    "ValueType": "AssetId",
+    "Value": 6574261360426881743
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvPTrainingRoom.prototype",
+    "Path": "VOFirstKill",
+    "Description": "Deathmatch: PvP_FirstKill, from DefenderPvPTier5. Note this one is only fired by PvPDefenderGameMode:769, not by the shared score handler, so the deathmatch code sends it itself - the field is patched so the asset lives in data rather than being hardcoded in C#.",
+    "ValueType": "AssetId",
+    "Value": 2077843201768886937
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvPTrainingRoom.prototype",
+    "Path": "VOTeammateKilled",
+    "Description": "Deathmatch: PvP_TeammateDeath, from DefenderPvPTier5. Sent by the deathmatch kill handler when a member of your own team falls.",
+    "ValueType": "AssetId",
+    "Value": 1041762704639726118
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Metagame/PvPTrainingRoom.prototype",
+    "Path": "VORevenge",
+    "Description": "Deathmatch: PvP_Revenge, from DefenderPvPTier5. Sent when you kill whoever killed you last.",
+    "ValueType": "AssetId",
+    "Value": 5268407104220173067
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Regions/Story/CH06FortStryker/Areas/ArmyBase/zzzArmyBaseInstances/SCSewer2Region.prototype",
+    "Path": "AlwaysShutdownWhenVacant",
+    "Description": "Deathmatch: every match must start in a FRESH instance. Behavior=4 makes these regions IsPublic (RegionPrototype.cs:206 counts MatchPlay as public), so BeginRegionTransferToTarget reuses whatever instance is already in the player's WorldView — the arena survived the match with its dead phantoms, cleared spawners and finished MetaGame still in place, and the next match rejoined it. This flag is read in RegionHandle.cs:94; with it set, SetActualRegion drops the region from the WorldView on exit (PlayerHandle.cs:934) and it shuts down at zero reservations, so the next start builds a new one.",
+    "ValueType": "Boolean",
+    "Value": true
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Regions/EndGame/TierX/PatrolMidtown/AltRegions/MidtownPatrolL1to60Region.prototype",
+    "Path": "AlwaysShutdownWhenVacant",
+    "Description": "Deathmatch: fresh instance per match — same reason as SCSewer2Region. [1.53] Region renamed in 1.53: XManhattanRegion60Cosmic.prototype does not exist; resolved to MidtownPatrolL1to60Region.prototype via !lookup region Midtown on a running 1.53 server.",
+    "ValueType": "Boolean",
+    "Value": true
+  },
+  {
+    "Enabled": true,
+    "Prototype": "Regions/EndGame/TierX/PatrolMidtown/MidtownPatrolRegionBand.prototype",
+    "Path": "AlwaysShutdownWhenVacant",
+    "Description": "Deathmatch: fresh instance per match. NOTE this is the live Midtown Patrol band, not a deathmatch-only region — an ordinary patrol run will now also close its instance once the last player leaves, instead of lingering for re-entry. Unavoidable: the warp resolves into this band, so the arena instance IS the patrol instance. [1.53] Region renamed in 1.53: XManhattanRegionBand.prototype does not exist; resolved to MidtownPatrolRegionBand.prototype via !lookup region Midtown on a running 1.53 server.",
+    "ValueType": "Boolean",
+    "Value": true
+  }
+]

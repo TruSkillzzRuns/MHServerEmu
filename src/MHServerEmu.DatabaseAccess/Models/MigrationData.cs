@@ -113,6 +113,19 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// Player.OnAvatarEnteredRegionForBountyHunt() from the new Avatar's
         /// OnEnteredWorld once it's actually standing in the arena.
         /// </summary>
+        /// <summary>
+        /// Deathmatch (Midtown Deathmatch, 1v1 for now). Same reason the Bounty
+        /// Hunt fields below exist: the arrival handler runs in a NEW Game
+        /// instance after the region transfer, so a plain Player field is
+        /// already gone by the time the arena needs setting up.
+        /// </summary>
+        public bool PendingDeathmatchWarp { get; set; }
+        public int DeathmatchKillTarget { get; set; }
+        public bool DeathmatchIsTeams { get; set; }
+        public int DeathmatchTeamSizeOverride { get; set; }
+        public int DeathmatchTeamCountOverride { get; set; }
+        public ulong DeathmatchRegionOverride { get; set; }
+
         public bool PendingBountyHuntWarp { get; set; }
         public ulong BountyHuntHeroRef { get; set; }
         public int BountyHuntRank { get; set; }

@@ -407,6 +407,8 @@ namespace MHServerEmu.Games.Network
             // see Player.BountyHunt.cs's SnapshotBountyHuntForTransfer.
             try { Player.SnapshotBountyHuntForTransfer(); }
             catch (System.Exception ex) { Logger.Warn($"BeginRegionTransfer: SnapshotBountyHuntForTransfer threw: {ex.Message}"); }
+            try { Player.SnapshotDeathmatchForTransfer(); }
+            catch (Exception ex) { Logger.Warn($"[Deathmatch] SnapshotDeathmatchForTransfer threw: {ex.Message}"); }
 
             Player.CurrentAvatar.ExitWorld();
 

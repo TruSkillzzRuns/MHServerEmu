@@ -385,6 +385,14 @@ namespace MHServerEmu.Games.Entities
                 return;
             }
 
+            // Cloak (Deathmatch) is spawned BEFORE the trial-guide early-return
+            // below. That return fires whenever the trial guide already exists for
+            // this region, which silently skipped Cloak entirely — so after
+            // bodysliding back to the Tower he was either absent or left with a
+            // stale interact registration and clicking him did nothing.
+            try { SpawnDeathmatchNpc(region, avatar); }
+            catch (Exception ex) { TrialLogger.Warn($"[Deathmatch] SpawnDeathmatchNpc threw: {ex.Message}"); }
+
             if (_trialGuideRegion == region && _trialGuideNpcId != 0)
             {
                 var existingNpc = Game.EntityManager.GetEntity<WorldEntity>(_trialGuideNpcId);

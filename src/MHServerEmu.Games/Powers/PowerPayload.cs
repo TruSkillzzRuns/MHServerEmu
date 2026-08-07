@@ -1455,7 +1455,23 @@ namespace MHServerEmu.Games.Powers
             // against a rogue/nemesis phantom. Phantoms are PvE opponents by design,
             // so skip PvP scaling when the target is a phantom hero.
             bool targetIsPhantom = target is Entities.Agent targetAgent && targetAgent.IsPhantomHero;
-            if (IsPlayerPayload && target.CanBePlayerOwned() && targetIsPhantom == false)
+
+            // ...and the mirror case. The exemption above only ever considered the
+            // TARGET, which made deathmatch damage one-directional: a player hitting
+            // a phantom skips scaling (x1), but a phantom hitting the player is a
+            // player-owned payload against a non-phantom player-owned target, so it
+            // takes the full curve — x0.014 * 1.09 = x0.0153 at level 60, measured
+            // from DifficultyGlobals with !dmdata pvpdamage. That is the "their hits
+            // feel weak, mine feel strong" asymmetry.
+            //
+            // A phantom attacker is the same kind of PvE combatant as a phantom
+            // target, so it gets the same exemption. Both directions now run at
+            // unscaled damage, which keeps the player's own hits feeling exactly as
+            // they do today instead of dragging both sides down to 1.5%.
+            WorldEntity payloadOwner = Game.EntityManager.GetEntity<WorldEntity>(PowerOwnerId);
+            bool ownerIsPhantom = payloadOwner is Entities.Agent ownerAgent && ownerAgent.IsPhantomHero;
+
+            if (IsPlayerPayload && target.CanBePlayerOwned() && targetIsPhantom == false && ownerIsPhantom == false)
             {
                 DifficultyGlobalsPrototype difficultyGlobals = GameDatabase.DifficultyGlobalsPrototype;
                 pvpDamageMult *= difficultyGlobals.PvPDamageMultiplier;
@@ -1465,8 +1481,25 @@ namespace MHServerEmu.Games.Powers
                     pvpDamageMult *= pvpDamageScalarFromLevelCurve.GetAt(CombatLevel);
             }
 
+            // Deathmatch damage instrumentation. Both directions in a deathmatch
+            // run through here, so this is the one place that can prove what each
+            // side actually applies rather than inferring it from kill counts.
+            // Off unless explicitly switched on with !dmdamagelog.
+            if (DeathmatchDamageLogging && target.IsInPvPMatch)
+            {
+                bool scaled = IsPlayerPayload && target.CanBePlayerOwned() && targetIsPhantom == false && ownerIsPhantom == false;
+                DmgLogger.Info($"[TDM:DMG] {(ownerIsPhantom ? "phantom" : "player")}->{(targetIsPhantom ? "phantom" : "player")} " +
+                               $"mult={pvpDamageMult:G6} pvpScalingApplied={scaled} lvl={CombatLevel} " +
+                               $"target={target.PrototypeName}");
+            }
+
             ApplyDamageMultiplier(results.Properties, pvpDamageMult);
         }
+
+        /// <summary>Toggled by the !dmdamagelog command. Off by default — this fires per hit.</summary>
+        public static bool DeathmatchDamageLogging { get; set; } = false;
+
+        private static readonly Logger DmgLogger = LogManager.CreateLogger();
 
         private void CalculateResultDamageDifficultyScaling(PowerResults results, WorldEntity target, out float difficultyMult)
         {

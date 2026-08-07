@@ -501,7 +501,9 @@ namespace MHServerEmu.Games.Entities.Avatars
                             // treatment (an IsEndlessSuppressedPhantom-style
                             // set populated at spawn time) instead of trusting
                             // the live flag here, same as IsTrialSuppressedPhantom.
-                            if (host.IsEndlessChallengeActive == false && host.IsTrialSuppressedPhantom(foe.Id) == false)
+                            if (host.IsEndlessChallengeActive == false
+                                && host.IsTrialSuppressedPhantom(foe.Id) == false
+                                && host.IsDeathmatchSuppressedPhantom(foe.Id) == false)
                             {
                                 try { DropPhantomGear(foe, host); } catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loot] drop failed on {foe.Id:X}: {ex.Message}"); }
                             }
@@ -826,7 +828,27 @@ namespace MHServerEmu.Games.Entities.Avatars
                 || phantom.Properties[PropertyEnum.Untargetable]
                 || phantom.Properties[PropertyEnum.Unaffectable]
                 || phantom.Properties[PropertyEnum.TutorialInvulnerable];
-            bool exemptDeliberate = s_phantomDeliberatelyInvincible.Contains(phantom.Id)
+            // Self-heal timed protection first. If the window has passed, lift it
+            // here rather than trusting the scheduled event that was supposed to —
+            // a missed lift used to be permanent (see MarkPhantomTimedInvincible).
+            long nowMsProtect = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            bool timedProtectionActive = false;
+            if (s_phantomTimedInvincibleUntilMs.TryGetValue(phantom.Id, out long protectUntilMs))
+            {
+                if (nowMsProtect >= protectUntilMs)
+                {
+                    phantom.Properties[PropertyEnum.Invulnerable] = false;
+                    phantom.Properties[PropertyEnum.PowerLock] = false;
+                    s_phantomTimedInvincibleUntilMs.Remove(phantom.Id);
+                    PhantomLogger.Info($"[PhantomHero] timed spawn protection on {phantom.Id} expired — lifted by watchdog");
+                }
+                else
+                {
+                    timedProtectionActive = true;
+                }
+            }
+
+            bool exemptDeliberate = (s_phantomDeliberatelyInvincible.Contains(phantom.Id) || timedProtectionActive)
                 && phantom.Properties[PropertyEnum.Untargetable] == false
                 && phantom.Properties[PropertyEnum.Unaffectable] == false
                 && phantom.Properties[PropertyEnum.TutorialInvulnerable] == false;
@@ -1059,6 +1081,15 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             bool isEnemyPhantom = phantom.IsPhantomHero
                 && phantom.GetOwnerOfType<Player>()?.PhantomCreatorId == 0;
+
+            // Team Deathmatch: nobody leashes to the player. Every combatant is
+            // fighting two rival duos across the whole arena, so yanking them back
+            // to the human would collapse a three-way match into a permanent scrum
+            // around one person. Only the explicit forceLeash (stuck rescue) still
+            // applies.
+            if (IsDeathmatchTeamCombatant(phantom.Id) && forceLeash == false)
+                return;
+
             float leashMaxDistSq = isEnemyPhantom ? EnemyPhantomFollowMaxDistSq : PhantomFollowMaxDistSq;
             float distSq = Vector3.DistanceSquared2D(curPos, callerPos);
             if (distSq > leashMaxDistSq || forceLeash)
@@ -1073,6 +1104,30 @@ namespace MHServerEmu.Games.Entities.Avatars
                 }
                 catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Leash] teleport failed on {phantom.Id:X}: {ex.Message}"); }
             }
+        }
+
+        /// <summary>
+        /// True when this entity is registered as a combatant in the caller's
+        /// active Team Deathmatch. Used to switch the phantom AI out of its
+        /// PvE-shaped "hunt the player" behaviour and into free-for-all-between-
+        /// teams behaviour for the duration of a match.
+        /// </summary>
+        /// <summary>
+        /// How far a Team Deathmatch combatant can see. Deliberately SHORT.
+        ///
+        /// This was briefly region-wide, which was a mistake: every combatant
+        /// could see every other from the moment the match started, so all three
+        /// teams beelined at each other and collapsed into one pile — measured
+        /// live, both rival teams locked onto RED because RED happened to be the
+        /// nearest spawn to both. A short sight range means teams have to find
+        /// each other by roaming, and fights start where they meet.
+        /// </summary>
+        private const float DeathmatchSightRange = 1800f;
+
+        private bool IsDeathmatchTeamCombatant(ulong entityId)
+        {
+            Player host = PhantomHost ?? GetOwnerOfType<Player>();
+            return host != null && host.IsDeathmatchTeamCombatant(entityId);
         }
 
         // One-time-per-phantom diagnostic set. Removed once attack is verified.
@@ -1234,6 +1289,11 @@ namespace MHServerEmu.Games.Entities.Avatars
                         if (avId == phantom.Id) continue;
                         Agent candidate = Game.EntityManager.GetEntity<Agent>(avId);
                         if (candidate == null || candidate.IsDead == false || candidate.IsInWorld == false || candidate.Region != region) continue;
+                        // Team Deathmatch combatants are replaced on death, not
+                        // revived. Reviving one would resurrect a body that has
+                        // already been counted and replaced, inflating the roster
+                        // and dragging the revived phantom into the player's party.
+                        if (IsDeathmatchTeamCombatant(candidate.Id)) continue;
                         // Only real avatars can be resurrected. PhantomAvatarIds
                         // also holds TEAM-UP agents (RegisterPhantom stores both),
                         // and team-ups have no downed/revive flow at all - a dead
@@ -1366,7 +1426,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                              || reviveLoco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.FailedNoPathFound))
                         {
                             Vector3 targetPos = downed.RegionLocation.Position;
-                            Vector3 rescuePos = ChoosePhantomLeashPos(region, targetPos, rng, phantom.Bounds.Radius);
+                                    Vector3 rescuePos = ChoosePhantomLeashPos(region, targetPos, rng, phantom.Bounds.Radius);
                             try
                             {
                                 reviveLoco.Stop();
@@ -1501,7 +1561,18 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Widest sweep so we start advancing on enemies before they're in
             // attack range. IterateEntitiesInVolume walks the region spatial
             // partition, cheap.
-            var sweepSphere = new Sphere(phantomPos, PhantomSearchRange);
+            // Team Deathmatch: unlimited sight. Teams start deliberately far
+            // apart (anchors are spread across the whole region), so the normal
+            // 3500u sweep would leave every team standing still, unable to see
+            // anyone to walk toward. Hunting the entire region is what makes them
+            // actively seek each other out. This branch is inert outside a match —
+            // IsDeathmatchTeamCombatant requires an active TDM roster — so no
+            // other mode's search behaviour changes.
+            float sweepRange = IsDeathmatchTeamCombatant(phantom.Id)
+                ? DeathmatchSightRange
+                : PhantomSearchRange;
+
+            var sweepSphere = new Sphere(phantomPos, sweepRange);
             var ctx = new MHServerEmu.Games.Entities.EntityRegionSPContext(MHServerEmu.Games.Entities.EntityRegionSPContextFlags.PrimaryPartition);
 
             // Build a full sorted candidate list of hostile Agents instead of just
@@ -1557,7 +1628,17 @@ namespace MHServerEmu.Games.Entities.Avatars
                     // the player they were meant to hunt stands 40m behind
                     // them. Restrict to Avatars only and the fantasy holds.
                     if (we is not Avatar avCand) continue;
-                    if (avCand.Id == Id)
+
+                    // Team Deathmatch: three mutually hostile duos, so "who is a
+                    // valid target" is answered by alliance alone. Without this the
+                    // filter below skips every other enemy phantom
+                    // (PhantomCreatorId == 0), which is exactly why rival duos
+                    // ignored each other and everyone piled onto the human.
+                    if (IsDeathmatchTeamCombatant(phantom.Id))
+                    {
+                        if (phantom.IsHostileTo(avCand) == false) continue;
+                    }
+                    else if (avCand.Id == Id)
                     {
                         // Caller — always a valid target.
                     }
@@ -1585,8 +1666,16 @@ namespace MHServerEmu.Games.Entities.Avatars
                     // out and sprints off after it, then trips the leash and
                     // teleports back — the "phantom keeps running away and
                     // snapping back" behavior.
-                    float callerDistSq = Vector3.DistanceSquared2D(we.RegionLocation.Position, callerPos);
-                    if (callerDistSq > PhantomFriendlyEngageMaxCallerDistSq) continue;
+                    //
+                    // Team Deathmatch is the deliberate exception: your ally is a
+                    // combatant in its own right and must chase rivals across the
+                    // whole arena, not orbit you. Gated on the match roster, so
+                    // ordinary squad phantoms keep the stay-near-me rule.
+                    if (IsDeathmatchTeamCombatant(phantom.Id) == false)
+                    {
+                        float callerDistSq = Vector3.DistanceSquared2D(we.RegionLocation.Position, callerPos);
+                        if (callerDistSq > PhantomFriendlyEngageMaxCallerDistSq) continue;
+                    }
                 }
                 // True 3D distance, not 2D — this value feeds both the
                 // outer PhantomAttackRange gate and every per-power range
@@ -1690,7 +1779,16 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Highest threat first. NOTE: the list is no longer distance-
             // ordered, so any downstream loop must not assume "once one is
             // out of range, the rest are too" — see the attack loop below.
-            candidates.Sort(static (a, b) => b.threat.CompareTo(a.threat));
+            // Team Deathmatch sorts by DISTANCE, not threat. Combatants can see
+            // the whole arena there, so threat ordering would send them past an
+            // adjacent rival to chase a wounded one on the far side of the map.
+            // Nearest-first keeps fights local and stops everyone converging into
+            // one scrum. Gated on the match roster, so every other mode keeps the
+            // threat ordering it was tuned with.
+            if (IsDeathmatchTeamCombatant(phantom.Id))
+                candidates.Sort(static (a, b) => a.distSq.CompareTo(b.distSq));
+            else
+                candidates.Sort(static (a, b) => b.threat.CompareTo(a.threat));
 
             if (diagWant && (candidates.Count == 0 || diagRejected != null))
                 DumpPhantomHuntDiag(phantom, phantomPos,
@@ -1734,6 +1832,17 @@ namespace MHServerEmu.Games.Entities.Avatars
                         // to the corpse's position.
                         loco2.FollowEntity(callerAv.Id, PhantomAttackRange, PhantomAttackRange, ref opts2, false);
                     }
+                    return;
+                }
+
+                // Team Deathmatch: nothing in sight, so ROAM. With sight cut to
+                // DeathmatchSightRange, teams start out unable to see each other
+                // — without roaming they would simply stand on their spawn points
+                // forever and no fight would ever happen. Walking to random
+                // navi-mesh points is what makes them find each other.
+                if (IsDeathmatchTeamCombatant(phantom.Id))
+                {
+                    TryDeathmatchRoam(phantom, region, rng);
                     return;
                 }
 
@@ -1823,7 +1932,12 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // ground level. Only fires when target is out of attack range
                 // — a small path glitch inside attack range is fine, the
                 // phantom will just cast from where they stand.
+                // Team Deathmatch combatants are never teleported out of a
+                // pathing failure — a body blinking across the arena reads as a
+                // bug to anyone watching, and this mode has no leash tying them
+                // to the player anyway. They re-path next tick or roam elsewhere.
                 if (ok == false
+                    && IsDeathmatchTeamCombatant(phantom.Id) == false
                     && (loco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.Failed
                      || loco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.FailedNaviMesh)
                     && primaryDistSq > PhantomAttackRangeSq)
@@ -2184,6 +2298,27 @@ namespace MHServerEmu.Games.Entities.Avatars
         private const float PhantomStandaloneAggroRange = 3000f;
         private static readonly Dictionary<ulong, int> s_phantomInvulnerableTrack = new();
         private static readonly HashSet<ulong> s_phantomDeliberatelyInvincible = new();
+
+        /// <summary>
+        /// TIMED deliberate invulnerability — Deathmatch spawn protection.
+        ///
+        /// Deliberately NOT s_phantomDeliberatelyInvincible. That set is for
+        /// permanent god-mode phantoms, and membership disables the stuck-
+        /// invulnerability watchdog outright (see exemptDeliberate below). Using it
+        /// for a temporary window means that if the scheduled lift ever fails to
+        /// fire, the phantom is left Invulnerable AND PowerLocked with the safety
+        /// net switched off — it can never be killed and never attacks. That is
+        /// exactly what happened live 2026-08-05: a Colossus stopped attacking,
+        /// could not be killed, and its team never respawned because it never died.
+        ///
+        /// An expiry makes it self-healing: past the deadline the watchdog reclaims
+        /// the phantom and clears both properties itself.
+        /// </summary>
+        private static readonly Dictionary<ulong, long> s_phantomTimedInvincibleUntilMs = new();
+
+        internal static void MarkPhantomTimedInvincible(ulong phantomId, long untilMs) => s_phantomTimedInvincibleUntilMs[phantomId] = untilMs;
+
+        internal static void ClearPhantomTimedInvincible(ulong phantomId) => s_phantomTimedInvincibleUntilMs.Remove(phantomId);
         // No-repeat guard: (phantom, condition/power ref) -> game-time ms until which
         // that specific condition source is barred from granting invulnerability again.
         private static readonly Dictionary<(ulong, PrototypeId), long> s_phantomInvulnConditionCooldownUntilMs = new();
@@ -2209,6 +2344,56 @@ namespace MHServerEmu.Games.Entities.Avatars
                 if (key.phantomId == phantomId) (toRemove ??= new()).Add(key);
             if (toRemove != null)
                 foreach (var k in toRemove) s_phantomTargetBlacklist.Remove(k);
+        }
+
+        // Roam targets, per phantom, with the time they were chosen. A phantom
+        // keeps walking to the same point until it arrives or the point goes
+        // stale, otherwise it would pick a new direction every tick and vibrate
+        // on the spot.
+        private static readonly Dictionary<ulong, (Vector3 dest, long chosenMs)> s_deathmatchRoam = new();
+        private const long DeathmatchRoamRepickMs = 12_000;
+        private const float DeathmatchRoamArriveDist = 250f;
+        private const float DeathmatchRoamMinDist = 1500f;
+        private const float DeathmatchRoamMaxDist = 4500f;
+
+        /// <summary>
+        /// Walks a Team Deathmatch combatant toward a roam point, picking a new
+        /// one when it arrives, the point goes stale, or it has none. Movement
+        /// only — no teleporting.
+        /// </summary>
+        private static void TryDeathmatchRoam(Agent phantom, Region region, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            if (phantom == null || region == null) return;
+
+            long nowMs = phantom.Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            Vector3 pos = phantom.RegionLocation.Position;
+
+            bool needNew = true;
+            if (s_deathmatchRoam.TryGetValue(phantom.Id, out var roam))
+            {
+                bool arrived = Vector3.DistanceSquared2D(pos, roam.dest) <= DeathmatchRoamArriveDist * DeathmatchRoamArriveDist;
+                bool stale = nowMs - roam.chosenMs > DeathmatchRoamRepickMs;
+                needNew = arrived || stale;
+            }
+
+            if (needNew)
+            {
+                Vector3 dest = ChooseScatteredArenaPos(region, pos, pos, rng, phantom.Bounds.Radius,
+                    DeathmatchRoamMinDist, DeathmatchRoamMaxDist);
+                s_deathmatchRoam[phantom.Id] = (dest, nowMs);
+                roam = (dest, nowMs);
+            }
+
+            var loco = phantom.Locomotor;
+            if (loco == null) return;
+
+            var opts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(500) };
+            if (loco.PathTo(roam.dest, ref opts) == false)
+            {
+                // Unreachable — drop it and pick a fresh one next tick rather
+                // than teleporting there.
+                s_deathmatchRoam.Remove(phantom.Id);
+            }
         }
 
         /// <summary>
@@ -2245,6 +2430,37 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Fallback: caller's exact position. Guaranteed walkable since
             // the caller is standing on it.
             return callerPos;
+        }
+
+        /// <summary>
+        /// Walkable point within a caller-chosen radius band, for spreading Team
+        /// Deathmatch duos across the arena instead of stacking them on the
+        /// player. Same navi-mesh + backing-cell validation as
+        /// ChoosePhantomLeashPos (both checks are required: NaviMesh.Contains can
+        /// pass a point with no Cell, and ChangeRegionPosition then silently
+        /// no-ops), but with a far wider band and more attempts.
+        ///
+        /// Falls back to <paramref name="fallback"/> rather than an arbitrary
+        /// point, so a failure puts a combatant somewhere known-walkable instead
+        /// of out of bounds.
+        /// </summary>
+        public static Vector3 ChooseScatteredArenaPos(Region region, Vector3 origin, Vector3 fallback,
+            MHServerEmu.Core.System.Random.GRandom rng, float avatarRadius, float minRadius, float maxRadius)
+        {
+            if (region == null) return fallback;
+            var walkCheck = new DefaultContainsPathFlagsCheck(PathFlags.Walk);
+            for (int attempt = 0; attempt < 24; attempt++)
+            {
+                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
+                float radius = minRadius + (float)(rng.NextDouble() * Math.Max(1f, maxRadius - minRadius));
+                Vector3 candidate = origin + new Vector3((float)Math.Cos(angle) * radius, (float)Math.Sin(angle) * radius, 0f);
+                candidate = RegionLocation.ProjectToFloor(region, candidate);
+
+                if (region.NaviMesh.Contains(candidate, MathF.Max(20f, avatarRadius), walkCheck)
+                    && region.GetCellAtPosition(candidate) != null)
+                    return candidate;
+            }
+            return fallback;
         }
 
         /// <summary>
@@ -6050,9 +6266,27 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // the PropertyEnum.NoLootDrop Property instead. Set it too so
                 // both mechanisms are actually suppressed during an Endless
                 // run, not just our own custom one.
+                //
+                // Deathmatch gets the same treatment plus NoExpOnDeath. Those
+                // are two SEPARATE gates, not one: AwardKillLoot checks
+                // NoLootDrop for the loot block (WorldEntity.cs:3973) but
+                // NoExpOnDeath for the XP block (WorldEntity.cs:4011), so
+                // NoLootDrop on its own still let experience orbs through —
+                // exactly what was seen live 2026-08-04. AwardHitLoot
+                // (WorldEntity.cs:4033) reads NoLootDrop as well, so mid-fight
+                // on-hit drops are covered by the same flag.
+                //
+                // _deathmatchActive is set in OnAvatarEnteredRegionForDeathmatch
+                // (Player.Deathmatch.cs:240) before any phantom spawns, so it is
+                // reliably true here for both brackets.
                 Player realHost = GetOwnerOfType<Player>();
-                if (realHost != null && realHost.IsEndlessChallengeActive)
+                bool inDeathmatch = realHost != null && realHost.IsDeathmatchActive;
+
+                if (realHost != null && (realHost.IsEndlessChallengeActive || inDeathmatch))
                     phantomAvatar.Properties[PropertyEnum.NoLootDrop] = true;
+
+                if (inDeathmatch)
+                    phantomAvatar.Properties[PropertyEnum.NoExpOnDeath] = true;
 
                 // Nemesis rank now maps directly to a TOTAL HealthMaxMult
                 // (not a factor on top of the enemy base) — see the

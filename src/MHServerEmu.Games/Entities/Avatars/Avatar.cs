@@ -596,6 +596,24 @@ namespace MHServerEmu.Games.Entities.Avatars
                 return true;
             }
 
+            // Team Deathmatch — respawn at your own team's start position, not
+            // at a checkpoint elsewhere on the map. Without this a death drops
+            // the player wherever the region's normal release logic decides,
+            // which in a three-way match can be right on top of a rival team.
+            if (owner.IsDeathmatchTeamsActive && owner.TryGetDeathmatchRespawnPos(out Vector3 dmRespawn))
+            {
+                try
+                {
+                    Locomotor?.Stop();
+                    ChangeRegionPosition(dmRespawn, null);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    PhantomLogger.Warn($"[TDM] respawn reposition failed, falling through to normal release: {ex.Message}");
+                }
+            }
+
             if (region.MetaGames.Count > 0)
             {
                 var player = GetOwnerOfType<Player>();
@@ -7419,6 +7437,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             try { player.OnAvatarEnteredRegionForTrial(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[TrialOfImpossible] OnAvatarEnteredRegionForTrial threw: {ex.Message}"); }
             try { player.OnAvatarEnteredRegionForDangerRoomEndless(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[DangerRoomEndless] OnAvatarEnteredRegionForDangerRoomEndless threw: {ex.Message}"); }
             try { player.OnAvatarEnteredRegionForBountyHunt(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[BountyHunt] OnAvatarEnteredRegionForBountyHunt threw: {ex.Message}"); }
+            try { player.OnAvatarEnteredRegionForDeathmatch(region, this); } catch (Exception ex) { PhantomLogger.Warn($"[Deathmatch] OnAvatarEnteredRegionForDeathmatch threw: {ex.Message}"); }
 
             var teamUpAgent = CurrentTeamUpAgent;
             if (teamUpAgent != null)
