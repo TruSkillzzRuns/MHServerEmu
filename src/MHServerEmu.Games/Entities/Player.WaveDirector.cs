@@ -960,10 +960,24 @@ namespace MHServerEmu.Games.Entities
         /// (Avatar with IsPhantomHero or PhantomCreatorId set on owner) are
         /// always preserved, and so are active team-ups.
         /// </summary>
+        /// <summary>
+        /// Where the arena's own boss would have stood — the position of the
+        /// first Spawner with "Boss" in its prototype name that the last
+        /// ClearArena sweep destroyed (e.g. BroodShip's
+        /// DRChallengeBroodEndBossSpawner). Captured DURING the sweep because
+        /// that same sweep destroys the Spawner entity, so the position cannot
+        /// be looked up afterwards. Null when the arena has no boss spawner
+        /// (story regions, PvP arenas). Deathmatch uses it to anchor the enemy
+        /// 5v5 team at the boss room.
+        /// </summary>
+        internal Vector3? LastArenaBossSpawnerPos { get; private set; }
+
         private int ClearArena(Avatar avatar)
         {
             Regions.Region region = avatar.Region;
             if (region == null) return 0;
+
+            LastArenaBossSpawnerPos = null;
 
             var aabb = region.Aabb;
             var center = aabb.Center;
@@ -995,6 +1009,35 @@ namespace MHServerEmu.Games.Entities
                 // that spew mobs), Transitions (Cable-fight console, portals,
                 // waypoints).
                 bool doomIt = we is Agent || we is Spawner || we is Transition;
+
+                // Remember where the boss would have spawned before the sweep
+                // erases the evidence — see LastArenaBossSpawnerPos.
+                if (we is Spawner && LastArenaBossSpawnerPos == null
+                    && we.PrototypeName != null && we.PrototypeName.Contains("Boss", StringComparison.OrdinalIgnoreCase))
+                {
+                    LastArenaBossSpawnerPos = we.RegionLocation.Position;
+                    WaveLogger.Info($"[WaveDirector] {GetName()}: boss spawner position captured from {we.PrototypeName} at {we.RegionLocation.Position.ToStringNames()}");
+                }
+
+                // Scenario progression gates — plain blocking WorldEntities the
+                // region's own missions would remove as the player advances.
+                // With the scenario sterilized nothing ever opens them, walling
+                // off part of the arena forever. Identified live 2026-08-07 in
+                // BroodShip: "DangerRoomBroodShipProgressionGate02", type
+                // WorldEntity, collides=Blocking, no EntityState — invisible to
+                // every other filter here. Matched by name because that is the
+                // only signal such a gate carries.
+                //
+                // TeleportBlockerEntity* walls are deliberately NOT matched —
+                // they are the map-edge containment, and removing them would
+                // let combatants leave the playable space.
+                if (doomIt == false && we.PrototypeName != null
+                    && we.PrototypeName.Contains("ProgressionGate", StringComparison.OrdinalIgnoreCase))
+                {
+                    WaveLogger.Info($"[WaveDirector] {GetName()}: removing scenario progression gate {we.PrototypeName} (id={we.Id})");
+                    doomIt = true;
+                }
+
                 if (doomIt == false) continue;
 
                 doomed.Add(we);

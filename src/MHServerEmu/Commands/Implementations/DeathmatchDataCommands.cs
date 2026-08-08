@@ -537,6 +537,73 @@ namespace MHServerEmu.Commands.Implementations
             return $"Deathmatch test hero lock {(on ? "ENABLED (NickFury / Magik only)" : "disabled")}.";
         }
 
+        [Command("doors")]
+        [CommandDescription("List every entity in YOUR CURRENT region that carries an EntityState — doors, gates, switchable props — with state details.")]
+        public string DumpDoors(string[] @params, NetClient client)
+        {
+            if (client is not MHServerEmu.Games.Network.PlayerConnection conn || conn.Player?.CurrentAvatar?.Region == null)
+                return "Needs a player in a region — run with a playerName.";
+
+            var region = conn.Player.CurrentAvatar.Region;
+
+            StringBuilder sb = new();
+            sb.AppendLine($"=== stateful entities in {region.PrototypeName} ===");
+            sb.AppendLine("Answers whether a region's gates are ENTITY-STATE doors (openable server-side");
+            sb.AppendLine("via SetState, the same call MissionActionEntitySetState uses) or baked cell");
+            sb.AppendLine("geometry (nothing server-side can open). Doors show as DoorEntityStatePrototype");
+            sb.AppendLine("with IsOpen.");
+
+            // "near" mode: EVERY entity within 2000u of the avatar, closest
+            // first, with the flags that matter for a blocker — because a gate
+            // without an EntityState set is invisible to the default filter
+            // (verified live in BroodShip: a blocking membrane, yet only the two
+            // Transitions carried a state).
+            bool nearMode = @params != null && @params.Length > 0 && @params[0].Equals("near", StringComparison.OrdinalIgnoreCase);
+
+            int total = 0, stateful = 0;
+            var avatarPos = conn.Player.CurrentAvatar.RegionLocation.Position;
+            var aabb = region.Aabb;
+            var sphere = nearMode
+                ? new MHServerEmu.Core.Collisions.Sphere(avatarPos, 2000f)
+                : new MHServerEmu.Core.Collisions.Sphere(aabb.Center, MathF.Max(aabb.Width, aabb.Length));
+            var ctx = new MHServerEmu.Games.Entities.EntityRegionSPContext(MHServerEmu.Games.Entities.EntityRegionSPContextFlags.AllPartitions);
+
+            var rows = new List<(float dist, string text)>();
+            foreach (MHServerEmu.Games.Entities.WorldEntity we in region.IterateEntitiesInVolume(sphere, ctx))
+            {
+                if (we == null) continue;
+                total++;
+
+                PrototypeId stateRef = we.Properties[PropertyEnum.EntityState];
+                if (stateRef != PrototypeId.Invalid) stateful++;
+
+                if (nearMode)
+                {
+                    float dist = MHServerEmu.Core.VectorMath.Vector3.Distance2D(avatarPos, we.RegionLocation.Position);
+                    string state = stateRef != PrototypeId.Invalid ? $" state={GameDatabase.GetPrototypeName(stateRef).Split('/')[^1]}" : "";
+                    rows.Add((dist, $"{dist,6:F0}u  {we.GetType().Name,-14} id={we.Id,-5} {we.PrototypeName}{state}" +
+                                    $"  [dormant={we.IsDormant} untargetable={we.IsUntargetable} interactableProp={(int)we.Properties[PropertyEnum.Interactable]} collides={we.Bounds.CollisionType}]"));
+                    continue;
+                }
+
+                if (stateRef == PrototypeId.Invalid) continue;
+                var stateProto = GameDatabase.GetPrototype<EntityStatePrototype>(stateRef);
+                string door = stateProto is DoorEntityStatePrototype d ? $" DOOR IsOpen={d.IsOpen}" : "";
+                sb.AppendLine($"--- {we.PrototypeName}  (id={we.Id}, {we.GetType().Name})");
+                sb.AppendLine($"    state={GameDatabase.GetPrototypeName(stateRef)}{door}  pos={we.RegionLocation.Position.ToStringNames()}");
+            }
+
+            if (nearMode)
+            {
+                rows.Sort((a, b) => a.dist.CompareTo(b.dist));
+                foreach (var r in rows) sb.AppendLine(r.text);
+            }
+
+            sb.AppendLine($"=== {stateful} stateful of {total} entit(ies){(nearMode ? " (near mode, 2000u)" : "")} ===");
+            Logger.Info(sb.ToString());
+            return $"{stateful} stateful entit(ies) of {total} in {region.PrototypeName}. See server log.";
+        }
+
         [Command("regionkismet")]
         [CommandDescription("Report which cutscene (kismet) sources a region can fire. Arg = region name substring.")]
         public string DumpRegionKismet(string[] @params, NetClient client)

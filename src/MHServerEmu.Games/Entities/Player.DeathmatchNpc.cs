@@ -141,6 +141,12 @@ namespace MHServerEmu.Games.Entities
             "Regions/Story/CH06FortStryker/Areas/ArmyBase/zzzArmyBaseInstances/SCSewer2Region.prototype",      // limit 40, lvl 37
             "Regions/EndGame/DangerRoomMode/zzzDeprecatedAreas/Unused/Sewers/EDSewers1Region.prototype",       // limit 5
             "Regions/EndGame/DangerRoomMode/UniqueScenarios/StaticChallenges/CosmicDoop/DRRegionStaticChallengeCosmicDoopCosmic.prototype", // lvl 63, own start target, no kismet — see PlayerLimit note below
+            "Regions/StoryRevamp/CH03Madripoor/TreasureRooms/LowTown/DarkAlley/TRDarkAlleyRegion.prototype", // Madripoor back alley, lvl 22 — no metagame, no kismet, own start target
+            "Regions/StoryRevamp/CH06FortStryker/TreasureRooms/TRKillHouse/SCKillHouseRegion.prototype",    // Fort Stryker kill house, lvl 34 — no metagame, no kismet, own start target
+            "Regions/StoryRevamp/CH03Madripoor/TreasureRooms/BambooForest/SacredDojo/TRSacredDojoRegion.prototype", // bamboo-forest dojo, lvl 19 — no metagame, no kismet, own start target
+            "Regions/StoryRevamp/CH06FortStryker/TreasureRooms/TRHangarAirstrip/SCHangarAirstripRegion.prototype", // hangar + airstrip, lvl 35 — no metagame, no kismet, own start target
+            "Regions/StoryRevamp/CH06FortStryker/TreasureRooms/TRMissileSilo/SCMissileSiloRegion.prototype", // missile silo, lvl 35 — no metagame, no kismet, own start target
+            "Regions/StoryRevamp/CH04EastSide/TreasureRooms/CH04TR08LavamanCaveRegion.prototype",           // lava cave, lvl 28 — no metagame, no kismet, own start target
 
             // MOVED to the Teams pool 2026-08-06 on request:
             //   Regions/EndGame/DangerRoomMode/Marsh/Testing/DRMarshRegionTestingOnly
@@ -174,6 +180,10 @@ namespace MHServerEmu.Games.Entities
             "Regions/EndGame/DangerRoomMode/Marsh/Testing/DRMarshRegionTestingOnly.prototype",     // Danger Room marsh
             "Regions/EndGame/DangerRoomMode/AIMFacility/Testing/DRAIMBase1RegionTestingOnly.prototype", // Danger Room AIM base — limit 40, own start target, no kismet
             "Metagame/DefenderPvP/Regions/PvPDefenderRegion.prototype",                            // purpose-built PvP arena — limit 10, own start target, no kismet
+            "Regions/StoryRevamp/CH08Latveria/TreasureRooms/TRLaveriaCrypt/TRLatverianCryptRegion.prototype", // Latverian crypt, lvl 47 — no metagame, no kismet, own start target
+            "Regions/StoryRevamp/CH09Asgard/TreasureRooms/TRNorwayTomb/TRTombRegion.prototype",              // Norway tomb, lvl 50 — no metagame, no kismet, own start target
+            "Regions/StoryRevamp/CH09Asgard/TreasureRooms/TRNorwayRuin/TRRuinRegion.prototype",              // Norway ruin, lvl 50 — no metagame, no kismet, own start target
+            "Regions/EndGame/DangerRoomMode/UniqueScenarios/StaticChallenges/BroodShip/DRRegionStaticChallengeBroodShipCosmic.prototype", // Brood ship, lvl 63 — ProgressionGates removed by the sterilizer
 
             // REMOVED 2026-08-06 on request, played badly for 5v5:
             //   XManhattanRegion1to60          (level-banded twin of XManhattanRegion60Cosmic)
