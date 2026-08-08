@@ -413,6 +413,59 @@ namespace MHServerEmu.Games.Entities
         /// mesh test but have no backing cell). That is the difference from the
         /// geometric ring, which invents points and hopes they land on the map.
         /// </summary>
+        /// <summary>
+        /// True when the enemy anchor was pinned to the arena's boss spawn —
+        /// the placement tick must not re-pick it in that case.
+        /// </summary>
+        private bool _tdmEnemyAnchorPinned;
+
+        /// <summary>
+        /// The verified-walkable point in the region farthest from
+        /// <paramref name="from"/> — same cell-centre sampling and validation
+        /// as TryPickDispersedAnchors, different selection criterion.
+        /// </summary>
+        private bool TryPickFarthestWalkablePoint(Region region, Vector3 from, float avatarRadius, out Vector3 best)
+        {
+            best = Vector3.Zero;
+            if (region == null) return false;
+
+            try
+            {
+                var walkCheck = new Navi.DefaultContainsPathFlagsCheck(Navi.PathFlags.Walk);
+                float probeRadius = MathF.Max(20f, avatarRadius);
+                List<Vector3> candidates = new();
+
+                foreach (Cell cell in region.Cells)
+                {
+                    Vector3 cellCentre = cell.RegionBounds.Center;
+                    float half = MathF.Max(0f, cell.RegionBounds.Width * 0.25f);
+
+                    TryAddAnchorCandidate(region, cellCentre, probeRadius, walkCheck, candidates);
+                    if (half > 0f)
+                    {
+                        TryAddAnchorCandidate(region, cellCentre + new Vector3(half, half, 0f), probeRadius, walkCheck, candidates);
+                        TryAddAnchorCandidate(region, cellCentre + new Vector3(-half, -half, 0f), probeRadius, walkCheck, candidates);
+                    }
+                }
+
+                float bestDist = -1f;
+                foreach (Vector3 c in candidates)
+                {
+                    float d = Vector3.DistanceSquared2D(from, c);
+                    if (d <= bestDist) continue;
+                    bestDist = d;
+                    best = c;
+                }
+
+                return bestDist > 0f;
+            }
+            catch (Exception ex)
+            {
+                DeathmatchLogger.Warn($"[TDM] farthest-point pick failed: {ex.Message}");
+                return false;
+            }
+        }
+
         private bool TryPickDispersedAnchors(Region region, int count, float avatarRadius)
         {
             if (region == null || count <= 0) return false;
@@ -530,6 +583,44 @@ namespace MHServerEmu.Games.Entities
         {
             var rng = Game.Random;
             float radius = avatar?.Bounds.Radius ?? 40f;
+
+            // TEAMS bracket in a scenario arena: the enemy squad anchors where
+            // the arena's own boss would have spawned — the map's natural far
+            // end. The position was captured by ClearArena's sweep (it destroys
+            // the Spawner, so this is the only record of it). Validated as
+            // walkable before use; falls through to the normal pick otherwise.
+            // The player's own team anchor is corrected to the player's real
+            // position 250ms later regardless (DoDeathmatchPlayerPlacement), so
+            // only the ENEMY anchor matters here.
+            _tdmEnemyAnchorPinned = false;
+
+            if (_tdmTeamCount == 2 && region != null && LastArenaBossSpawnerPos.HasValue)
+            {
+                Vector3 bossPos = RegionLocation.ProjectToFloor(region, LastArenaBossSpawnerPos.Value);
+                var bossWalkCheck = new Navi.DefaultContainsPathFlagsCheck(Navi.PathFlags.Walk);
+                if (region.NaviMesh.Contains(bossPos, MathF.Max(radius, 40f), bossWalkCheck)
+                    && region.GetCellAtPosition(bossPos) != null)
+                {
+                    // Team 0 (the player's) still gets a generated anchor below
+                    // as a provisional value; team 1 is pinned to the boss room.
+                    ChooseDeathmatchTeamAnchorsDefault(region, avatar, rng, radius);
+                    _tdmTeamAnchors[1] = bossPos;
+                    _tdmEnemyAnchorPinned = true;
+                    DeathmatchLogger.Info($"[TDM] enemy team anchored at the arena's boss spawn ({bossPos.ToStringNames()})");
+                    ScheduleDeathmatchPlayerPlacement();
+                    return;
+                }
+
+                DeathmatchLogger.Warn($"[TDM] boss spawn at {LastArenaBossSpawnerPos.Value.ToStringNames()} is not walkable — using the normal anchor pick");
+            }
+
+            ChooseDeathmatchTeamAnchorsDefault(region, avatar, rng, radius);
+            ScheduleDeathmatchPlayerPlacement();
+        }
+
+        private void ChooseDeathmatchTeamAnchorsDefault(Region region, Avatar avatar,
+            Core.System.Random.GRandom rng, float radius)
+        {
 
             // NOTE: this runs from Avatar.OnEnteredWorld, BEFORE the avatar has
             // its final position — RegionLocation.Position reads (0,0) at this
@@ -750,6 +841,82 @@ namespace MHServerEmu.Games.Entities
 
             try
             {
+                // TEAMS bracket: the fight comes to the player, not the other
+                // way round. The player stays exactly where the region put
+                // them, their team's anchor becomes that spot, and any
+                // teammates that already spawned (at the provisional anchor,
+                // picked back when the avatar's position still read (0,0) —
+                // see ChooseDeathmatchTeamAnchors) are pulled in around them.
+                // Requested 2026-08-07: "my team needs to spawn at my location".
+                //
+                // Solos keeps the old behaviour — a 1v1v1 has no teammates, and
+                // teleporting the player onto a dispersed anchor IS the spawn
+                // spacing that keeps the three fighters apart.
+                if (_tdmTeamSize > 1)
+                {
+                    Vector3 myPos = avatar.RegionLocation.Position;
+                    _tdmTeamAnchors[_tdmMyTeam] = myPos;
+
+                    // Re-pick the ENEMY anchor now that the player's real
+                    // position is finally known. The original anchors were
+                    // dispersed relative to a PROVISIONAL team-0 point chosen
+                    // while the avatar still read (0,0) — if the region's start
+                    // target happens to sit near the enemy's anchor, both teams
+                    // gather in the same area (reported live 2026-08-07). The
+                    // enemy now anchors at the verified-walkable point farthest
+                    // from where the player actually stands — the opposite side
+                    // of the map by construction. Boss-room pins are kept.
+                    if (_tdmTeamCount == 2 && _tdmEnemyAnchorPinned == false
+                        && TryPickFarthestWalkablePoint(avatar.Region, myPos, avatar.Bounds.Radius, out Vector3 farPoint))
+                    {
+                        _tdmTeamAnchors[1] = farPoint;
+                        DeathmatchLogger.Info($"[TDM] enemy anchor re-picked opposite the player: {farPoint.ToStringNames()} ({Vector3.Distance2D(myPos, farPoint):F0}u away)");
+                    }
+
+                    // Corrective sweep over EVERY combatant on EVERY team — not
+                    // just the player's. The initial spawn placement can silently
+                    // fail (ChangeRegionPosition no-ops when the point has no
+                    // backing cell — documented on the spawn path, which is why
+                    // it verifies its moves), and a combatant it failed for is
+                    // left stranded wherever it materialized, which reads as
+                    // "my team spawned across the map". Anyone farther than the
+                    // gather radius from their team's anchor is re-placed here,
+                    // verified, and retried once directly on the anchor.
+                    Regions.Region region = avatar.Region;
+                    float gatherRadius = DeathmatchDuoSpread * 2f;
+                    int moved = 0, stranded = 0;
+                    foreach (var kvp in _tdmCombatantTeam)
+                    {
+                        if (kvp.Key == avatar.Id) continue;
+                        if (Game.EntityManager.GetEntity<Agent>(kvp.Key) is not Agent mate || mate.IsInWorld == false) continue;
+
+                        Vector3 anchor = _tdmTeamAnchors[kvp.Value];
+                        if (Vector3.Distance2D(mate.RegionLocation.Position, anchor) <= gatherRadius) continue;
+
+                        Vector3 pos = Avatar.ChooseScatteredArenaPos(region, anchor, anchor, Game.Random,
+                            mate.Bounds.Radius, 60f, DeathmatchDuoSpread);
+                        mate.Locomotor?.Stop();
+                        mate.ChangeRegionPosition(pos, null);
+
+                        // Verify — and on a silent no-op, retry on the anchor
+                        // itself, which was validated walkable when chosen.
+                        if (Vector3.Distance2D(mate.RegionLocation.Position, pos) > 200f)
+                        {
+                            mate.ChangeRegionPosition(anchor, null);
+                            if (Vector3.Distance2D(mate.RegionLocation.Position, anchor) > 200f)
+                            {
+                                stranded++;
+                                DeathmatchLogger.Warn($"[TDM] combatant {kvp.Key} ({mate.PrototypeDataRef.GetNameFormatted()}) STRANDED at {mate.RegionLocation.Position.ToStringNames()} — both placement attempts no-opped (team {kvp.Value} anchor {anchor.ToStringNames()})");
+                                continue;
+                            }
+                        }
+                        moved++;
+                    }
+
+                    DeathmatchLogger.Info($"[TDM] {GetName()}: team {_tdmMyTeam} anchored at the player ({myPos.ToStringNames()}); gather sweep moved {moved}, stranded {stranded}");
+                    return;
+                }
+
                 avatar.Locomotor?.Stop();
                 avatar.ChangeRegionPosition(_tdmTeamAnchors[_tdmMyTeam], null);
                 DeathmatchLogger.Info($"[TDM] {GetName()}: placed at team {_tdmMyTeam} anchor");
