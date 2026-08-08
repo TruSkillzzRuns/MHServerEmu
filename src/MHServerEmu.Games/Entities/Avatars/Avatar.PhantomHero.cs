@@ -2259,6 +2259,15 @@ namespace MHServerEmu.Games.Entities.Avatars
         // dangerous without going overboard.
         private const float EnemyPhantomHealthMult = 8.0f;
 
+        // Deathmatch HP — same value for both teams (unlike the 45.0/8.0
+        // friendly/enemy split above, which was tuned for solo PvE and would
+        // otherwise leave deathmatch opponents absurdly squishy relative to
+        // the player's own real, unscaled gear damage). Set a bit above the
+        // existing friendly baseline per live feedback ("could use a little
+        // more HP" on both sides after the deathmatch damage-profile fix) —
+        // tune this one constant if matches still end too fast either way.
+        private const float DeathmatchPhantomHealthMult = 55.0f;
+
         // Per-phantom "downed since" timestamp — 0 when alive.
         // Populated on the first tick that observes IsDead; removed on the
         // first alive tick after a revive so the alive branch can detect
@@ -3342,6 +3351,25 @@ namespace MHServerEmu.Games.Entities.Avatars
         private const float EnemyPhantomDmgRatingLvl1  = 0f;
         private const float EnemyPhantomDmgRatingLvl60 = 1250f;
 
+        // Deathmatch PvP damage curve — applied to every combatant in the
+        // mode, ally or opponent, instead of either curve above. Deathmatch
+        // opponents were being spawned through SpawnEnemyPhantomHero and so
+        // inherited the enemy/rogue curve above, which was tuned for one
+        // human fighting one solo rogue threat, not for facing 2-4
+        // simultaneous PvP combatants at once. Deliberately at the LOW end
+        // (below even the friendly curve): a fair fight needs headroom for
+        // real gear and skill to matter, not a phantom that already hits
+        // like a geared endgame rogue on top of everything else the
+        // aggregate DamageMult picks up (see ApplyPhantomDamageScaling's
+        // deathmatch branch and the SpawnPhantomHeroCore MiniBoss-rank-tag
+        // skip below for the other half of this fix).
+        private const float DeathmatchPhantomDmgMultLvl1  = 1.0f;
+        private const float DeathmatchPhantomDmgMultLvl60 = 1.35f;
+        private const float DeathmatchPhantomDmgPctBonusLvl1  = 0.0f;
+        private const float DeathmatchPhantomDmgPctBonusLvl60 = 0.25f;
+        private const float DeathmatchPhantomDmgRatingLvl1  = 0f;
+        private const float DeathmatchPhantomDmgRatingLvl60 = 900f;
+
         // Follow-stop bounds. 50u = "on top of the target" (old behaviour),
         // 1000u = a comfortable ranged-cast distance well inside the widest
         // player-attack ranges (~1400u for artillery-tier abilities). If a
@@ -4413,13 +4441,21 @@ namespace MHServerEmu.Games.Entities.Avatars
             host.UpdatePhantomGear(phantom.Id, applied);
         }
 
-        private static void ApplyPhantomDamageScaling(Agent phantom, int level, bool enemy = false)
+        private static void ApplyPhantomDamageScaling(Agent phantom, int level, bool enemy = false, bool deathmatch = false)
         {
             float t = Math.Clamp((level - 1) / 59f, 0f, 1f);
             t *= t; // quadratic — shallow through story levels, steep into endgame
 
             float dmgMult, pctBonus, dmgRating;
-            if (enemy)
+            if (deathmatch)
+            {
+                // Same curve for both teams — see DeathmatchPhantomDmgMultLvl60's
+                // comment for why this is its own profile, not the enemy one.
+                dmgMult   = DeathmatchPhantomDmgMultLvl1     + t * (DeathmatchPhantomDmgMultLvl60     - DeathmatchPhantomDmgMultLvl1);
+                pctBonus  = DeathmatchPhantomDmgPctBonusLvl1 + t * (DeathmatchPhantomDmgPctBonusLvl60 - DeathmatchPhantomDmgPctBonusLvl1);
+                dmgRating = DeathmatchPhantomDmgRatingLvl1   + t * (DeathmatchPhantomDmgRatingLvl60   - DeathmatchPhantomDmgRatingLvl1);
+            }
+            else if (enemy)
             {
                 dmgMult   = EnemyPhantomDmgMultLvl1     + t * (EnemyPhantomDmgMultLvl60     - EnemyPhantomDmgMultLvl1);
                 pctBonus  = EnemyPhantomDmgPctBonusLvl1 + t * (EnemyPhantomDmgPctBonusLvl60 - EnemyPhantomDmgPctBonusLvl1);
@@ -4492,6 +4528,35 @@ namespace MHServerEmu.Games.Entities.Avatars
             {
                 float correctedBase = (2f * EnemyPhantomDamageMultCap) - afterFirstSet;
                 phantom.Properties[PropertyEnum.DamageMult] = Math.Max(0.1f, correctedBase);
+            }
+        }
+
+        /// <summary>
+        /// Deathmatch enemy phantoms keep the MiniBoss Rank tag (it's the
+        /// source of their orange glow — see the call site), but that means
+        /// the same Mod-bundle stacking ClampEnemyPhantomDamageMult exists
+        /// to correct for also lands on HealthMaxMult, which that method
+        /// never touches. Same read-then-solve-for-base algebra as
+        /// ClampEnemyPhantomDamageMult, applied to both properties,
+        /// targeting the exact deathmatch curve values instead of a fixed
+        /// cap.
+        /// </summary>
+        private static void CorrectDeathmatchPhantomStatsAfterRankTag(Avatar phantom, int level)
+        {
+            float t = Math.Clamp((level - 1) / 59f, 0f, 1f);
+            t *= t;
+            float targetDmgMult = DeathmatchPhantomDmgMultLvl1 + t * (DeathmatchPhantomDmgMultLvl60 - DeathmatchPhantomDmgMultLvl1);
+            float targetHealthMult = ScaleHealthMultForLevel(DeathmatchPhantomHealthMult, level);
+
+            float currentDmgMult = phantom.Properties[PropertyEnum.DamageMult];
+            if (Math.Abs(currentDmgMult - targetDmgMult) > 0.01f)
+                phantom.Properties[PropertyEnum.DamageMult] = Math.Max(0.1f, (2f * targetDmgMult) - currentDmgMult);
+
+            float currentHealthMult = phantom.Properties[PropertyEnum.HealthMaxMult];
+            if (Math.Abs(currentHealthMult - targetHealthMult) > 0.01f)
+            {
+                phantom.Properties[PropertyEnum.HealthMaxMult] = Math.Max(0.1f, (2f * targetHealthMult) - currentHealthMult);
+                phantom.ResetResources(false);
             }
         }
 
@@ -6434,6 +6499,13 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] AOI broadcast failed: {ex.Message}"); }
 
+            // Hoisted above the enemy/friendly branch below so both sides
+            // (and the ApplyPhantomDamageScaling call further down) can see
+            // it — Deathmatch needs its own damage profile regardless of
+            // which team a phantom is on.
+            Player realHost = GetOwnerOfType<Player>();
+            bool inDeathmatch = realHost != null && realHost.IsDeathmatchActive;
+
             if (enemy)
             {
                 // Alliance flip: hostile both ways with the player alliance,
@@ -6485,10 +6557,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                 //
                 // _deathmatchActive is set in OnAvatarEnteredRegionForDeathmatch
                 // (Player.Deathmatch.cs:240) before any phantom spawns, so it is
-                // reliably true here for both brackets.
-                Player realHost = GetOwnerOfType<Player>();
-                bool inDeathmatch = realHost != null && realHost.IsDeathmatchActive;
-
+                // reliably true here for both brackets. (realHost/inDeathmatch
+                // now computed once above, before this if(enemy) block.)
                 if (realHost != null && (realHost.IsEndlessChallengeActive || inDeathmatch))
                     phantomAvatar.Properties[PropertyEnum.NoLootDrop] = true;
 
@@ -6509,10 +6579,12 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // level 1) up to the full intended tankiness at level 60,
                 // using the same quadratic curve ApplyPhantomDamageScaling
                 // already uses for the matching damage-side scaling.
-                float ambushHpBase = nemesisRank > 0
-                    ? Player.NemesisHealthMultForRank(nemesisRank) * (1f + Player.NemesisEscapeHealthBonusPerEscape * nemesisEscapeCount)
-                        * (1f + Player.NemesisGrudgeHealthBonusPerPoint * Math.Max(0, nemesisGrudgeScore))
-                    : EnemyPhantomHealthMult;
+                float ambushHpBase = inDeathmatch
+                    ? DeathmatchPhantomHealthMult
+                    : nemesisRank > 0
+                        ? Player.NemesisHealthMultForRank(nemesisRank) * (1f + Player.NemesisEscapeHealthBonusPerEscape * nemesisEscapeCount)
+                            * (1f + Player.NemesisGrudgeHealthBonusPerPoint * Math.Max(0, nemesisGrudgeScore))
+                        : EnemyPhantomHealthMult;
                 phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = ScaleHealthMultForLevel(ambushHpBase, effectiveLevel);
                 phantomAvatar.ResetResources(false);
 
@@ -6524,19 +6596,31 @@ namespace MHServerEmu.Games.Entities.Avatars
                 //     over their head, more visible than a stock Popcorn.
                 // No effect on loot/XP — phantoms already don't credit
                 // scoring or drop tables (see PurgeEnemyPhantoms path).
-                try
+                //
+                // Kept ON for Deathmatch too — confirmed live (2026-08-08)
+                // this is where the enemy team's orange glow/elite visual
+                // actually comes from; removing the tag to stop the Mod
+                // bundle's stat contamination (see header) also silently
+                // killed the one thing making the enemy team visually
+                // distinct from your own. CorrectDeathmatchPhantomStatsAfterRankTag
+                // below re-solves DamageMult/HealthMaxMult back onto the
+                // deathmatch curve right after SetSimulated fires, so the
+                // glow survives without the stat stacking coming back.
                 {
-                    var globals = GameDatabase.PopulationGlobalsPrototype;
-                    if (globals != null)
+                    try
                     {
-                        var rankProto = nemesisRank > 0
-                            ? globals.GetRankByEnum(Rank.Boss)
-                            : globals.GetRankByEnum(Rank.MiniBoss);
-                        if (rankProto != null)
-                            phantomAvatar.Properties[PropertyEnum.Rank] = rankProto.DataRef;
+                        var globals = GameDatabase.PopulationGlobalsPrototype;
+                        if (globals != null)
+                        {
+                            var rankProto = nemesisRank > 0
+                                ? globals.GetRankByEnum(Rank.Boss)
+                                : globals.GetRankByEnum(Rank.MiniBoss);
+                            if (rankProto != null)
+                                phantomAvatar.Properties[PropertyEnum.Rank] = rankProto.DataRef;
+                        }
                     }
+                    catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Enemy] rank tag failed: {ex.Message}"); }
                 }
-                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Enemy] rank tag failed: {ex.Message}"); }
             }
             else if (invincible)
             {
@@ -6552,15 +6636,19 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // defensives — phantoms eat every hit face-first. A HP
                 // buff keeps them alive long enough to matter without
                 // trivializing content. Refill after the mult applies.
-                phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = ScaleHealthMultForLevel(PhantomHealthMult, effectiveLevel);
+                // Deathmatch teammates use the same symmetric HP profile the
+                // enemy branch above uses — see DeathmatchPhantomHealthMult.
+                phantomAvatar.Properties[PropertyEnum.HealthMaxMult] = ScaleHealthMultForLevel(inDeathmatch ? DeathmatchPhantomHealthMult : PhantomHealthMult, effectiveLevel);
                 phantomAvatar.ResetResources(false);
             }
 
             // Damage scaling — see ApplyPhantomDamageScaling for the level
             // curve. Friendly phantoms use the "helpful teammate" anchor;
             // enemy phantoms use a higher-anchored curve so rogue encounters
-            // actually threaten a geared 60.
-            ApplyPhantomDamageScaling(phantomAvatar, effectiveLevel, enemy);
+            // actually threaten a geared 60. Deathmatch overrides both with
+            // its own lower PvP curve, applied to every combatant regardless
+            // of team — see DeathmatchPhantomDmgMultLvl60's comment.
+            ApplyPhantomDamageScaling(phantomAvatar, effectiveLevel, enemy, inDeathmatch);
 
             // Nemesis-only damage boost — applied AFTER ApplyPhantomDamageScaling
             // so it doesn't get overwritten by the level curve. Per-rank
@@ -6607,6 +6695,14 @@ namespace MHServerEmu.Games.Entities.Avatars
             // can push the aggregate past a sane ceiling on its own.
             if (enemy) ClampEnemyPhantomDamageMult(phantomAvatar);
             if (enemy) LogEnemyPhantomFinalStats(phantomAvatar, nemesisRank);
+
+            // Deathmatch enemy phantoms keep the MiniBoss Rank tag (for the
+            // orange glow) but its Mod bundle just added to both DamageMult
+            // AND HealthMaxMult above, same mechanism ClampEnemyPhantomDamageMult
+            // corrects for damage alone. Re-solve BOTH back onto the
+            // deathmatch curve here so the visual survives without its
+            // numbers coming back.
+            if (enemy && inDeathmatch) CorrectDeathmatchPhantomStatsAfterRankTag(phantomAvatar, effectiveLevel);
 
             // Book-keeping goes on the human Player (source of truth) — not on
             // this Avatar shell — so `!phantom clear` and tick reattachment
