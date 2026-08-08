@@ -168,7 +168,6 @@ namespace MHServerEmu.Games.Entities
             "Regions/EndGame/TierX/PatrolMidtown/AltRegions/XManhattanRegion60Cosmic.prototype",   // Midtown Patrol, lvl 63 (1.48/1.52)
             "Regions/EndGame/TierX/PatrolMidtown/AltRegions/MidtownPatrolL1to60Region.prototype",  // same map, 1.53 name — only one of the two resolves per version
             "Regions/EndGame/Terminals/Green/AsgardInstance/AltRegions/DailyGAsgardINSTRegionL60.prototype", // Asgard, lvl 63
-            "Regions/StoryRevamp/CH02JerseyDocks/CH0205ConstructionRegion.prototype",              // verticality, scaffolding
             "Regions/StoryRevamp/CH02JerseyDocks/CH0208CanneryRegion.prototype",                   // industrial interior
             "Regions/StoryRevamp/CH01HellsKitchen/CH0101HellsKitchenRegion.prototype",             // street layout, alleys
             "Regions/ZZZDemoBranch/PAX2013Demo/PAX2013SavageRegion.prototype",                     // open savage land
@@ -180,6 +179,8 @@ namespace MHServerEmu.Games.Entities
             //   XManhattanRegion1to60          (level-banded twin of XManhattanRegion60Cosmic)
             //   CH0201ShippingYardRegion
             //   SCSewer2Region                 (kept in the Solos pool, too tight for ten)
+            // REMOVED 2026-08-08 on request:
+            //   CH0205ConstructionRegion
         };
 
         /// <summary>
