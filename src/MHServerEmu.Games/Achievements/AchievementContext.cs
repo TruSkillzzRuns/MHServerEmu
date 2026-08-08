@@ -55,7 +55,9 @@ namespace MHServerEmu.Games.Achievements
 
         public static Prototype GetPrototype(long prototypeGuid)
         {
-            if (prototypeGuid == 0) return null;
+            if (prototypeGuid == 0)
+                return null;
+
             PrototypeId protoRef = GameDatabase.GetDataRefByPrototypeGuid((PrototypeGuid)prototypeGuid);
             if (protoRef == PrototypeId.Invalid)
             {

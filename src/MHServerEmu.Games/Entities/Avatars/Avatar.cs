@@ -103,6 +103,9 @@ namespace MHServerEmu.Games.Entities.Avatars
 
         public AvatarPrototype AvatarPrototype { get => Prototype as AvatarPrototype; }
         public int PrestigeLevel { get => Properties[PropertyEnum.AvatarPrestigeLevel]; }
+#if GAME_VERSION_1_53
+        public int OmegaPrestigeLevel { get => Properties[PropertyEnum.AvatarOmegaPrestigeLevel]; }
+#endif
         public override bool IsAtLevelCap { get => CharacterLevel >= GetAvatarLevelCap(); }
         public override int Throwability { get => GetThrowability(); }
 
@@ -2142,6 +2145,14 @@ namespace MHServerEmu.Games.Entities.Avatars
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
             if (powerInfo.IsInPowerProgression)
             {
+#if GAME_VERSION_1_53
+                if (powerInfo.PassesCostumeRequirement(GetCurrentCostumePrototypeRef()) == false)
+                    return PowerProgressionInfo.RankLocked;
+
+                if (powerInfo.IsOmegaTrait() && (IsOmegaPrestigeEnabled() == false || OmegaPrestigeLevel <= 0))
+                    return PowerProgressionInfo.RankLocked;
+#endif
+
                 // Talents
                 if (powerInfo.IsTalent)
                 {
@@ -6492,7 +6503,17 @@ namespace MHServerEmu.Games.Entities.Avatars
         }
 #endif
 
-#endregion
+#if GAME_VERSION_1_53
+        public bool IsOmegaPrestigeEnabled()
+        {
+            AvatarPrototype avatarProto = AvatarPrototype;
+            if (!Verify.IsNotNull(avatarProto)) return false;
+
+            return avatarProto.IsOmegaPrestigeEnabled();
+        }
+#endif
+
+        #endregion
 
         #region Alternate Advancement
 

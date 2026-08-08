@@ -716,7 +716,10 @@ namespace MHServerEmu.Games.Entities
                 return int.MaxValue;
 
             const int maxTotalSlots = 4;
-            int realPlayerCount = Math.Max(1, region.PlayerCount);
+            // Region.PlayerCount was removed upstream — count via PlayerIterator instead.
+            int actualPlayerCount = 0;
+            foreach (Player _ in new PlayerIterator(region)) actualPlayerCount++;
+            int realPlayerCount = Math.Max(1, actualPlayerCount);
             int leftoverSlots = Math.Max(0, maxTotalSlots - realPlayerCount);
 
             if (realPlayerCount <= 1) return leftoverSlots; // solo: 3
