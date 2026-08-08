@@ -1591,6 +1591,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             ulong squadHostId = PhantomHost?.Id ?? 0;
             ulong squadFocusId = GetPhantomSquadFocusTarget(squadHostId, enemyMode,
                 Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond);
+            ulong committedTargetId = s_phantomCommittedTargetId.TryGetValue(phantom.Id, out ulong committedId) ? committedId : 0;
             bool diagWant = ShouldEmitPhantomDiag(phantom.Id);
             long nowMsSweep = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
             foreach (WorldEntity we in region.IterateEntitiesInVolume(sweepSphere, ctx))
@@ -1774,6 +1775,12 @@ namespace MHServerEmu.Games.Entities.Avatars
                 if (squadFocusId != 0 && we.Id == squadFocusId)
                     threat += PhantomThreatFocusWeight;
 
+                // Sticky — my own committed target from last tick keeps a lead
+                // so score jitter can't flip-flop me between two similar
+                // targets every tick. See PhantomThreatStickyWeight.
+                if (committedTargetId != 0 && we.Id == committedTargetId)
+                    threat += PhantomThreatStickyWeight;
+
                 candidates.Add((we, d, threat));
             }
             // Highest threat first. NOTE: the list is no longer distance-
@@ -1786,7 +1793,19 @@ namespace MHServerEmu.Games.Entities.Avatars
             // one scrum. Gated on the match roster, so every other mode keeps the
             // threat ordering it was tuned with.
             if (IsDeathmatchTeamCombatant(phantom.Id))
-                candidates.Sort(static (a, b) => a.distSq.CompareTo(b.distSq));
+            {
+                // Distance sort with a sticky discount — the committed target
+                // sorts as if it were at half its squared distance, so only a
+                // meaningfully closer rival displaces it. Not a static lambda:
+                // it has to capture the committed id.
+                ulong dmSticky = committedTargetId;
+                candidates.Sort((a, b) =>
+                {
+                    float da = a.we.Id == dmSticky ? a.distSq * DeathmatchStickyDistSqFactor : a.distSq;
+                    float db = b.we.Id == dmSticky ? b.distSq * DeathmatchStickyDistSqFactor : b.distSq;
+                    return da.CompareTo(db);
+                });
+            }
             else
                 candidates.Sort(static (a, b) => b.threat.CompareTo(a.threat));
 
@@ -1890,12 +1909,43 @@ namespace MHServerEmu.Games.Entities.Avatars
             PhantomCombatRangePref phantomRangePref =
                 PhantomHost?.GetCombatRangePref(phantom.PrototypeDataRef) ?? PhantomCombatRangePref.Auto;
 
-            // candidates[0] is the HIGHEST-THREAT target, not the nearest —
-            // the list is threat-sorted (see the scoring block in the sweep).
-            // This is what the phantom commits to and walks toward; range
-            // gating for actually swinging uses closestDistSq further down.
+            // Commit to the best target WE CAN SEE, falling back to the best
+            // overall only when nothing in the top of the list is visible.
+            //
+            // Committing purely to candidates[0] pinned phantoms to targets
+            // around corners: the sticky bonus then held that commitment tick
+            // after tick, the attack loop (correctly) refused to swing at a
+            // no-LoS target, and if the approach path also failed the phantom
+            // froze — observed live 2026-08-07, a Captain America standing at
+            // a corner doing nothing while the rest of the squad fought mobs
+            // it could plainly see. Scanning the top few candidates for one
+            // with line of sight costs at most a handful of raycasts and makes
+            // the phantom fight what is actually in front of it.
+            //
+            // (The LoS concept itself: the engine's own mob AI checks it in
+            // Combat.cs:166, UsePower.cs:360 and MoveTo.cs:192 — this AI
+            // historically checked none of them.)
             WorldEntity primaryTarget = candidates[0].we;
             float primaryDistSq = candidates[0].distSq;
+            bool primaryLoS = phantom.LineOfSightTo(primaryTarget);
+
+            if (primaryLoS == false)
+            {
+                int scan = Math.Min(4, candidates.Count);
+                for (int i = 1; i < scan; i++)
+                {
+                    if (phantom.LineOfSightTo(candidates[i].we) == false) continue;
+                    primaryTarget = candidates[i].we;
+                    primaryDistSq = candidates[i].distSq;
+                    primaryLoS = true;
+                    break;
+                }
+            }
+
+            // Record the commitment for next tick's sticky bonus — AFTER the
+            // visibility scan, so stickiness reinforces a target the phantom
+            // can actually fight, never one it is blind to.
+            s_phantomCommittedTargetId[phantom.Id] = primaryTarget.Id;
 
             // Always keep the Locomotor advancing toward the target — even when
             // we're inside attack range. Stopping while attacking was the reason
@@ -1917,6 +1967,16 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // wrong for ranged kits, and left the phantom stuck at 50u
                 // firing projectiles the client had to render at melee.
                 float followStopDist = ComputePhantomFollowStopDist(phantom, primaryTarget, phantomRangePref);
+
+                // No line of sight: standing at standoff range is useless, the
+                // wall between us doesn't care about projectile range. Tighten
+                // the stop distance toward melee so the phantom keeps walking —
+                // FollowEntity's navmesh path naturally goes AROUND the
+                // obstruction, and LoS opens somewhere along that path, at which
+                // point the normal standoff resumes next tick.
+                if (primaryLoS == false)
+                    followStopDist = MathF.Min(followStopDist, 100f);
+
                 bool ok = loco.FollowEntity(primaryTarget.Id, followStopDist, followStopDist, ref opts, false);
                 if (s_phantomLocoLogged.Add(phantom.Id))
                 {
@@ -1936,11 +1996,30 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // pathing failure — a body blinking across the arena reads as a
                 // bug to anyone watching, and this mode has no leash tying them
                 // to the player anyway. They re-path next tick or roam elsewhere.
-                if (ok == false
-                    && IsDeathmatchTeamCombatant(phantom.Id) == false
+                // Deathmatch combatants get no teleport rescue (a body blinking
+                // across the arena reads as a bug) — but they used to get NOTHING
+                // on a failed path, standing still until the roam logic happened
+                // to fire. The failure signal is instant (LastGeneratedPathResult
+                // is already read on this very line for the diag), so use it:
+                // roam to a fresh navmesh point on foot and approach from there.
+                // BOTH rescue gates below also fire when there is no line of
+                // sight, not only when out of attack range. "In range" through
+                // a wall is not in range in any way that matters — the attack
+                // loop refuses no-LoS targets, so a failed path to one used to
+                // fall through both rescues and freeze the phantom at the
+                // corner (the Captain America stall, 2026-08-07).
+                bool pathFailed = ok == false
                     && (loco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.Failed
-                     || loco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.FailedNaviMesh)
-                    && primaryDistSq > PhantomAttackRangeSq)
+                     || loco.LastGeneratedPathResult == MHServerEmu.Games.Navi.NaviPathResult.FailedNaviMesh);
+                bool stranded = primaryDistSq > PhantomAttackRangeSq || primaryLoS == false;
+
+                if (pathFailed && stranded && IsDeathmatchTeamCombatant(phantom.Id))
+                {
+                    TryDeathmatchRoam(phantom, region, rng);
+                    return;
+                }
+
+                if (pathFailed && stranded && IsDeathmatchTeamCombatant(phantom.Id) == false)
                 {
                     Vector3 targetPos = primaryTarget.RegionLocation.Position;
                     Vector3 rescuePos = ChoosePhantomLeashPos(region, targetPos, rng, phantom.Bounds.Radius);
@@ -1952,6 +2031,18 @@ namespace MHServerEmu.Games.Entities.Avatars
                         PhantomLogger.Info($"[PhantomHero:Loco] {phantom} path failed, force-leashed to {rescuePos.ToStringNames()} near target");
                     }
                     catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Loco] path-fail leash threw: {ex.Message}"); }
+                }
+
+                // Thin-wall stall: no line of sight, but FollowEntity considers
+                // us ARRIVED (inside the tightened 100u stop, path not failed) —
+                // the corner itself is between us. FollowEntity won't move a
+                // phantom that's already within stop distance, so path straight
+                // to the target's own position instead; the navmesh route bends
+                // around the geometry and LoS opens along the way.
+                if (primaryLoS == false && ok && loco.IsMoving == false)
+                {
+                    var stallOpts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(250) };
+                    loco.PathTo(primaryTarget.RegionLocation.Position, ref stallOpts);
                 }
             }
 
@@ -2024,7 +2115,19 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // burst-firing 2 attacks per second. Real players average
                 // closer to 1 attack per 800-1200 ms after animation locks.
                 long now = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
-                if (s_phantomNextAttackMs.TryGetValue(phantom.Id, out long nextAt) == false || now >= nextAt)
+                bool attackReady = s_phantomNextAttackMs.TryGetValue(phantom.Id, out long nextAt) == false || now >= nextAt;
+
+                // The statue window: arrived, in range, but the attack timer
+                // has not elapsed. This used to be a hard stand-still — the
+                // single most bot-like tell the AI had. A short cooldown-gated
+                // lateral step keeps them in motion between casts; the engine
+                // cancels the move automatically if a cast starts
+                // (Locomotor.Locomote respects ActivePower), so this can never
+                // delay an attack.
+                if (attackReady == false && loco != null && loco.IsMoving == false && closestHostile != null)
+                    TryPhantomCombatStrafe(phantom, region, closestHostile.RegionLocation.Position, now, rng);
+
+                if (attackReady)
                 {
                     // Try candidates in THREAT order. First one that
                     // ActivatePower accepts wins. Others get blacklisted only
@@ -2046,6 +2149,21 @@ namespace MHServerEmu.Games.Entities.Avatars
                         // perfectly attackable closer one — breaking here would
                         // silently skip it and the phantom would stand idle.
                         if (tryDistSq > PhantomAttackRangeSq) continue;
+
+                        // Line of sight — never swing at something behind a wall.
+                        // Without this, a LoS-requiring power fails on activation
+                        // and gets transient-blacklisted, which reads as the
+                        // phantom cycling its kit while hitting nothing. The
+                        // committed target's result is reused from the once-per-
+                        // tick check above; other candidates pay one raycast
+                        // each, and only when actually reached in this loop.
+                        // The target is NOT blacklisted for it — walls stop
+                        // blocking as soon as either side moves.
+                        bool hasLoS = tryTarget.Id == primaryTarget.Id
+                            ? primaryLoS
+                            : phantom.LineOfSightTo(tryTarget);
+                        if (hasLoS == false) continue;
+
                         PowerUseResult r = TryPhantomAttack(phantom, tryTarget, tryDistSq, rng);
                         if (r == PowerUseResult.Success)
                         {
@@ -3296,11 +3414,79 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// clearing it when one squadmate dies would drop the whole squad's
         /// focus target mid-fight.
         /// </remarks>
+        // ---- Combat strafe -------------------------------------------------
+        //
+        // A short sidestep during the gap between attacks. Perpendicular to the
+        // target direction (with a random sign and a little arc wobble) so the
+        // distance to the target stays roughly constant — this is repositioning,
+        // not disengaging, and must never fight the kite/standoff logic.
+        // Navmesh-validated exactly like the kite step.
+        private const long PhantomStrafeCooldownMs = 3500;
+        private const long PhantomStrafeCooldownJitterMs = 3000;
+        private const float PhantomStrafeDistMin = 140f;
+        private const float PhantomStrafeDistMax = 240f;
+        private static readonly Dictionary<ulong, long> s_phantomNextStrafeMs = new();
+
+        /// <summary>
+        /// Issues a lateral micro-move around <paramref name="threatPos"/>.
+        /// Returns true if a move was issued.
+        /// </summary>
+        private static bool TryPhantomCombatStrafe(Agent phantom, Region region, Vector3 threatPos,
+            long nowMs, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            if (region == null) return false;
+
+            if (s_phantomNextStrafeMs.TryGetValue(phantom.Id, out long nextAt) && nowMs < nextAt)
+                return false;
+
+            Vector3 phantomPos = phantom.RegionLocation.Position;
+            Vector3 toTarget = threatPos - phantomPos;
+            toTarget.Z = 0f;
+            if (Vector3.LengthSqr(toTarget) < 1f) return false;
+            toTarget = Vector3.Normalize(toTarget);
+
+            // Perpendicular, random side.
+            float side = rng.NextDouble() < 0.5 ? 1f : -1f;
+            Vector3 lateral = new(-toTarget.Y * side, toTarget.X * side, 0f);
+
+            float dist = PhantomStrafeDistMin + (float)rng.NextDouble() * (PhantomStrafeDistMax - PhantomStrafeDistMin);
+            var walkCheck = new DefaultContainsPathFlagsCheck(PathFlags.Walk);
+            float radius = MathF.Max(20f, phantom.Bounds.Radius);
+
+            // Straight sideways first, then slight forward/backward arcs so a
+            // phantom against geometry slides along it instead of giving up.
+            ReadOnlySpan<float> arcs = stackalloc float[] { 0f, 0.35f, -0.35f, 0.7f, -0.7f };
+            for (int i = 0; i < arcs.Length; i++)
+            {
+                float a = arcs[i];
+                float cos = MathF.Cos(a), sin = MathF.Sin(a);
+                Vector3 dir = new(lateral.X * cos - lateral.Y * sin, lateral.X * sin + lateral.Y * cos, 0f);
+                Vector3 candidate = phantomPos + dir * dist;
+                candidate = RegionLocation.ProjectToFloor(region, candidate);
+                if (region.NaviMesh.Contains(candidate, radius, walkCheck) == false) continue;
+
+                var opts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(250) };
+                if (phantom.Locomotor?.MoveTo(candidate, ref opts) == true)
+                {
+                    s_phantomNextStrafeMs[phantom.Id] = nowMs + PhantomStrafeCooldownMs
+                        + (long)(rng.NextDouble() * PhantomStrafeCooldownJitterMs);
+                    return true;
+                }
+            }
+
+            // Nothing walkable either side — try again in a shortened window
+            // rather than burning the full cooldown on a failure.
+            s_phantomNextStrafeMs[phantom.Id] = nowMs + 1000;
+            return false;
+        }
+
         private static void PrunePhantomAiStateFor(ulong phantomId)
         {
             s_phantomNextKiteMs.Remove(phantomId);
             s_phantomNextSupportMs.Remove(phantomId);
             s_phantomNextHazardMs.Remove(phantomId);
+            s_phantomNextStrafeMs.Remove(phantomId);
+            s_phantomCommittedTargetId.Remove(phantomId);
         }
 
         // ---- Hazard / ground-effect avoidance -----------------------------
@@ -4361,6 +4547,27 @@ namespace MHServerEmu.Games.Entities.Avatars
         private const float PhantomThreatFinishWeight   = 50f;   // nearly dead — finish it
         private const float PhantomThreatFocusWeight    = 40f;   // squad focus-fire convergence
         private const float PhantomThreatFinishHpPct    = 0.35f; // "nearly dead" threshold
+
+        // Sticky targeting — a bonus for whatever this phantom committed to
+        // LAST tick. The sweep re-sorts from scratch every tick, so two targets
+        // whose scores hover near each other can alternate rank tick after
+        // tick, and every swap wastes facing, pathing, and any cast that was
+        // about to go out. The bonus means an incumbent only loses its spot to
+        // a challenger that is genuinely better, not to score jitter.
+        //
+        // 45 sits deliberately between FocusWeight (40) and FinishWeight (50):
+        // squad focus alone cannot yank a phantom off its current target, but
+        // a kill-securable one still can.
+        private const float PhantomThreatStickyWeight   = 45f;
+
+        // Deathmatch sorts by distance, so stickiness there is a distance
+        // DISCOUNT instead of a threat bonus: the committed target's distSq is
+        // halved for ordering, which means a rival has to be closer than ~70%
+        // of the committed target's distance (sqrt 0.5) to steal the slot.
+        private const float DeathmatchStickyDistSqFactor = 0.5f;
+
+        /// <summary>Target this phantom committed to on its previous tick — see PhantomThreatStickyWeight.</summary>
+        private static readonly Dictionary<ulong, ulong> s_phantomCommittedTargetId = new();
 
         // Squad focus-fire: the first phantom of a given host to commit to a
         // target publishes it here; squadmates get a scoring bonus for the
