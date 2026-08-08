@@ -304,6 +304,17 @@ namespace MHServerEmu.Games.Entities
         // see SnapshotTrialWarpForTransfer).
         private bool _trialWarpPending;
 
+        /// <summary>
+        /// Minimum gap between the START of one Trial warp and the next — same
+        /// mitigation, same shape as Player.BountyHunt.cs's BountyHuntMinIntervalMs
+        /// (a live-repro'd client freeze from back-to-back full region generate/
+        /// teardown cycles faster than normal play). Applied here too for
+        /// consistency: this system warps through the exact same region-transfer
+        /// path Bounty Hunt does.
+        /// </summary>
+        private const int TrialWarpMinIntervalMs = 15_000;
+        private long _lastTrialWarpStartMs;
+
         private Region _trialArenaRegion;
         private string _trialHeroName;
         private long _trialStartMs;
@@ -363,6 +374,9 @@ namespace MHServerEmu.Games.Entities
             // was a plain field on the now-destroyed old Player). See
             // SnapshotTrialWarpForTransfer/MigrationData.PendingTrialWarp.
             var mig = PlayerConnection?.MigrationData;
+            if (mig != null)
+                _lastTrialWarpStartMs = mig.LastTrialWarpStartMs;
+
             if (mig != null && mig.PendingTrialWarp)
             {
                 mig.PendingTrialWarp = false;
@@ -411,9 +425,14 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         internal void SnapshotTrialWarpForTransfer()
         {
-            if (_trialWarpPending == false) return;
             var mig = PlayerConnection?.MigrationData;
             if (mig == null) return;
+
+            // Always persisted, regardless of whether a warp is actually pending —
+            // the cooldown has to survive every hop, not just the one it started.
+            mig.LastTrialWarpStartMs = _lastTrialWarpStartMs;
+
+            if (_trialWarpPending == false) return;
             mig.PendingTrialWarp = true;
             _trialWarpPending = false; // this Game instance is going away
         }
@@ -484,9 +503,19 @@ namespace MHServerEmu.Games.Entities
             Avatar avatar = CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false) return;
 
+            long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            long sinceLastMs = nowMs - _lastTrialWarpStartMs;
+            if (_lastTrialWarpStartMs > 0 && sinceLastMs < TrialWarpMinIntervalMs)
+            {
+                int waitSec = (int)Math.Ceiling((TrialWarpMinIntervalMs - sinceLastMs) / 1000.0);
+                try { SendBannerLines($"Too soon after your last Trial attempt — wait {waitSec}s and try again"); } catch { }
+                return;
+            }
+
             RegionPrototypeId[] validPool = GetValidTrialArenaPool();
             RegionPrototypeId chosen = validPool[Game.Random.Next(validPool.Length)];
 
+            _lastTrialWarpStartMs = nowMs;
             _trialWarpPending = true;
             avatar.TeleportToRegionFromWeb((ulong)chosen);
             TrialLogger.Info($"[TrialOfImpossible] {GetName()}: confirmed — warping to {chosen}");

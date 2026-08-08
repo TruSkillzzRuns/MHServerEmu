@@ -94,6 +94,15 @@ namespace MHServerEmu.Games.Entities
         private const int DeathmatchSplintersPerKill = 10;
 
         private bool _deathmatchWarpPending;
+
+        /// <summary>
+        /// Minimum gap between the START of one Deathmatch warp and the next —
+        /// same shape as Player.BountyHunt.cs's BountyHuntMinIntervalMs, applied
+        /// here for consistency: this system warps through the same
+        /// region-transfer path.
+        /// </summary>
+        private const int DeathmatchWarpMinIntervalMs = 15_000;
+        private long _lastDeathmatchWarpStartMs;
         private bool _deathmatchActive;
         private int _deathmatchKillTarget;
         private int _deathmatchPlayerScore;
@@ -195,6 +204,15 @@ namespace MHServerEmu.Games.Entities
 
             if (killTarget <= 0) killTarget = DeathmatchDefaultKillTarget;
 
+            long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            long sinceLastMs = nowMs - _lastDeathmatchWarpStartMs;
+            if (_lastDeathmatchWarpStartMs > 0 && sinceLastMs < DeathmatchWarpMinIntervalMs)
+            {
+                int waitSec = (int)Math.Ceiling((DeathmatchWarpMinIntervalMs - sinceLastMs) / 1000.0);
+                return $"too soon after your last deathmatch — wait {waitSec}s and try again";
+            }
+            _lastDeathmatchWarpStartMs = nowMs;
+
             _deathmatchWarpPending = true;
             _deathmatchIsTeams = false;
             _deathmatchTeamSize = DeathmatchTeamSizeDefault;
@@ -218,6 +236,10 @@ namespace MHServerEmu.Games.Entities
             if (_deathmatchActive)
                 EndDeathmatch("you left the arena", returnHome: false);
 
+            // Always persisted, regardless of whether a warp is actually pending —
+            // the cooldown has to survive every hop, not just the one it started.
+            mig.LastDeathmatchWarpStartMs = _lastDeathmatchWarpStartMs;
+
             if (_deathmatchWarpPending == false) return;
             mig.PendingDeathmatchWarp = true;
             mig.DeathmatchKillTarget = _deathmatchKillTarget;
@@ -233,7 +255,10 @@ namespace MHServerEmu.Games.Entities
             if (region == null || avatar == null) return;
 
             var mig = PlayerConnection?.MigrationData;
-            if (mig == null || mig.PendingDeathmatchWarp == false) return;
+            if (mig == null) return;
+            _lastDeathmatchWarpStartMs = mig.LastDeathmatchWarpStartMs;
+
+            if (mig.PendingDeathmatchWarp == false) return;
 
             mig.PendingDeathmatchWarp = false;
             _deathmatchKillTarget = mig.DeathmatchKillTarget > 0 ? mig.DeathmatchKillTarget : DeathmatchDefaultKillTarget;

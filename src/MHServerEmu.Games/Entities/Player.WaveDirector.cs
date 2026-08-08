@@ -60,6 +60,18 @@ namespace MHServerEmu.Games.Entities
         private long _waveIntermissionMs = 5000;
         private long _waveNextSpawnAtMs;
         private long _waveRunStartMs;
+
+        /// <summary>
+        /// Minimum gap between the START of one arena-warping wave run and the
+        /// next — same shape as Player.BountyHunt.cs's BountyHuntMinIntervalMs,
+        /// applied here for consistency: this only guards the branch of
+        /// StartWaveRun that actually warps through a region transfer (an
+        /// arena requested and not already standing in it); starting a wave
+        /// run with no arena, or already in the arena, is unaffected.
+        /// </summary>
+        private const int WaveArenaWarpMinIntervalMs = 15_000;
+        private long _lastWaveArenaWarpStartMs;
+
         private PrototypeId _waveArenaRegionRef = PrototypeId.Invalid;
         private bool _waveClearArena;
         private long _waveWarpDeadlineMs;
@@ -494,10 +506,15 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         internal void SnapshotWaveRunForTransfer()
         {
-            if (_waveState != WaveState.WarpingToArena || _waveDefs == null) return;
-
             var mig = PlayerConnection?.MigrationData;
             if (mig == null) return;
+
+            // Always persisted, regardless of whether a run is actually
+            // mid-warp — the cooldown has to survive every hop, not just the
+            // one it started.
+            mig.LastEndlessWaveWarpStartMs = _lastWaveArenaWarpStartMs;
+
+            if (_waveState != WaveState.WarpingToArena || _waveDefs == null) return;
 
             var intent = new WaveRunIntent
             {
@@ -558,6 +575,9 @@ namespace MHServerEmu.Games.Entities
         internal void RestoreWaveRunFromMigration(Avatar caller)
         {
             var mig = PlayerConnection?.MigrationData;
+            if (mig != null)
+                _lastWaveArenaWarpStartMs = mig.LastEndlessWaveWarpStartMs;
+
             WaveRunIntent intent = mig?.PendingWaveRun;
             if (intent == null || caller == null) return;
             mig.PendingWaveRun = null;
@@ -641,6 +661,15 @@ namespace MHServerEmu.Games.Entities
             if (_waveArenaRegionRef != PrototypeId.Invalid &&
                 avatar.Region?.PrototypeDataRef != _waveArenaRegionRef)
             {
+                long nowMs = WaveNowMs;
+                long sinceLastMs = nowMs - _lastWaveArenaWarpStartMs;
+                if (_lastWaveArenaWarpStartMs > 0 && sinceLastMs < WaveArenaWarpMinIntervalMs)
+                {
+                    int waitSec = (int)Math.Ceiling((WaveArenaWarpMinIntervalMs - sinceLastMs) / 1000.0);
+                    return $"too soon after your last arena warp — wait {waitSec}s and try again";
+                }
+                _lastWaveArenaWarpStartMs = nowMs;
+
                 _waveState = WaveState.WarpingToArena;
                 _waveWarpDeadlineMs = WaveNowMs + ArenaWarpTimeoutMs;
                 avatar.TeleportToRegionFromWeb(arenaRegionRef);
@@ -1887,6 +1916,13 @@ namespace MHServerEmu.Games.Entities
                     if (bossId != 0)
                     {
                         _waveAliveIds.Add(bossId);
+                        // Same gap Bounty Hunt's TrackBossNemesisForRetire fix closed
+                        // elsewhere (Player.Nemesis.cs's doc comment): SpawnCuratedBoss
+                        // bypasses the phantom corpse-cleanup tick's auto-retire, so if
+                        // this randomly-picked boss happens to also be on the player's
+                        // Nemesis Roster with an active bounty/grudge, killing it here
+                        // wouldn't otherwise retire the roster entry or pay out.
+                        TrackBossNemesisForRetire(bossId, (ulong)bossRef, avatar.Region);
                         string bossName = LeafHeroName(bossRef);
                         BroadcastEndlessBannerLines($"☠ A BOSS HAS ARRIVED — {bossName}!");
                         WaveLogger.Info($"[WaveDirector] {GetName()}: Endless boss spawned at wave {scaleIndex} ({bossName})");
