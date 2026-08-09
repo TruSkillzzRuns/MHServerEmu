@@ -30,7 +30,7 @@ namespace MHServerEmu.Games.Missions.Conditions
         /// </summary>
         private bool IsAvatarActiveForAnyParticipant()
         {
-            using var participantsHandle = ListPool<Player>.Instance.Get(out List<Player> participants);
+            using var participantsHandle = ListPool<Player>.Get(out List<Player> participants);
             if (Mission.GetParticipants(participants) == false)
                 return false;
 

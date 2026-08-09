@@ -159,7 +159,7 @@ namespace MHServerEmu.Games.Network
             }
 
             // Create player entity
-            using (EntitySettings playerSettings = ObjectPoolManager.Instance.Get<EntitySettings>())
+            using (var playerSettingsHandle = EntitySettingsPool.Get(out EntitySettings playerSettings))
             {
                 playerSettings.DbGuid = (ulong)_dbAccount.Id;
                 playerSettings.EntityRef = GameDatabase.GlobalsPrototype.DefaultPlayer;
@@ -895,7 +895,7 @@ namespace MHServerEmu.Games.Network
 
             if (fieldFlags.HasFlag(LocomotionMessageFlags.NoLocomotionState) == false && avatar.Locomotor != null)
             {
-                using var pathNodesHandle = ListPool<NaviPathNode>.Instance.Get(out List<NaviPathNode> pathNodes);
+                using var pathNodesHandle = ListPool<NaviPathNode>.Get(out List<NaviPathNode> pathNodes);
                 LocomotionState newSyncState = new(pathNodes);
                 newSyncState.Set(ref avatar.Locomotor.LastSyncState);
 
@@ -1284,7 +1284,7 @@ namespace MHServerEmu.Games.Network
                 return;
 
             // Validate ingredients
-            using var ingredientIdsHandle = ListPool<ulong>.Instance.Get(out List<ulong> ingredientIds);
+            using var ingredientIdsHandle = ListPool<ulong>.Get(out List<ulong> ingredientIds);
 
             int numIngredientIds = tryCraft.IdIngredientsCount;
             for (int i = 0; i < numIngredientIds; i++)
@@ -1339,7 +1339,7 @@ namespace MHServerEmu.Games.Network
             PrototypeId difficultyProtoRef = (PrototypeId)useWaypoint.DifficultyProtoId;
 #endif
 
-            using Teleporter teleporter = ObjectPoolManager.Instance.Get<Teleporter>();
+            using var teleporterHandle = TeleporterPool.Get(out Teleporter teleporter);
             teleporter.Initialize(Player, TeleportContextEnum.TeleportContext_Waypoint);
             teleporter.TransitionEntity = waypoint;
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
@@ -1905,7 +1905,7 @@ namespace MHServerEmu.Games.Network
 
             // Replicate this AkEvent to nearby players
             PlayerConnectionManager networkManager = Game.NetworkManager;
-            using var interestedClientListHandle = ListPool<PlayerConnection>.Instance.Get(out List<PlayerConnection> interestedClientList);
+            using var interestedClientListHandle = ListPool<PlayerConnection>.Get(out List<PlayerConnection> interestedClientList);
             if (networkManager.GetInterestedClients(interestedClientList, avatar, AOINetworkPolicyValues.AOIChannelProximity, true))
             {
                 var builder = NetMessageRecvAkEventFromEntity.CreateBuilder()

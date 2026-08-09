@@ -57,12 +57,6 @@ namespace MHServerEmu.Games.Properties
             _interestPolicies = AOINetworkPolicyValues.AOIChannelNone;
         }
 
-        public override void Dispose()
-        {
-            // Need to override Dispose so that replicated collections don't get pulled with regular ones
-            ObjectPoolManager.Instance.Return(this);
-        }
-
         public override bool SerializeWithDefault(Archive archive, PropertyCollection defaultCollection)
         {
             bool success = true;
@@ -147,7 +141,7 @@ namespace MHServerEmu.Games.Properties
             if (interestFilter == AOINetworkPolicyValues.AOIChannelNone) return;
 
             // Check if any there are any interested clients
-            using var interestedClientListHandle = ListPool<PlayerConnection>.Instance.Get(out List<PlayerConnection> interestedClientList);
+            using var interestedClientListHandle = ListPool<PlayerConnection>.Get(out List<PlayerConnection> interestedClientList);
             if (_messageDispatcher.GetInterestedClients(interestedClientList, interestFilter))
             {
                 // Send update to interested
@@ -171,7 +165,7 @@ namespace MHServerEmu.Games.Properties
             if (interestFilter == AOINetworkPolicyValues.AOIChannelNone) return;
 
             // Check if any there are any interested clients
-            using var interestedClientListHandle = ListPool<PlayerConnection>.Instance.Get(out List<PlayerConnection> interestedClientList);
+            using var interestedClientListHandle = ListPool<PlayerConnection>.Get(out List<PlayerConnection> interestedClientList);
             if (_messageDispatcher.GetInterestedClients(interestedClientList, interestFilter))
             {
                 // Send update to interested

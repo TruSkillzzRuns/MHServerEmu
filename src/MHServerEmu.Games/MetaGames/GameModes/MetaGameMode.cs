@@ -142,13 +142,13 @@ namespace MHServerEmu.Games.MetaGames.GameModes
 
         public void TeleportPlayersToTarget(PrototypeId targetRef)
         {
-            using var playersHandle = ListPool<Player>.Instance.Get(out List<Player> players);
+            using var playersHandle = ListPool<Player>.Get(out List<Player> players);
             foreach (Player player in MetaGame.Players)
                 players.Add(player);
 
             foreach (var player in players)
             {
-                using Teleporter teleporter = ObjectPoolManager.Instance.Get<Teleporter>();
+                using var teleporterHandle = TeleporterPool.Get(out Teleporter teleporter);
                 teleporter.Initialize(player, TeleportContextEnum.TeleportContext_MetaGame);
                 teleporter.TeleportToTarget(targetRef);
             }
@@ -209,7 +209,7 @@ namespace MHServerEmu.Games.MetaGames.GameModes
         {
             if (notifications.IsNullOrEmpty()) return;
 
-            using var interestedClientsHandle = ListPool<PlayerConnection>.Instance.Get(out List<PlayerConnection> interestedClients);
+            using var interestedClientsHandle = ListPool<PlayerConnection>.Get(out List<PlayerConnection> interestedClients);
             GetInterestedClients(interestedClients, player);
 
             foreach (var notificationData in notifications)
@@ -272,7 +272,7 @@ namespace MHServerEmu.Games.MetaGames.GameModes
 
         private void SendClearMetaGameInfoNotification()
         {
-            using var interestedClientsHandle = ListPool<PlayerConnection>.Instance.Get(out List<PlayerConnection> interestedClients);
+            using var interestedClientsHandle = ListPool<PlayerConnection>.Get(out List<PlayerConnection> interestedClients);
             GetInterestedClients(interestedClients);
             var message = NetMessageClearMetaGameInfoNotification.DefaultInstance;
             Game.NetworkManager.SendMessageToMultiple(interestedClients, message);
@@ -434,10 +434,10 @@ namespace MHServerEmu.Games.MetaGames.GameModes
 
         private void ScheduledBannerTime(MetaGameBannerTimeDataPrototype bannerProto)
         {
-            using var interestedClientsHandle = ListPool<PlayerConnection>.Instance.Get(out List<PlayerConnection> interestedClients);
+            using var interestedClientsHandle = ListPool<PlayerConnection>.Get(out List<PlayerConnection> interestedClients);
             GetInterestedClients(interestedClients);
 
-            using var intArgsHandle = ListPool<long>.Instance.Get(out List<long> intArgs);
+            using var intArgsHandle = ListPool<long>.Get(out List<long> intArgs);
             var runTime = Game.CurrentTime - _startTime;
             TimeSpan durationTime = GetDurationTime();
 

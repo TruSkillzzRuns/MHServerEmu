@@ -18,13 +18,13 @@ namespace MHServerEmu.Games.Missions.Actions
 
         public override void Run()
         {
-            using var playersHandle = ListPool<Player>.Instance.Get(out List<Player> players);
+            using var playersHandle = ListPool<Player>.Get(out List<Player> players);
             if (GetDistributors(_proto.SendTo, players))
             {
                 bool hasTarget = _proto.TeleportRegionTarget != PrototypeId.Invalid;
                 foreach (Player player in players)
                 {
-                    using Teleporter teleporter = ObjectPoolManager.Instance.Get<Teleporter>();
+                    using var teleporterHandle = TeleporterPool.Get(out Teleporter teleporter);
                     teleporter.Initialize(player, TeleportContextEnum.TeleportContext_Mission);
 
                     if (hasTarget)

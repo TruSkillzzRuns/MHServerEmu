@@ -64,7 +64,7 @@ namespace MHServerEmu.Games.Entities
             {
                 if (Region == null) return;
 
-                using EntitySettings hotspotSettings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                using var hotspotSettingsHandle = EntitySettingsPool.Get(out EntitySettings hotspotSettings);
                 hotspotSettings.EntityRef = hotspotRef;
                 hotspotSettings.RegionId = Region.Id;
                 hotspotSettings.Position = RegionLocation.Position;
@@ -146,7 +146,7 @@ namespace MHServerEmu.Games.Entities
                 region.EvalRegionProperties(spawnerProto.EvalSpawnProperties, evalProperties);
             entry.EvaluateSpawnProperties(evalProperties, region, null);
 
-            using var spawnedEntitiesHandle = ListPool<WorldEntity>.Instance.Get(out List<WorldEntity> spawnedEntities);
+            using var spawnedEntitiesHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> spawnedEntities);
             for (int i = 0; i < entry.Count; i++) 
             { 
                 if (DebugLog) Logger.Debug($"SpawnObject[{i}] {popObject.GetType().Name}");

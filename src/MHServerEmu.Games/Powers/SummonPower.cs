@@ -57,7 +57,7 @@ namespace MHServerEmu.Games.Powers
             if (inventory == null)
                 return;
 
-            using var killListHandle = ListPool<WorldEntity>.Instance.Get(out List<WorldEntity> killList);
+            using var killListHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> killList);
 
             foreach (SummonEntityContextPrototype context in summonPowerProto.SummonEntityContexts)
             {
@@ -288,7 +288,7 @@ namespace MHServerEmu.Games.Powers
 
             if (powerProto.AttachSummonsToTarget || powerProto.UseTargetAsSource)
             {
-                using var targetListHandle = ListPool<WorldEntity>.Instance.Get(out List<WorldEntity> targetList);
+                using var targetListHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> targetList);
                 GetTargets(targetList, payload);
 
                 foreach (WorldEntity target in targetList)
@@ -410,7 +410,7 @@ namespace MHServerEmu.Games.Powers
                 entityAsset = Owner.GetEntityWorldAsset();
             }
 
-            using PropertyCollection properties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var propertiesHandle = PropertyCollectionPool.Get(out PropertyCollection properties);
             WorldEntity propertySourceEntity = GetPayloadPropertySourceEntity(ultimateOwner);
             SerializeEntityPropertiesForPowerPayload(propertySourceEntity, properties);
             SerializePowerPropertiesForPowerPayload(this, properties);
@@ -468,7 +468,7 @@ namespace MHServerEmu.Games.Powers
             }
             else if (powerProto.EvalSelectSummonContextIndex != null)
             {
-                using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+                using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
                 evalContext.Game = game;
                 evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Default, context.Properties);
                 evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Entity, owner?.Properties);
@@ -497,7 +497,7 @@ namespace MHServerEmu.Games.Powers
             // check EvalCanSummon
             if (contextProto.EvalCanSummon != null)
             {
-                using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+                using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
                 evalContext.Game = game;
                 evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Default, context.Properties);
                 evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Entity, owner?.Properties);
@@ -510,7 +510,7 @@ namespace MHServerEmu.Games.Powers
             }
 
             // Start populating EntitySettings
-            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
 
             // EntityRef
             if (ultimateOwner != null)
@@ -599,7 +599,7 @@ namespace MHServerEmu.Games.Powers
             }
 
             // Summon positions
-            using var summonPositionsHandle = ListPool<Vector3>.Instance.Get(out List<Vector3> summonPositions);
+            using var summonPositionsHandle = ListPool<Vector3>.Get(out List<Vector3> summonPositions);
 
             Orientation orientation = settings.Orientation; 
             bool hasSummonPositions = GetSummonPositions(owner, powerProto, summonProto, contextProto, region, context.Properties,
@@ -675,13 +675,13 @@ namespace MHServerEmu.Games.Powers
             }
 
             // Properties
-            using PropertyCollection properties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var propertiesHandle = PropertyCollectionPool.Get(out PropertyCollection properties);
             SetSummonProperties(properties, ref context, summonProto, contextProto, owner, ultimateOwner, contextIndex);
 
             // EvalOnSummon
             if (contextProto.EvalOnSummon.HasValue())
             {
-                using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+                using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
                 evalContext.Game = game;
                 evalContext.SetVar_PropertyCollectionPtr(EvalContext.Default, properties);
                 evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Entity, ultimateOwner?.Properties);
@@ -785,7 +785,7 @@ namespace MHServerEmu.Games.Powers
             if (inventory == null)
                 return count;
 
-            using var summonsHandle = ListPool<WorldEntity>.Instance.Get(out List<WorldEntity> summons);
+            using var summonsHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> summons);
 
             foreach (WorldEntity summoned in new SummonedEntityIterator(Owner))
             {
@@ -822,7 +822,7 @@ namespace MHServerEmu.Games.Powers
             Inventory inventory = owner.SummonedInventory;
             if (!Verify.IsNotNull(inventory)) return;
             
-            using var killListHandle = ListPool<WorldEntity>.Instance.Get(out List<WorldEntity> killList);
+            using var killListHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> killList);
 
             foreach (WorldEntity summoned in new SummonedEntityIterator(owner))
             {

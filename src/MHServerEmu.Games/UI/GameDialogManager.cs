@@ -30,15 +30,25 @@ namespace MHServerEmu.Games.UI
                 DialogResponse dialogResponse = new(dialogResult.ButtonIndex, dialogResult.CheckboxClicked);
                 dialog.OnResponse.Invoke(playerGuid, dialogResponse);
 
-                RemoveDialog(dialog);
+                RemoveDialogFromClient(dialog);
                 _dialogs.Remove(serverId);
             }
         }
 
-        public void ShowDialog(GameDialogInstance instance)
+        public void PostDialogToClient(GameDialogInstance instance)
         {
-            Player player = GetPlayerFromInstance(instance);
-            if (!Verify.IsNotNull(player)) return;
+            if (!Verify.IsNotNull(instance)) return;
+
+            ulong serverId = instance.ServerId;
+            if (_dialogs.ContainsKey(instance.ServerId) == false)
+                return;
+
+            Player player = Game.EntityManager.GetEntityByDbGuid<Player>(instance.PlayerGuid);
+            if (!Verify.IsNotNull(player))
+            {
+                _dialogs.Remove(serverId);
+                return;
+            }
 
             NetMessagePostDialogToClient message = NetMessagePostDialogToClient.CreateBuilder()
                 .SetServerId(instance.ServerId)
@@ -49,10 +59,20 @@ namespace MHServerEmu.Games.UI
             player.SendMessage(message);
         }
 
-        public void RemoveDialog(GameDialogInstance instance)
+        public void RemoveDialogFromClient(GameDialogInstance instance)
         {
-            Player player = GetPlayerFromInstance(instance);
-            if (!Verify.IsNotNull(player)) return;
+            if (!Verify.IsNotNull(instance)) return;
+
+            ulong serverId = instance.ServerId;
+            if (_dialogs.ContainsKey(serverId) == false)
+                return;
+
+            Player player = Game.EntityManager.GetEntityByDbGuid<Player>(instance.PlayerGuid);
+            if (!Verify.IsNotNull(player))
+            {
+                _dialogs.Remove(serverId);
+                return;
+            }
 
             NetMessageRemoveDialogFromClient message = NetMessageRemoveDialogFromClient.CreateBuilder()
                 .SetServerId(instance.ServerId)
@@ -76,26 +96,6 @@ namespace MHServerEmu.Games.UI
                 return null;
 
             return instance;
-        }
-
-        private Player GetPlayerFromInstance(GameDialogInstance instance)
-        {
-            if (!Verify.IsNotNull(instance)) return null;
-
-            ulong serverId = instance.ServerId;
-            if (!Verify.IsTrue(serverId != 0)) return null;
-
-            if (_dialogs.ContainsKey(serverId) == false)
-                return null;
-
-            Player player = Game.EntityManager.GetEntityByDbGuid<Player>(instance.PlayerGuid);
-            if (!Verify.IsNotNull(player))
-            {
-                _dialogs.Remove(serverId);
-                return null;
-            }
-
-            return player;
         }
     }
 }

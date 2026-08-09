@@ -553,7 +553,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
 
             if (includeChildren)
             {
-                using var parentRegionsHandle = ListPool<PrototypeId>.Instance.Get(regions, out List<PrototypeId> parentRegions);
+                using var parentRegionsHandle = ListPool<PrototypeId>.Get(regions, out List<PrototypeId> parentRegions);
                 foreach (PrototypeId childRef in GameDatabase.DataDirectory.IteratePrototypesInHierarchy<RegionPrototype>(PrototypeIterateFlags.NoAbstractApprovedOnly))
                 {
                     foreach (PrototypeId parentRef in parentRegions)
@@ -573,7 +573,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
                     regions.Remove(regionProto.DataRef);
             }
 
-            using var altRegionsHandle = ListPool<PrototypeId>.Instance.Get(regions, out List<PrototypeId> altRegions);
+            using var altRegionsHandle = ListPool<PrototypeId>.Get(regions, out List<PrototypeId> altRegions);
             foreach (PrototypeId regionRef in altRegions)
             {
                 RegionPrototype regionProto = regionRef.As<RegionPrototype>();
@@ -597,7 +597,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
             if (regionProto.AreasInGenerator == null)
             {
                 regionProto.AreasInGenerator = new();
-                using var regionsHandle = HashSetPool<PrototypeId>.Instance.Get(out HashSet<PrototypeId> regions);
+                using var regionsHandle = HashSetPool<PrototypeId>.Get(out HashSet<PrototypeId> regions);
                 GetAreasInGenerator(regionProto, regionProto.AreasInGenerator, regions);
             }
 
@@ -733,7 +733,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
 
             if (success && EvalAccessRestriction != null)
             {
-                using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+                using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
                 evalContext.SetReadOnlyVar_ProtoRef(EvalContext.Var1, difficultyProtoRef);
 #endif
