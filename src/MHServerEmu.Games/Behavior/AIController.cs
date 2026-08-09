@@ -236,18 +236,6 @@ namespace MHServerEmu.Games.Behavior
 
         public void SetIsEnabled(bool enabled)
         {
-            // [BossDiag] Boss phantoms are supposed to have their native brain
-            // permanently off (SpawnBossPhantomHero disables it once, so the
-            // phantom hunt loop drives them instead). If anything switches it
-            // back on, that's the boss "reverting to a normal boss" — capture
-            // the exact stack that did it. Gated to boss phantoms only, so
-            // real/hostile bosses never trip this.
-            if (enabled && IsEnabled == false && Owner != null && Owner.IsBossPhantom)
-            {
-                Logger.Warn($"[BossDiag] NATIVE AI RE-ENABLED on boss phantom {Owner} (id=0x{Owner.Id:X})\n" +
-                            $"    stack:\n{System.Environment.StackTrace}");
-            }
-
             IsEnabled = enabled;
             if (enabled)
                 OnAIEnabled();

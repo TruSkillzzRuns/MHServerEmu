@@ -3621,40 +3621,7 @@ namespace MHServerEmu.Games.Entities
         {
             base.OnPropertyChange(id, newValue, oldValue, flags);
 
-            // [BossDiag] Dormant/Visible probe deliberately sits ABOVE the
-            // Refresh early-return below: a Refresh-flagged write would
-            // otherwise be invisible to it, which is the likely reason some
-            // dormancy transitions never appeared in earlier traces.
-            if ((id.Enum == PropertyEnum.Dormant || id.Enum == PropertyEnum.Visible)
-                && this is Agent dormantAgent && dormantAgent.IsBossPhantom)
-            {
-                Logger.Warn($"[BossDiag] {id.Enum} CHANGED on boss phantom {this} (id=0x{Id:X}): " +
-                            $"{(bool)oldValue} -> {(bool)newValue} flags={flags}\n" +
-                            $"    stack:\n{System.Environment.StackTrace}");
-            }
-
             if (flags.HasFlag(SetPropertyFlags.Refresh)) return;
-
-            // [BossDiag] A boss phantom that "turns back into a normal boss"
-            // is observably one of two property regressions: Rank coming back
-            // (drives the client's boss-encounter UI) or AllianceOverride
-            // moving off the caller's alliance (makes it hostile again).
-            // This is the single chokepoint every property write passes
-            // through, so instrumenting here catches the mutation regardless
-            // of which code path did it. Gated to boss phantoms only.
-            if ((id.Enum == PropertyEnum.Rank || id.Enum == PropertyEnum.AllianceOverride)
-                && this is Agent diagAgent && diagAgent.IsBossPhantom)
-            {
-                static string Fmt(PropertyValue v)
-                {
-                    PrototypeId r = v;
-                    return r != PrototypeId.Invalid ? r.GetName() : "<unset>";
-                }
-
-                Logger.Warn($"[BossDiag] {id.Enum} CHANGED on boss phantom {this} (id=0x{Id:X}): " +
-                            $"{Fmt(oldValue)} -> {Fmt(newValue)} flags={flags}\n" +
-                            $"    stack:\n{System.Environment.StackTrace}");
-            }
 
             switch (id.Enum)
             {

@@ -120,14 +120,6 @@ namespace MHServerEmu.Games.Entities
 
         private bool IsRealCuratedBoss => Player.GetRawBossCandidatePool().Contains(PrototypeDataRef);
 
-        /// <summary>
-        /// True only for a live boss-phantom teammate (SpawnBossPhantomHero),
-        /// as opposed to a hostile curated boss spawned by the Boss Roster
-        /// tool or the native population/mission spawners. Used to gate the
-        /// [BossDiag] instrumentation so it can never spam for real bosses.
-        /// </summary>
-        internal bool IsBossPhantom => IsPhantomHero && IsRealCuratedBoss;
-
         public override int Throwability { get => Properties[PropertyEnum.Throwability]; }
         public bool IsVisibleWhenDormant { get => AgentPrototype.WakeStartsVisible; }
         public override bool IsWakingUp { get => _wakeEndEvent.IsValid; }

@@ -285,13 +285,8 @@ namespace MHServerEmu.Games.Entities
                     Agent av = mgr.GetEntity<Agent>(avatarId);
                     if (av == null) continue;
 
-                    // [BossDiag] state before/after teardown, plus whether the
-                    // real client still holds AOI interest afterwards.
-                    Avatar.BossDiagTeardown(av, Game, "before-exit");
                     if (av.IsInWorld) av.ExitWorld();
-                    Avatar.BossDiagTeardown(av, Game, "after-exitworld");
                     av.Destroy();
-                    Avatar.BossDiagTeardown(av, Game, "after-destroy");
                     removed++;
                 }
                 catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom] purge avatar 0x{avatarId:X} failed: {ex.Message}"); }
@@ -315,12 +310,6 @@ namespace MHServerEmu.Games.Entities
             _phantomPlayerIds.Clear();
             _phantomDescriptors.Clear();
             SyncPhantomParty();
-
-            // [BossDiag] Scan AFTER the lists are cleared: anything the purge
-            // failed to destroy is now untracked and invisible to every other
-            // probe, so this is the only place it can be observed.
-            Avatar.BossDiagOrphanScan(CurrentAvatar, this, $"after-purge(destroyed={removed})");
-
             return removed;
         }
 

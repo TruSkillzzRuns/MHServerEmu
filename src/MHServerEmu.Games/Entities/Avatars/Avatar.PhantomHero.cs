@@ -227,15 +227,6 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             int callerLevel = CharacterLevel;
 
-            // [BossDiag] Count live boss phantoms up front so the movement
-            // probe can gate itself to the reported 2+ repro condition.
-            int bossPhantomCount = 0;
-            for (int bi = 0; bi < ids.Count; bi++)
-            {
-                var bp = Game.EntityManager.GetEntity<Agent>(ids[bi]);
-                if (bp != null && bp.IsDestroyed == false && bp.IsBossPhantom) bossPhantomCount++;
-            }
-
             for (int i = 0; i < ids.Count; i++)
             {
                 ulong id = ids[i];
@@ -261,16 +252,8 @@ namespace MHServerEmu.Games.Entities.Avatars
                     }
                     (stale ??= new List<ulong>()).Add(id);
                     s_phantomReattachGraceSinceMs.Remove(id);
-                    BossDiagForget(id);
                     continue;
                 }
-
-                // [BossDiag] Sample boss-phantom state every tick so any
-                // regression to "normal boss" is captured with a before/after
-                // diff. No-ops for non-boss phantoms and logs nothing while
-                // state is stable.
-                BossDiagSample(phantom, this);
-                BossDiagMovementSample(phantom, this, bossPhantomCount);
 
                 if (phantom.IsInWorld == false)
                 {
@@ -6479,9 +6462,9 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// collection has no animation data to drive it, which is what a T-pose
         /// is.
         ///
-        /// Deliberately NOT gated on IsBossPhantom: team-up phantoms are the
-        /// same shape (non-Avatar Agent hosted by a synthetic Player) and were
-        /// missing this for the same reason.
+        /// Deliberately NOT restricted to boss phantoms: team-up phantoms are
+        /// the same shape (non-Avatar Agent hosted by a synthetic Player) and
+        /// were missing this for the same reason.
         /// </summary>
         private void PushPhantomToClients(Agent phantom, Player phantomPlayer)
         {
@@ -6571,11 +6554,28 @@ namespace MHServerEmu.Games.Entities.Avatars
             Inventory teamUpLibrary = phantomPlayer.GetInventory(InventoryConvenienceLabel.TeamUpLibrary);
             if (teamUpLibrary == null) { error = "TeamUpLibrary missing on phantom Player"; DestroyPhantomPlayer(phantomPlayer); return 0; }
 
+            int creationLevel = level > 0 ? level : CharacterLevel;
+
             Agent boss;
             using (var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings))
             {
                 settings.InventoryLocation = new(phantomPlayer.Id, teamUpLibrary.PrototypeDataRef);
                 settings.EntityRef = bossRef;
+
+                // Seed level + difficulty AT CREATION, the way the known-good
+                // standalone boss spawn does (EntityHelper.CreateAgent passes
+                // DifficultyTier / CharacterLevel / CombatLevel via
+                // EntitySettings.Properties). Previously these were only set
+                // after SetAsPersistent, i.e. AFTER the entity had already
+                // replicated to the client — the wire dump on 2026-08-09 caught
+                // Bullseye going out with CharacterLevel=15 while CombatLevel
+                // was 60.
+                using var propsHandle = PropertyCollectionPool.Get(out PropertyCollection creationProps);
+                creationProps[PropertyEnum.DifficultyTier] = region.DifficultyTierRef;
+                creationProps[PropertyEnum.CharacterLevel] = creationLevel;
+                creationProps[PropertyEnum.CombatLevel] = creationLevel;
+                settings.Properties = creationProps;
+
                 boss = Game.EntityManager.CreateEntity(settings) as Agent;
             }
             if (boss == null) { error = $"boss create failed for {bossRef.GetName()}"; DestroyPhantomPlayer(phantomPlayer); return 0; }
@@ -6612,7 +6612,38 @@ namespace MHServerEmu.Games.Entities.Avatars
             // still catches anything that re-derives Rank between here and
             // SetSimulated. This one closes the replication window; that one
             // closes the re-derivation window. They fix different things.
-            boss.Properties.RemoveProperty(PropertyEnum.Rank);
+            // Rank: SET to a friendly rank, do NOT merely remove it.
+            //
+            // Removing it was wrong (confirmed 2026-08-09 from the wire dump:
+            // Rank was absent from the EntityCreate packet, yet the client
+            // still drew the red "Boss" encounter bar). With no Rank property
+            // present the client falls back to the boss's own AgentPrototype
+            // Rank. That is also why the engine's known-good standalone spawn
+            // (EntityHelper.CreateAgent) explicitly SETS
+            // Properties[Rank] = agentProto.Rank.DataRef rather than leaving
+            // it unset — the property is expected to be there.
+            //
+            // Rank.Player is not usable: GetRankByEnum(Rank.Player) returns
+            // null on every version because the population globals
+            // RankDefaults table has no entry for it. Rank.TeamUp is the rank
+            // real friendly companions use, and team-up pets never draw a boss
+            // bar — so that is the correct target here. Popcorn is a last
+            // resort purely so we never fall back to leaving a Boss rank in
+            // place.
+            var rankGlobals = GameDatabase.PopulationGlobalsPrototype;
+            var friendlyRank = rankGlobals?.GetRankByEnum(Rank.TeamUp)
+                            ?? rankGlobals?.GetRankByEnum(Rank.Popcorn);
+            if (friendlyRank != null)
+            {
+                boss.Properties[PropertyEnum.Rank] = friendlyRank.DataRef;
+                PhantomLogger.Info($"[PhantomHero:Boss] {bossRef.GetName()} Rank set to {friendlyRank.DataRef.GetName()} (was {bossProto.Rank?.DataRef.GetName() ?? "<none>"})");
+            }
+            else
+            {
+                boss.Properties.RemoveProperty(PropertyEnum.Rank);
+                PhantomLogger.Warn($"[PhantomHero:Boss] no friendly RankPrototype available for {bossRef.GetName()} — boss bar may still show");
+            }
+
             boss.SetSummonedAllianceOverride(Alliance);
 
             // Suppress the boss's native wake / dramatic-entrance sequence.
@@ -6676,12 +6707,47 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Match that exactly and let the entrance run to completion.
             boss.Properties[PropertyEnum.Dormant] = false;
 
-            // Log the prototype's own wake/entrance settings so the next trace
-            // shows exactly which of these applied to each boss, rather than
-            // leaving it inferred.
-            PhantomLogger.Info($"[BossDiag:Proto] {bossRef.GetName()} WakeRange={bossProto.WakeRange} " +
-                               $"WakeDelayMS={bossProto.WakeDelayMS} WakeRandomStartMS={bossProto.WakeRandomStartMS} " +
-                               $"WakeStartsVisible={bossProto.WakeStartsVisible} PlayDramaticEntrance={bossProto.PlayDramaticEntrance}");
+            // ===============================================================
+            // Make the boss ALIVE and correctly levelled BEFORE it enters the
+            // world below. THIS IS THE T-POSE FIX.
+            //
+            // Proven from the actual wire data 2026-08-09 — the EntityCreate
+            // packet the client builds Bullseye from contained:
+            //
+            //     CharacterLevel=15      (CombatLevel said 60)
+            //     IsDead=1               <-- sent to the client as a CORPSE
+            //     HealthMax=13882
+            //     (no Health property at all, i.e. Health = 0)
+            //
+            // The client was being handed a dead entity. A dead entity has no
+            // animation to play, which is exactly what renders as a T-pose.
+            // Every server-side probe said "alive and correct" because by the
+            // time anything sampled it, the later fix-ups had already run —
+            // the corpse state only existed in the window that got replicated.
+            //
+            // Cause is pure ordering: SetAsPersistent (a few lines down) is
+            // what puts the boss in-world and ships EntityCreate, but
+            // InitializeLevel and "Health = HealthMax" only ran AFTER it.
+            // Setting health here closes that window; the later assignments
+            // are harmless no-ops once the values already match.
+            //
+            // InitializeLevel is called here too so HealthMax is derived from
+            // the right level before health is filled.
+            // ===============================================================
+            try
+            {
+                boss.InitializeLevel(creationLevel);
+                boss.CombatLevel = creationLevel;
+                boss.Properties[PropertyEnum.HealthMaxMult] = ScaleHealthMultForLevel(PhantomHealthMult, creationLevel);
+                boss.Properties[PropertyEnum.Health] = boss.Properties[PropertyEnum.HealthMax];
+            }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Boss] pre-world level/health init failed: {ex.Message}"); }
+
+            PhantomLogger.Info($"[PhantomHero:Boss] pre-world state for {bossRef.GetName()}: " +
+                               $"level={(int)boss.Properties[PropertyEnum.CharacterLevel]} " +
+                               $"combatLevel={boss.CombatLevel} " +
+                               $"health={(long)boss.Properties[PropertyEnum.Health]}/{(long)boss.Properties[PropertyEnum.HealthMax]} " +
+                               $"isDead={boss.IsDead}");
 
             Inventory avatarInPlay = phantomPlayer.GetInventory(InventoryConvenienceLabel.AvatarInPlay);
             if (avatarInPlay != null)
@@ -6836,7 +6902,15 @@ namespace MHServerEmu.Games.Entities.Avatars
             // they never set Properties[PropertyEnum.Rank] in the first
             // place. So instead of overriding to a value, just strip
             // whatever Rank the boss prototype's own defaults baked in.
-            boss.Properties.RemoveProperty(PropertyEnum.Rank);
+            // Re-assert the friendly rank chosen before world entry, in case
+            // anything between there and here re-derived Rank from the
+            // prototype. Deliberately a SET, not a RemoveProperty: an absent
+            // Rank makes the client fall back to the prototype's boss rank,
+            // which is what kept drawing the red "Boss" bar.
+            var reassertRank = GameDatabase.PopulationGlobalsPrototype?.GetRankByEnum(Rank.TeamUp)
+                            ?? GameDatabase.PopulationGlobalsPrototype?.GetRankByEnum(Rank.Popcorn);
+            if (reassertRank != null)
+                boss.Properties[PropertyEnum.Rank] = reassertRank.DataRef;
 
             try { boss.SetSimulated(true); }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Boss] SetSimulated(true) failed: {ex.Message}"); }
@@ -6891,17 +6965,10 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             PhantomLogger.Info($"[PhantomHero:Boss] {this} spawned friendly boss phantom '{bossRef.GetName()}' (agentId 0x{boss.Id:X}) at {boss.RegionLocation.Position.ToStringNames()} level {effectiveLevel}");
 
-            // [BossDiag] Record end-of-spawn state as the baseline, so a boss
-            // that comes in ALREADY wrong is distinguishable from one that
-            // regresses later — the two have completely different causes and
-            // the reported symptom covers both.
             // Same client push the avatar phantom path performs — without this
             // the client holds the boss with an empty PowerCollection and no
-            // animation data (T-pose). See PushPhantomToClients' header.
+            // animation data. See PushPhantomToClients' header.
             PushPhantomToClients(boss, phantomPlayer);
-
-            BossDiagBaseline(boss, this, "spawn-complete");
-            BossDiagOrphanScan(this, host, "after-spawn");
 
             return boss.Id;
         }
