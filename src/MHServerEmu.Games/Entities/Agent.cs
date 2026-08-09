@@ -120,6 +120,14 @@ namespace MHServerEmu.Games.Entities
 
         private bool IsRealCuratedBoss => Player.GetRawBossCandidatePool().Contains(PrototypeDataRef);
 
+        /// <summary>
+        /// True only for a live boss-phantom teammate (SpawnBossPhantomHero),
+        /// as opposed to a hostile curated boss spawned by the Boss Roster
+        /// tool or the native population/mission spawners. Used to gate the
+        /// [BossDiag] instrumentation so it can never spam for real bosses.
+        /// </summary>
+        internal bool IsBossPhantom => IsPhantomHero && IsRealCuratedBoss;
+
         public override int Throwability { get => Properties[PropertyEnum.Throwability]; }
         public bool IsVisibleWhenDormant { get => AgentPrototype.WakeStartsVisible; }
         public override bool IsWakingUp { get => _wakeEndEvent.IsValid; }
@@ -1720,8 +1728,13 @@ namespace MHServerEmu.Games.Entities
 
         public virtual int GetPowerSpecIndexUnlocked()
         {
-            if (!Verify.IsTrue(IsTeamUpAgent)) return 0;
-            return GameDatabase.AdvancementGlobalsPrototype.MaxPowerSpecIndexForTeamUps;
+            // Boss phantoms hit this via OnLevelUp -> UpdatePowerPointsUnspent
+            // (1.48 only) same as team-ups do. They don't have a multi-spec
+            // system like team-ups, so spec index 0 (the fallback below) is
+            // the actually-correct value for them, not a degraded one — this
+            // just avoids logging it as a Verify failure every level-set.
+            if (!Verify.IsTrue(IsTeamUpAgent || IsRealCuratedBoss)) return 0;
+            return IsTeamUpAgent ? GameDatabase.AdvancementGlobalsPrototype.MaxPowerSpecIndexForTeamUps : 0;
         }
 
         public virtual bool RespecPowerSpec(int specIndex, PowersRespecReason reason, bool skipValidation = false, PrototypeId powerProtoRef = PrototypeId.Invalid)
@@ -1896,7 +1909,13 @@ namespace MHServerEmu.Games.Entities
 
         public virtual long GetLevelUpXPRequirement(int level)
         {
-            if (!Verify.IsTrue(IsTeamUpAgent)) return 0;
+            // Boss phantoms hit this via InitializeLevel -> OnLevelUp on every
+            // spawn. They never level via XP (no team-up-style XP curve
+            // applies to them), so 0 — the fallback below — is the correct
+            // value, not a degraded one; this just avoids logging it as a
+            // Verify failure on every boss spawn.
+            if (!Verify.IsTrue(IsTeamUpAgent || IsRealCuratedBoss)) return 0;
+            if (IsTeamUpAgent == false) return 0;
 
             AdvancementGlobalsPrototype advancementProto = GameDatabase.AdvancementGlobalsPrototype;
             if (!Verify.IsNotNull(advancementProto)) return 0;
@@ -1947,8 +1966,21 @@ namespace MHServerEmu.Games.Entities
 
         protected virtual bool OnLevelUp(int oldLevel, int newLevel, bool restoreHealthAndEndurance = true)
         {
-            if (!Verify.IsTrue(IsTeamUpAgent)) return false;
-            
+            // Boss phantoms (SpawnBossPhantomHero) go through this same
+            // Agent.InitializeLevel -> OnLevelUp path team-ups use, and hit
+            // this gate too — confirmed live 2026-08-08 via the exact
+            // "Verify failed: IsTeamUpAgent" stack trace, traced back to
+            // Agent.OnLevelUp() called from InitializeLevel() called from
+            // SpawnBossPhantomHero(). The team-up-specific body below
+            // (UpdatePowerProgressionPowers under TeamUpOwner != null,
+            // TeamUpsAtMaxLevelPersistent) already no-ops safely for a
+            // non-team-up entity, but the gate was also silently skipping
+            // SendLevelUpMessage() — the actual NetMessageLevelUp the client
+            // uses to refresh its state for this entity — for every boss
+            // phantom, every level-set. Widened rather than special-cased,
+            // since the body already degrades correctly for non-team-ups.
+            if (!Verify.IsTrue(IsTeamUpAgent || IsRealCuratedBoss)) return false;
+
             // Restore health if needed
             if (restoreHealthAndEndurance && IsDead == false)
                 Properties[PropertyEnum.Health] = Properties[PropertyEnum.HealthMax];

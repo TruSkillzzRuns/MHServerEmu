@@ -6,6 +6,8 @@ namespace MHServerEmu.Games.GameData.LiveTuning
 {
     public readonly struct LiveTuningUpdateValue
     {
+        private static readonly Logger Logger = LogManager.CreateLogger();
+
         public string Prototype { get; }
         public string Setting { get; }
         public float Value { get; }
@@ -25,8 +27,25 @@ namespace MHServerEmu.Games.GameData.LiveTuning
             if (Prototype != string.Empty)
             {
                 PrototypeId prototypeId = GameDatabase.GetPrototypeRefByName(Prototype);
-                if (!Verify.IsTrue(prototypeId != PrototypeId.Invalid, $"Invalid prototype name {Prototype}"))
+
+                // Trace, not Verify/Warn — the LiveTuning event JSON files are
+                // shared across all three game versions this fork supports, but
+                // not every prototype they reference exists in every version's
+                // data (e.g. a 1.53-only event prototype has nothing to resolve
+                // to under 1.48/1.52). That's an expected, harmless per-version
+                // content gap, not a bug: this method already degrades
+                // correctly by skipping the setting (returns null, the caller
+                // filters it out). Confirmed live 2026-08-09 — every "Invalid
+                // prototype name" instance seen was one of these known
+                // cross-version gaps (Missions/.../ATowerVendorVisibility*,
+                // etc.), not a genuinely broken reference. Downgraded so it's
+                // still visible for real debugging without alarming a normal
+                // server start on every launch.
+                if (prototypeId == PrototypeId.Invalid)
+                {
+                    Logger.Trace($"LiveTuning: prototype not present on this game version, skipping — {Prototype}");
                     return null;
+                }
 
                 prototypeGuid = GameDatabase.GetPrototypeGuid(prototypeId);
             }

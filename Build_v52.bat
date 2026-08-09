@@ -20,7 +20,11 @@ echo     Copying...
 echo ==================
 
 if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
-robocopy "%BUILD_DIR%" "%OUTPUT_DIR%" *.* /s /xf *.pdb *.xml /np /njs /njh
+
+set XF_CONFIG=
+if exist "%OUTPUT_DIR%\Config.ini" set XF_CONFIG=Config.ini
+
+robocopy "%BUILD_DIR%" "%OUTPUT_DIR%" *.* /s /xf *.pdb *.xml %XF_CONFIG% /np /njs /njh
 
 echo ==================
 echo   Build Complete

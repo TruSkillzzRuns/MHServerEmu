@@ -91,6 +91,8 @@ namespace MHServerEmu.Games.Network
     /// </summary>
     public static class ArchiveMessageBuilder
     {
+        private static readonly MHServerEmu.Core.Logging.Logger Logger = MHServerEmu.Core.Logging.LogManager.CreateLogger();
+
         /// <summary>
         /// Builds <see cref="NetMessageEntityCreate"/> for the provided <see cref="Entity"/>.
         /// </summary>
@@ -278,6 +280,30 @@ namespace MHServerEmu.Games.Network
             {
                 Serializer.Transfer(archive, ref entity);
                 archiveData = archive.ToByteString();
+            }
+
+            // [BossDiag:Wire] Capture the ACTUAL create message the client
+            // renders a boss phantom from.
+            //
+            // Every server-side probe so far has shown IDENTICAL state between
+            // the spawn that works (first after server start) and the spawn
+            // that T-poses (any spawn following a purge): same rank, alliance,
+            // dormancy, simulation, AI, zero orphans. The symptom is purely
+            // visual, so the difference must be in what actually goes over the
+            // wire — which nothing has measured until now.
+            //
+            // Logging interest policies plus both payload sizes makes the
+            // working spawn and the broken spawn directly comparable. A
+            // difference here is the bug; identical output rules the entity
+            // create message out entirely and moves the search to a later
+            // message (locomotion / power / AOI update).
+            if (entity is Agent wireAgent && wireAgent.IsBossPhantom)
+            {
+                Logger.Warn($"[BossDiag:Wire] EntityCreate for boss phantom id=0x{entity.Id:X} " +
+                            $"{entity.PrototypeDataRef.GetName()} " +
+                            $"interest={interestPolicies} includeInvLoc={includeInvLoc} " +
+                            $"settings={(settings == null ? "null" : settings.OptionFlags.ToString())} " +
+                            $"baseDataBytes={baseData?.Length ?? -1} archiveBytes={archiveData?.Length ?? -1}");
             }
 
             return NetMessageEntityCreate.CreateBuilder()
@@ -623,6 +649,28 @@ namespace MHServerEmu.Games.Network
                 using var attachedEntityListHandle = ListPool<ulong>.Instance.Get(out List<ulong> attachedEntityList);
                 worldEntity.Physics.GetAttachedEntities(attachedEntityList);
                 Serializer.Transfer(archive, ref attachedEntityList);
+            }
+
+            // [BossDiag:Wire] EnterGameWorld is the message that actually
+            // PLACES and ANIMATES the entity on the client (position,
+            // orientation, locomotion state). The EntityCreate message was
+            // already proven byte-identical between the spawn that works and
+            // the spawn that T-poses (2026-08-09: Bullseye base=20 archive=44
+            // both times), so the divergence has to be here or later.
+            //
+            // locoFlags is the field to watch: NoLocomotionState means the
+            // client is handed no locomotion data at all, which is what a
+            // bind-pose / T-pose entity looks like.
+            if (worldEntity is Agent egwAgent && egwAgent.IsBossPhantom)
+            {
+                var bytes = archive.ToByteString();
+                Logger.Warn($"[BossDiag:Wire] EnterGameWorld for boss phantom id=0x{worldEntity.Id:X} " +
+                            $"{worldEntity.PrototypeDataRef.GetName()} " +
+                            $"locoFlags={locoFieldFlags} extraFlags={extraFieldFlags} " +
+                            $"hasLocomotor={worldEntity.Locomotor != null} " +
+                            $"locoStateNull={LocomotionState.IsNull(ref locomotionState)} " +
+                            $"pos={position.ToStringNames()} bytes={bytes.Length}");
+                return NetMessageEntityEnterGameWorld.CreateBuilder().SetArchiveData(bytes).Build();
             }
 
             return NetMessageEntityEnterGameWorld.CreateBuilder().SetArchiveData(archive.ToByteString()).Build();

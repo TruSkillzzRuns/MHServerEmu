@@ -226,6 +226,16 @@ namespace MHServerEmu.Games.Entities.Avatars
             var ids = host.PhantomAvatarIds; // snapshot count for stable iteration
 
             int callerLevel = CharacterLevel;
+
+            // [BossDiag] Count live boss phantoms up front so the movement
+            // probe can gate itself to the reported 2+ repro condition.
+            int bossPhantomCount = 0;
+            for (int bi = 0; bi < ids.Count; bi++)
+            {
+                var bp = Game.EntityManager.GetEntity<Agent>(ids[bi]);
+                if (bp != null && bp.IsDestroyed == false && bp.IsBossPhantom) bossPhantomCount++;
+            }
+
             for (int i = 0; i < ids.Count; i++)
             {
                 ulong id = ids[i];
@@ -251,8 +261,16 @@ namespace MHServerEmu.Games.Entities.Avatars
                     }
                     (stale ??= new List<ulong>()).Add(id);
                     s_phantomReattachGraceSinceMs.Remove(id);
+                    BossDiagForget(id);
                     continue;
                 }
+
+                // [BossDiag] Sample boss-phantom state every tick so any
+                // regression to "normal boss" is captured with a before/after
+                // diff. No-ops for non-boss phantoms and logs nothing while
+                // state is stable.
+                BossDiagSample(phantom, this);
+                BossDiagMovementSample(phantom, this, bossPhantomCount);
 
                 if (phantom.IsInWorld == false)
                 {
@@ -6327,6 +6345,12 @@ namespace MHServerEmu.Games.Entities.Avatars
             try { teamUp.AIController?.SetIsEnabled(false); }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:TeamUp] AIController disable failed: {ex.Message}"); }
 
+            // Same missing client push as boss phantoms — see
+            // PushPhantomToClients' header. Team-ups are the same shape
+            // (non-Avatar Agent under a synthetic Player) and never received
+            // their PowerCollection on the client either.
+            PushPhantomToClients(teamUp, phantomPlayer);
+
             PhantomLogger.Info($"[PhantomHero:TeamUp] {this} spawned {(enemy ? "HOSTILE" : "friendly")} team-up '{teamUpRef.GetName()}' (agentId 0x{teamUp.Id:X}) at {teamUp.RegionLocation.Position.ToStringNames()} level {effectiveLevel}");
             return teamUp.Id;
         }
@@ -6367,6 +6391,71 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// entity is moved out to AvatarInPlay immediately after and never
         /// visibly occupies a team-up slot.
         /// </summary>
+        /// <summary>
+        /// Push a freshly spawned non-avatar phantom (boss / team-up) to every
+        /// real client, exactly the way SpawnPhantomHeroCore already does for
+        /// avatar phantoms.
+        ///
+        /// Established by log comparison 2026-08-09: an avatar phantom spawn
+        /// emits "[PhantomHero:PowerSync] ... collection (97 powers) sent=True"
+        /// and "[PhantomHero:AOI] ...", while a boss phantom spawn emits
+        /// NEITHER. Those lines come from a block that lives only inside the
+        /// avatar path (Avatar.PhantomHero.cs ~7236-7294); SpawnBossPhantomHero
+        /// and SpawnTeamUpPhantomHero never had an equivalent.
+        ///
+        /// Its own header explains why that matters, and describes the exact
+        /// reported symptoms: "Without this the phantom exists server-side but
+        /// no NetMessage tells clients about it -- invisible bot", and
+        /// PowerCollection.AssignPower only ships
+        /// NetMessagePowerCollectionAssignPower while _owner.IsInGame is true,
+        /// which is false during the phantom's power assignment — so "the
+        /// client's PowerCollection for this phantom stays empty ... the cast
+        /// animation never plays". A client-side entity carrying an empty power
+        /// collection has no animation data to drive it, which is what a T-pose
+        /// is.
+        ///
+        /// Deliberately NOT gated on IsBossPhantom: team-up phantoms are the
+        /// same shape (non-Avatar Agent hosted by a synthetic Player) and were
+        /// missing this for the same reason.
+        /// </summary>
+        private void PushPhantomToClients(Agent phantom, Player phantomPlayer)
+        {
+            if (phantom == null || phantomPlayer == null) return;
+
+            try
+            {
+                // Phantom Player first so the client can resolve the owner
+                // before it receives the agent itself.
+                phantomPlayer.UpdateInterestPolicies(true, null);
+                phantom.UpdateInterestPolicies(true, null);
+
+                if (phantom.PowerCollection == null)
+                {
+                    PhantomLogger.Warn($"[PhantomHero:PowerSync] phantom 0x{phantom.Id:X} has no PowerCollection at spawn — client has no animation data");
+                    return;
+                }
+
+                int collectionSize = 0;
+                foreach (var _ in phantom.PowerCollection) collectionSize++;
+
+                foreach (Player realPlayer in new PlayerIterator(Game))
+                {
+                    if (realPlayer.PlayerConnection == null) continue;
+                    var aoi = realPlayer.AOI;
+                    if (aoi == null) continue;
+                    if (aoi.InterestedInEntity(phantom.Id, AOINetworkPolicyValues.AOIChannelProximity) == false)
+                    {
+                        PhantomLogger.Info($"[PhantomHero:PowerSync] SKIP {realPlayer.GetName()} — not interested in phantom 0x{phantom.Id:X} (proximity=false), collectionSize={collectionSize}");
+                        continue;
+                    }
+
+                    bool sent = phantom.PowerCollection.SendEntireCollection(realPlayer);
+                    PhantomLogger.Info($"[PhantomHero:PowerSync] {realPlayer.GetName()} ← phantom 0x{phantom.Id:X} collection ({collectionSize} powers) sent={sent}");
+                }
+            }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:PowerSync] push failed for 0x{phantom.Id:X}: {ex.Message}"); }
+        }
+
         public ulong SpawnBossPhantomHero(PrototypeId bossRef, int level, out string error, string usernameOverride = null, bool bypassCap = false)
         {
             error = null;
@@ -6439,6 +6528,96 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             boss.IsPhantomHero = true;
 
+            // Strip the prototype's baked-in boss Rank and bind the caller's
+            // alliance BEFORE the entity enters the world below.
+            //
+            // SetAsPersistent is what puts the boss in-world, which is also
+            // when it first replicates to the real client. Everything that
+            // made it "not a boss" used to run AFTER that point, so the client
+            // received the entity in its native state — Rank=Mods/Ranks/Boss —
+            // and only got corrections afterwards. Confirmed live 2026-08-09
+            // via [BossDiag]: on every spawn the boss entered world carrying
+            // Rank=Boss and was only stripped ~8ms later, and (via
+            // ApplyStandaloneBossFixups) briefly flipped to the ENEMY alliance
+            // in that same window. Whether the client latched boss treatment
+            // depended purely on message timing, which matches the reported
+            // non-determinism (sometimes the 1st boss, sometimes the 2nd).
+            //
+            // The late strip further down is deliberately kept as well: it
+            // still catches anything that re-derives Rank between here and
+            // SetSimulated. This one closes the replication window; that one
+            // closes the re-derivation window. They fix different things.
+            boss.Properties.RemoveProperty(PropertyEnum.Rank);
+            boss.SetSummonedAllianceOverride(Alliance);
+
+            // Suppress the boss's native wake / dramatic-entrance sequence.
+            // THIS IS THE FIX FOR THE GLITCHY, STUTTERING SPAWN-IN — root
+            // cause traced 2026-08-09 to Agent.OnPropertyChange's Dormant
+            // handler (Agent.cs:2496):
+            //
+            //     if (dormant == false) СheckWakeDelay();
+            //     if (!IsVisibleWhenDormant) Properties[Visible] = !dormant;
+            //
+            // Two separate problems, both hitting every boss phantom:
+            //
+            //  1. VISIBILITY IS SLAVED TO DORMANCY. For any boss whose
+            //     prototype has WakeStartsVisible=false, each dormancy flip
+            //     toggles the entity invisible/visible. The "glitchy" look is
+            //     literal flickering, not a movement fault — which is why
+            //     chasing the locomotor never fixed it, and why avatar
+            //     phantoms (never dormant) looked fine in the matched
+            //     [BossDiag:Move] traces.
+            //
+            //  2. CLEARING DORMANT REPLAYS THE DRAMATIC ENTRANCE.
+            //     СheckWakeDelay (Agent.cs:3481) schedules the entrance
+            //     whenever WakeDelayMS > 0, PlayDramaticEntrance != Never and
+            //     DramaticEntrancePlayedOnce == false. We never set that flag,
+            //     so every clear — including the 2s
+            //     StandaloneBossDormantWatchdog's — re-armed the boss's
+            //     cinematic entrance (physics resolve + entrance animation)
+            //     while the phantom tick was already driving it around.
+            //
+            // The engine's own player-controlled-agent path already does this
+            // correctly: Agent.SetControlledProperties sets
+            // DramaticEntrancePlayedOnce BEFORE clearing Dormant, carrying the
+            // explicit comment "IMPORTANT: Dormant needs to be turned off
+            // after setting DramaticEntrancePlayedOnce." Mirror that ordering
+            // exactly. With the flag set first, СheckWakeDelay takes its else
+            // branch (TryAutoActivatePowersInCollection) and no entrance is
+            // ever scheduled.
+            //
+            // Done here, before SetAsPersistent puts the boss in-world and
+            // replicates it, so the client never observes the dormant/
+            // invisible/mid-entrance state at all.
+            // DO NOT set DramaticEntrancePlayedOnce here.
+            //
+            // Reverted 2026-08-09 — setting it is what CAUSED the T-pose, and
+            // the timeline proves it: before that change the report was
+            // "glitchy/stutter" and never a T-pose; the very next test after
+            // adding it reported T-posing bosses.
+            //
+            // Mechanism: PlayDramaticEntrance is baked into the prototype
+            // (BullseyeCH4 = Always, confirmed from live data), so the CLIENT
+            // plays the entrance regardless of server state. Setting this flag
+            // makes СheckWakeDelay (Agent.cs:3481) skip scheduling the wake
+            // sequence, so WakeEndCallback -> OnDramaticEntranceEnd()
+            // (Agent.cs:3507) never fires and the client is never told the
+            // entrance finished — leaving the boss frozen mid-entrance, i.e.
+            // T-posed.
+            //
+            // The known-good comparison is EntityHelper.ApplyStandaloneBossFixups,
+            // used by the Boss Roster tool whose bosses animate correctly: it
+            // clears Dormant and does NOT touch DramaticEntrancePlayedOnce.
+            // Match that exactly and let the entrance run to completion.
+            boss.Properties[PropertyEnum.Dormant] = false;
+
+            // Log the prototype's own wake/entrance settings so the next trace
+            // shows exactly which of these applied to each boss, rather than
+            // leaving it inferred.
+            PhantomLogger.Info($"[BossDiag:Proto] {bossRef.GetName()} WakeRange={bossProto.WakeRange} " +
+                               $"WakeDelayMS={bossProto.WakeDelayMS} WakeRandomStartMS={bossProto.WakeRandomStartMS} " +
+                               $"WakeStartsVisible={bossProto.WakeStartsVisible} PlayDramaticEntrance={bossProto.PlayDramaticEntrance}");
+
             Inventory avatarInPlay = phantomPlayer.GetInventory(InventoryConvenienceLabel.AvatarInPlay);
             if (avatarInPlay != null)
             {
@@ -6457,7 +6636,37 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             try
             {
-                boss.SetAsPersistent(this, true);
+                // newOnServer:false — THIS is what stops the T-pose / replayed
+                // dramatic entrance. Traced 2026-08-09 by fact, not theory:
+                //
+                //  * WorldEntity.SetAsPersistent only sets
+                //    EntitySettingsOptionFlags.IsNewOnServer when newOnServer
+                //    is true (WorldEntity.cs:572-574), and that flag is sent
+                //    to the client as EntityCreateMessageFlags.IsNewOnServer
+                //    (ArchiveMessageBuilder.cs:164). It is the client-side
+                //    trigger for the spawn "materialize" sequence — the same
+                //    mechanism WorldEntity.cs:576 documents as "the client's
+                //    own 'materialize' entrance sequence (PlayDramaticEntrance)",
+                //    noting that "a fresh login passes newOnServer=false,
+                //    never sets the flag, and always rendered fine".
+                //
+                //  * Every engine-native call site passes false
+                //    (Agent.cs:3158, Avatar.cs:5829, Avatar.cs:5876). Only the
+                //    phantom spawn paths passed true.
+                //
+                //  * Confirmed against real prototype data this session:
+                //    BullseyeCH4 has PlayDramaticEntrance=Always, so it
+                //    replayed its entrance on EVERY respawn and landed in
+                //    T-pose; LizardBase has WakeDelayMS=3000 (spawns dormant)
+                //    and stuttered through its wake. Suppressing the server's
+                //    own wake path via DramaticEntrancePlayedOnce did NOT stop
+                //    either, because the client was driving it off this flag.
+                //
+                // Boss phantoms are never IsTeamUpAgent, so the
+                // IsClientEntityHidden branch below that flag never applied to
+                // them — dropping IsNewOnServer cannot leave a boss invisible
+                // the way it could a team-up (see that branch's 1.48 note).
+                boss.SetAsPersistent(this, false);
 
                 // SetAsPersistent's own placement (WorldEntity.GetPositionNearAvatar)
                 // validates the spot against the CALLER's bounds, not the boss's own —
@@ -6476,11 +6685,11 @@ namespace MHServerEmu.Games.Entities.Avatars
                 else
                     PhantomLogger.Warn($"[PhantomHero:Boss] no bounds-validated spawn spot found for {bossRef.GetName()} — keeping SetAsPersistent's placement");
 
-                // CreateAgent (the standalone-enemy-boss path) sets these
-                // explicitly rather than relying on defaults — mirror that
-                // here since we're not going through CreateAgent.
+                // CreateAgent (the standalone-enemy-boss path) sets
+                // DifficultyTier explicitly rather than relying on defaults —
+                // mirror that here since we're not going through CreateAgent.
                 boss.Properties[PropertyEnum.DifficultyTier] = region.DifficultyTierRef;
-                boss.Properties[PropertyEnum.Rank] = bossProto.Rank.DataRef;
+
                 boss.InitializeLevel(effectiveLevel);
                 boss.CombatLevel = effectiveLevel;
                 boss.Properties[PropertyEnum.PowerProgressionVersion] = boss.GetLatestPowerProgressionVersion();
@@ -6490,7 +6699,13 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // bootstrap fix) MINUS the AllianceOverride line — a friendly
                 // boss phantom uses the CALLER's own alliance instead of the
                 // hostile phantom alliance those fixups apply.
-                EntityHelper.ApplyStandaloneBossFixups(boss, bossProto);
+                // applyEnemyAlliance:false — this call site never wanted the
+                // hostile-alliance override (see this block's comment), but
+                // until now the helper applied it unconditionally and we just
+                // overwrote it immediately after, leaving the boss genuinely
+                // hostile to its own summoner for a moment while already
+                // in-world and replicated.
+                EntityHelper.ApplyStandaloneBossFixups(boss, bossProto, applyEnemyAlliance: false);
                 boss.SetSummonedAllianceOverride(Alliance);
 
                 boss.Properties[PropertyEnum.Health] = boss.Properties[PropertyEnum.HealthMax];
@@ -6520,8 +6735,74 @@ namespace MHServerEmu.Games.Entities.Avatars
             boss.Properties[PropertyEnum.Health] = boss.Properties[PropertyEnum.HealthMax];
             ApplyPhantomDamageScaling(boss, effectiveLevel, enemy: false);
 
+            // Rank is deliberately NOT left at bossProto.Rank (Boss) — confirmed
+            // live 2026-08-08/09: it triggers the client's full boss-encounter UI
+            // (top-screen health bar + "Boss" banner), the same Rank-driven
+            // treatment already established this session for Deathmatch's boss
+            // glow. A friendly boss phantom is a squad member, not an encounter —
+            // every other friendly phantom (team-up, avatar) is left at
+            // Rank.Player, never Boss/MiniBoss.
+            //
+            // Set here, as the LAST property write before SetSimulated, not
+            // earlier (originally set right after DifficultyTier, before
+            // InitializeLevel/ApplyStandaloneBossFixups) — confirmed live it was
+            // inconsistent: some bosses (Gorgon) correctly lost the boss banner,
+            // others (DrDoomPhase2, BullseyeCH4 — both multi-phase/scripted
+            // story-boss variants) kept it even with the override already
+            // applied earlier. Per this session's own earlier Deathmatch Rank
+            // investigation: WorldEntity's Rank property-change handler defers
+            // attaching the Rank prototype's baked-in Mod bundle
+            // (ModChangeModEffects, which is what actually drives the client's
+            // boss-tier UI) until SetSimulated fires — so whatever Rank value
+            // is current AT that exact moment is what sticks. InitializeLevel
+            // (OnLevelUp) and ApplyStandaloneBossFixups run between the old set
+            // point and SetSimulated, and for these scripted variants something
+            // in that window was re-deriving Rank from the prototype before the
+            // mod bundle attached, undoing an earlier override. Setting it here
+            // instead closes that window entirely — nothing runs after this
+            // before SetSimulated captures the value.
+            // Confirmed live (2026-08-09): GetRankByEnum(Rank.Player) returns
+            // null for every boss on every version — the population Globals
+            // RankDefaults table has no RankPrototype entry for Rank.Player at
+            // all (it's not a rank real players are ever tagged with), so
+            // there was never a value to override TO. The actual working
+            // pattern, confirmed by how friendly (non-enemy) team-up phantoms
+            // handle this a few hundred lines up in SpawnTeamUpPhantomHero:
+            // they never set Properties[PropertyEnum.Rank] in the first
+            // place. So instead of overriding to a value, just strip
+            // whatever Rank the boss prototype's own defaults baked in.
+            boss.Properties.RemoveProperty(PropertyEnum.Rank);
+
             try { boss.SetSimulated(true); }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Boss] SetSimulated(true) failed: {ex.Message}"); }
+
+            // Force the boss awake AFTER SetSimulated — this is the boss-only
+            // difference behind the reported glitchy/stuttering movement.
+            //
+            // Measured 2026-08-09 with matched [BossDiag:Move] traces of boss
+            // and avatar phantoms in the same session: both stop-and-go at the
+            // same rate (~58% vs ~60% of samples stationary — that cycling is
+            // the shared friendly-follow design and is NOT boss-specific, so
+            // it is deliberately left alone), but boss phantoms were dormant
+            // in ~10% of samples while avatar phantoms were dormant in ZERO.
+            //
+            // Cause: any AgentPrototype with WakeRange > 0 is created dormant
+            // (Agent.cs:161), and SetSimulated only auto-clears dormancy when
+            // WakeRange <= 0 (Agent.cs:2304) — so a boss stayed dormant right
+            // through spawn until the 2s StandaloneBossDormantWatchdog
+            // happened to clear it. Every BASELINE confirmed it:
+            // dormant=True at spawn-complete despite the earlier fixup clear.
+            // The phantom tick issues movement to it during that window, so
+            // it lurches instead of walking.
+            //
+            // Written directly rather than via SetDormant(false), which for a
+            // prototype with WakeRandomStartMS > 0 does NOT clear dormancy at
+            // all — it schedules a randomized delayed wake instead
+            // (Agent.cs:2286), reintroducing the same nondeterministic window.
+            boss.Properties[PropertyEnum.Dormant] = false;
+
+            PrototypeId finalRankRef = boss.Properties[PropertyEnum.Rank];
+            PhantomLogger.Info($"[PhantomHero:Boss] {bossRef.GetName()} final Rank after override: {(finalRankRef != PrototypeId.Invalid ? finalRankRef.GetNameFormatted() : "<unset>")}");
 
             var descriptor = new MHServerEmu.DatabaseAccess.Models.PhantomIntent
             {
@@ -6544,6 +6825,19 @@ namespace MHServerEmu.Games.Entities.Avatars
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Boss] AIController disable failed: {ex.Message}"); }
 
             PhantomLogger.Info($"[PhantomHero:Boss] {this} spawned friendly boss phantom '{bossRef.GetName()}' (agentId 0x{boss.Id:X}) at {boss.RegionLocation.Position.ToStringNames()} level {effectiveLevel}");
+
+            // [BossDiag] Record end-of-spawn state as the baseline, so a boss
+            // that comes in ALREADY wrong is distinguishable from one that
+            // regresses later — the two have completely different causes and
+            // the reported symptom covers both.
+            // Same client push the avatar phantom path performs — without this
+            // the client holds the boss with an empty PowerCollection and no
+            // animation data (T-pose). See PushPhantomToClients' header.
+            PushPhantomToClients(boss, phantomPlayer);
+
+            BossDiagBaseline(boss, this, "spawn-complete");
+            BossDiagOrphanScan(this, host, "after-spawn");
+
             return boss.Id;
         }
 

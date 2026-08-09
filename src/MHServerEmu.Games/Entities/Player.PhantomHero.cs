@@ -257,10 +257,41 @@ namespace MHServerEmu.Games.Entities
             {
                 try
                 {
-                    Avatar av = mgr.GetEntity<Avatar>(avatarId);
+                    // GetEntity<Agent>, NOT <Avatar> — this is the root cause of
+                    // the "second spawn is broken" bug (traced 2026-08-09).
+                    //
+                    // RegisterPhantom (line ~119) puts EVERY phantom kind into
+                    // _phantomAvatarIds: avatar phantoms (Avatar), team-up
+                    // phantoms (Agent) and boss phantoms (Agent). But
+                    // EntityManager.GetEntity<T> ends in "GetEntity(...) as T",
+                    // so asking for <Avatar> returns NULL for a team-up or boss
+                    // — the `continue` below then skipped them and they were
+                    // NEVER ExitWorld'd or Destroy'd. Immediately after this
+                    // loop, _phantomAvatarIds.Clear() dropped the only
+                    // reference to them, and the loop below destroyed the
+                    // phantom Player that owned them.
+                    //
+                    // Net effect: every despawn left live, untracked, ownerless
+                    // boss/team-up entities behind in the world. Nothing drove
+                    // their animation or AI any more (the phantom tick iterates
+                    // the now-cleared list), which is exactly the reported
+                    // T-pose — and the next spawn then layered fresh phantoms
+                    // on top of those orphans. It also explains precisely why a
+                    // FIRST spawn into a clean world always looked correct and
+                    // only later spawns misbehaved.
+                    //
+                    // Avatar derives from Agent, so <Agent> covers all three
+                    // kinds. Matches how OnPhantomTick was already widened.
+                    Agent av = mgr.GetEntity<Agent>(avatarId);
                     if (av == null) continue;
+
+                    // [BossDiag] state before/after teardown, plus whether the
+                    // real client still holds AOI interest afterwards.
+                    Avatar.BossDiagTeardown(av, Game, "before-exit");
                     if (av.IsInWorld) av.ExitWorld();
+                    Avatar.BossDiagTeardown(av, Game, "after-exitworld");
                     av.Destroy();
+                    Avatar.BossDiagTeardown(av, Game, "after-destroy");
                     removed++;
                 }
                 catch (System.Exception ex) { PhantomHostLogger.Warn($"[Phantom] purge avatar 0x{avatarId:X} failed: {ex.Message}"); }
@@ -284,6 +315,12 @@ namespace MHServerEmu.Games.Entities
             _phantomPlayerIds.Clear();
             _phantomDescriptors.Clear();
             SyncPhantomParty();
+
+            // [BossDiag] Scan AFTER the lists are cleared: anything the purge
+            // failed to destroy is now untracked and invisible to every other
+            // probe, so this is the only place it can be observed.
+            Avatar.BossDiagOrphanScan(CurrentAvatar, this, $"after-purge(destroyed={removed})");
+
             return removed;
         }
 
@@ -347,7 +384,10 @@ namespace MHServerEmu.Games.Entities
 
             try
             {
-                Avatar av = mgr?.GetEntity<Avatar>(avatarId);
+                // <Agent>, not <Avatar> — same leak as PurgePhantoms above:
+                // enemy phantoms can be team-up Agents, which <Avatar> silently
+                // returns null for, leaving them alive and untracked.
+                Agent av = mgr?.GetEntity<Agent>(avatarId);
                 if (av != null)
                 {
                     if (av.IsInWorld) av.ExitWorld();
@@ -382,7 +422,8 @@ namespace MHServerEmu.Games.Entities
             {
                 try
                 {
-                    Avatar av = mgr.GetEntity<Avatar>(avatarId);
+                    // <Agent>, not <Avatar> — same leak as PurgePhantoms above.
+                    Agent av = mgr.GetEntity<Agent>(avatarId);
                     if (av == null) continue;
                     if (av.IsInWorld) av.ExitWorld();
                     av.Destroy();
@@ -742,9 +783,20 @@ namespace MHServerEmu.Games.Entities
                                     && GetRawBossCandidatePool().Contains(teamUpAgent.PrototypeDataRef);
                                 if (teamUpAgent != null && (teamUpAgent.IsTeamUpAgent || isBossPhantom))
                                 {
+                                    // CurrentDifficultyRefId was missing here — the real,
+                                    // working broadcast (Player.BuildCommunityBroadcast,
+                                    // used by ordinary avatar-type phantoms) always sets
+                                    // it alongside the region ref. Found by diffing this
+                                    // manual broadcast against that method field-by-field
+                                    // after a live report (2026-08-09) that team-up
+                                    // phantoms ALSO never show a party icon/HP bar, not
+                                    // just boss phantoms — ruling out "the client doesn't
+                                    // recognize this prototype type" and pointing at a gap
+                                    // in the broadcast itself instead.
                                     var teamUpBroadcast = Gazillion.CommunityMemberBroadcast.CreateBuilder()
                                         .SetMemberPlayerDbId(phantom.DatabaseUniqueId)
                                         .SetCurrentRegionRefId((ulong)(teamUpAgent.Region?.PrototypeDataRef ?? MHServerEmu.Games.GameData.PrototypeId.Invalid))
+                                        .SetCurrentDifficultyRefId((ulong)(teamUpAgent.Region?.DifficultyTierRef ?? MHServerEmu.Games.GameData.PrototypeId.Invalid))
                                         .AddSlots(Gazillion.CommunityMemberAvatarSlot.CreateBuilder()
                                             .SetAvatarRefId((ulong)teamUpAgent.PrototypeDataRef)
                                             .SetCostumeRefId(0)

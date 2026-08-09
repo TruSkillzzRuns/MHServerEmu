@@ -106,7 +106,11 @@ namespace MHServerEmu.Games.Entities
             for (int i = 0; i < _phantomAvatarIds.Count; i++)
             {
                 var d = _phantomDescriptors[i];
-                Avatar av = mgr?.GetEntity<Avatar>(_phantomAvatarIds[i]);
+                // <Agent>, not <Avatar> — boss and team-up phantoms are Agents,
+                // and GetEntity<Avatar> returns null for them, so OmegaDev2
+                // showed them with no health (same null trap that made
+                // PurgePhantoms leak them).
+                Agent av = mgr?.GetEntity<Agent>(_phantomAvatarIds[i]);
 
                 PrototypeId heroRef = av != null ? av.PrototypeDataRef : (PrototypeId)d.AvatarRef;
 
@@ -155,7 +159,9 @@ namespace MHServerEmu.Games.Entities
 
             foreach (ulong avatarId in _enemyPhantomAvatarIds)
             {
-                var av = mgr.GetEntity<Avatar>(avatarId);
+                // <Agent>, not <Avatar> — enemy team-up phantoms are Agents and
+                // were silently dropped from this list entirely.
+                var av = mgr.GetEntity<Agent>(avatarId);
                 if (av == null) continue;
 
                 long health = av.Properties[MHServerEmu.Games.Properties.PropertyEnum.Health];

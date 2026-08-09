@@ -114,7 +114,19 @@ namespace MHServerEmu.Games.Entities
         /// needs the exact same fixes, so this lives in one place instead of
         /// being duplicated (and silently drifting) across both.
         /// </summary>
-        public static void ApplyStandaloneBossFixups(Agent agent, AgentPrototype bossProto)
+        /// <param name="applyEnemyAlliance">
+        /// When false, skips the hostile-alliance override below. Friendly
+        /// boss phantoms (Avatar.SpawnBossPhantomHero) need every other fixup
+        /// here but must NOT be flipped to the enemy alliance — they belong to
+        /// the caller's own alliance. That call site always intended to
+        /// exclude it (its comment says so) but previously could not: this
+        /// method applied it unconditionally and the caller just overwrote it
+        /// a moment later, leaving a window where an in-world, already-
+        /// replicated boss phantom was genuinely hostile to its own summoner.
+        /// Confirmed live 2026-08-09 in the [BossDiag] trace as
+        /// "AllianceOverride &lt;unset&gt; -> Enemies -> Players" on every spawn.
+        /// </param>
+        public static void ApplyStandaloneBossFixups(Agent agent, AgentPrototype bossProto, bool applyEnemyAlliance = true)
         {
             if (agent == null || bossProto == null) return;
 
@@ -134,9 +146,12 @@ namespace MHServerEmu.Games.Entities
             // real game's own alliance table — override to the same
             // alliance phantom heroes use so all enemy categories stay
             // mutually friendly while hostile to the player.
-            PrototypeId enemyAllianceRef = Avatars.Avatar.GetEnemyPhantomAllianceRef();
-            if (enemyAllianceRef != PrototypeId.Invalid)
-                agent.Properties[PropertyEnum.AllianceOverride] = enemyAllianceRef;
+            if (applyEnemyAlliance)
+            {
+                PrototypeId enemyAllianceRef = Avatars.Avatar.GetEnemyPhantomAllianceRef();
+                if (enemyAllianceRef != PrototypeId.Invalid)
+                    agent.Properties[PropertyEnum.AllianceOverride] = enemyAllianceRef;
+            }
 
             // A bare CreateAgent spawn has none of LootCooldownByChannel/
             // LootCooldownTimeHours/LootCooldownRolloverWallTime, so
