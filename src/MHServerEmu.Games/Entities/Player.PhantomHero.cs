@@ -730,7 +730,17 @@ namespace MHServerEmu.Games.Entities
                             if (member != null)
                             {
                                 var teamUpAgent = mgr.GetEntity<Agent>(_phantomAvatarIds[i]);
-                                if (teamUpAgent != null && teamUpAgent.IsTeamUpAgent)
+                                // Boss phantoms need the exact same manual broadcast as
+                                // team-ups, for the exact same reason: no CurrentAvatar,
+                                // so Community.RequestLocalBroadcast (which reads it) has
+                                // nothing to report and the client shows "?" instead of a
+                                // real icon/HP bar in the party frame (reported live
+                                // 2026-08-08). GetRawBossCandidatePool is the same real-
+                                // boss-only check SpawnBossPhantomHero validates against.
+                                bool isBossPhantom = teamUpAgent != null
+                                    && teamUpAgent.IsTeamUpAgent == false
+                                    && GetRawBossCandidatePool().Contains(teamUpAgent.PrototypeDataRef);
+                                if (teamUpAgent != null && (teamUpAgent.IsTeamUpAgent || isBossPhantom))
                                 {
                                     var teamUpBroadcast = Gazillion.CommunityMemberBroadcast.CreateBuilder()
                                         .SetMemberPlayerDbId(phantom.DatabaseUniqueId)
@@ -931,7 +941,17 @@ namespace MHServerEmu.Games.Entities
                             if (member != null)
                             {
                                 var teamUpAgent = mgr.GetEntity<Agent>(_phantomAvatarIds[i]);
-                                if (teamUpAgent != null && teamUpAgent.IsTeamUpAgent)
+                                // Boss phantoms need the exact same manual broadcast as
+                                // team-ups, for the exact same reason: no CurrentAvatar,
+                                // so Community.RequestLocalBroadcast (which reads it) has
+                                // nothing to report and the client shows "?" instead of a
+                                // real icon/HP bar in the party frame (reported live
+                                // 2026-08-08). GetRawBossCandidatePool is the same real-
+                                // boss-only check SpawnBossPhantomHero validates against.
+                                bool isBossPhantom = teamUpAgent != null
+                                    && teamUpAgent.IsTeamUpAgent == false
+                                    && GetRawBossCandidatePool().Contains(teamUpAgent.PrototypeDataRef);
+                                if (teamUpAgent != null && (teamUpAgent.IsTeamUpAgent || isBossPhantom))
                                 {
                                     var teamUpBroadcast = Gazillion.CommunityMemberBroadcast.CreateBuilder()
                                         .SetMemberPlayerDbId(phantom.DatabaseUniqueId)
