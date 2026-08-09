@@ -85,16 +85,40 @@ namespace MHServerEmu.Games.Entities
         // phantom team-ups going into AvatarInPlay — no other move is
         // affected, and this is server-side only so no client SIP data
         // needs to change.
+        //
+        // Boss phantoms (SpawnBossPhantomHero) need the exact same bypass,
+        // for the exact same reason — but they can't be gated on IsPhantomHero
+        // the way team-ups are: that flag is a plain C# property that can
+        // only be set AFTER the entity object exists, while the FIRST
+        // placement (into TeamUpLibrary, used purely as a container that
+        // accepts a non-Avatar Agent at creation time) happens as part of
+        // EntityManager.CreateEntity itself, before there's any entity
+        // instance to set the flag on — confirmed live 2026-08-08:
+        // "InvalidDestInvContainmentFilters" creating a boss into
+        // TeamUpLibrary, because TeamUpLibrary's own native containment only
+        // accepts AgentTeamUpPrototype, and this override didn't cover
+        // TeamUpLibrary at all (only AvatarInPlay) nor any non-team-up Agent.
+        // Checking prototype identity directly (IsRealCuratedBoss) sidesteps
+        // the ordering problem entirely — it's available the instant the
+        // entity exists, no post-creation flag needed. Safe to allow
+        // unconditionally for any real boss moving into either of these two
+        // specific player-owned inventories: no other code path in the game
+        // ever attempts that move for a boss AgentPrototype.
         public override InventoryResult CanChangeInventoryLocation(Inventory destInventory, out PropertyEnum propertyRestriction)
         {
             propertyRestriction = PropertyEnum.Invalid;
-            if (IsPhantomHero && IsTeamUpAgent && destInventory != null
-                && destInventory.Prototype?.ConvenienceLabel == InventoryConvenienceLabel.AvatarInPlay)
+            if (destInventory != null)
             {
-                return InventoryResult.Success;
+                InventoryConvenienceLabel label = destInventory.Prototype?.ConvenienceLabel ?? InventoryConvenienceLabel.None;
+                if (label == InventoryConvenienceLabel.AvatarInPlay && IsPhantomHero && IsTeamUpAgent)
+                    return InventoryResult.Success;
+                if ((label == InventoryConvenienceLabel.AvatarInPlay || label == InventoryConvenienceLabel.TeamUpLibrary) && IsRealCuratedBoss)
+                    return InventoryResult.Success;
             }
             return base.CanChangeInventoryLocation(destInventory, out propertyRestriction);
         }
+
+        private bool IsRealCuratedBoss => Player.GetRawBossCandidatePool().Contains(PrototypeDataRef);
 
         public override int Throwability { get => Properties[PropertyEnum.Throwability]; }
         public bool IsVisibleWhenDormant { get => AgentPrototype.WakeStartsVisible; }
