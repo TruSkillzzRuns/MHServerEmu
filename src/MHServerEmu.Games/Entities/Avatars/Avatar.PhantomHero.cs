@@ -6552,7 +6552,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             ulong phantomDbId = System.Threading.Interlocked.Increment(ref s_phantomDbIdSeed);
             string username = string.IsNullOrEmpty(usernameOverride) ? NewPhantomUsername(Game.Random) : usernameOverride;
             Player phantomPlayer;
-            using (var playerSettings = ObjectPoolManager.Instance.Get<EntitySettings>())
+            using (var playerSettingsHandle = EntitySettingsPool.Get(out EntitySettings playerSettings))
             {
                 playerSettings.DbGuid = phantomDbId;
                 playerSettings.EntityRef = GameDatabase.GlobalsPrototype.DefaultPlayer;
@@ -6572,7 +6572,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (teamUpLibrary == null) { error = "TeamUpLibrary missing on phantom Player"; DestroyPhantomPlayer(phantomPlayer); return 0; }
 
             Agent boss;
-            using (var settings = ObjectPoolManager.Instance.Get<EntitySettings>())
+            using (var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings))
             {
                 settings.InventoryLocation = new(phantomPlayer.Id, teamUpLibrary.PrototypeDataRef);
                 settings.EntityRef = bossRef;
