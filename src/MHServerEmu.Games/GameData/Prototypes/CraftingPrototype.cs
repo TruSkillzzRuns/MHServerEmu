@@ -100,7 +100,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
             if (baseResult != CraftingResult.Success)
                 return baseResult;
 
-            using LootCloneRecord lootCloneRecord = ObjectPoolManager.Instance.Get<LootCloneRecord>();
+            using var lootCloneRecordHandle = LootCloneRecordPool.Get(out LootCloneRecord lootCloneRecord);
             LootCloneRecord.Initialize(lootCloneRecord, LootContext.Crafting, itemSpec, avatar.PrototypeDataRef);
 
             foreach (DropRestrictionPrototype dropRestrictionProto in Restrictions)
@@ -213,7 +213,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
         {
             if (!Verify.IsTrue(RecipeInputs.HasValue())) return CraftingResult.CraftingFailed;
 
-            using var usedStackCountsHandle = DictionaryPool<ulong, int>.Instance.Get(out Dictionary<ulong, int> usedStackCounts);
+            using var usedStackCountsHandle = DictionaryPool<ulong, int>.Get(out Dictionary<ulong, int> usedStackCounts);
 
             for (int slot = 0; slot < RecipeInputs.Length; slot++)
             {
@@ -336,7 +336,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
             if (CraftingCost.HasAnyCostEval == false)
                 return true;
 
-            using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+            using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
             evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Entity, player.Properties);
 
             // Add ingredients to eval context

@@ -65,7 +65,7 @@ namespace MHServerEmu.Games.Entities
                 return canCraftRecipeResult;
 
             // Get crafting costs (already validated in CanCraftRecipe() above)
-            using PropertyCollection currencyCost = ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var currencyCostHandle = PropertyCollectionPool.Get(out PropertyCollection currencyCost);
             recipeProto.GetCraftingCost(this, ingredientIds, out uint creditsCost, out uint legendaryMarksCost, currencyCost);
 
             // Recraft uses current results as input for another crafting attempt.
@@ -87,20 +87,20 @@ namespace MHServerEmu.Games.Entities
             }
 
             // Crafting is done through generating new items via the loot system
-            using ItemResolver resolver = ObjectPoolManager.Instance.Get<ItemResolver>();
+            using var resolverHandle = ItemResolverPool.Get(out ItemResolver resolver);
             resolver.Initialize(Game.Random);
             resolver.SetContext(LootContext.Crafting, this);
 
             // Prepare crafting ingredients
-            using var ingredientsHandle = ListPool<Item>.Instance.Get(out List<Item> ingredients);
-            using var autoPopulatedIngredientsHandle = DictionaryPool<Item, int>.Instance.Get(out Dictionary<Item, int> autoPopulatedIngredients);
-            using var outputItemsHandle = ListPool<Item>.Instance.Get(out List<Item> outputItems);
+            using var ingredientsHandle = ListPool<Item>.Get(out List<Item> ingredients);
+            using var autoPopulatedIngredientsHandle = DictionaryPool<Item, int>.Get(out Dictionary<Item, int> autoPopulatedIngredients);
+            using var outputItemsHandle = ListPool<Item>.Get(out List<Item> outputItems);
 
             if (CraftPrepareIngredients(recipeProto, ingredientIds, resolver, ingredients, autoPopulatedIngredients) == false)
                 return CraftingResult.InsufficientIngredients;
 
             // Roll the crafting output
-            using LootRollSettings settings = ObjectPoolManager.Instance.Get<LootRollSettings>();
+            using var settingsHandle = LootRollSettingsPool.Get(out LootRollSettings settings);
             settings.Player = this;
             settings.UsableAvatar = avatar.AvatarPrototype;
             settings.Level = avatar.CharacterLevel;
@@ -122,7 +122,7 @@ namespace MHServerEmu.Games.Entities
             if (rollResult != LootRollResult.Success)
                 return CraftingResult.LootRollFailed;
 
-            using LootResultSummary summary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+            using var summaryHandle = LootResultSummaryPool.Get(out LootResultSummary summary);
             resolver.FillLootResultSummary(summary);
 
             const LootType LootTypeFilter = LootType.Item | LootType.LootMutation | LootType.VendorXP | LootType.CallbackNode;
@@ -291,7 +291,7 @@ namespace MHServerEmu.Games.Entities
 
             EntityManager entityManager = Game.EntityManager;
 
-            using var autoPopulatedIngredientCountsHandle = DictionaryPool<PrototypeId, int>.Instance.Get(out Dictionary<PrototypeId, int> autoPopulatedIngredientCounts);
+            using var autoPopulatedIngredientCountsHandle = DictionaryPool<PrototypeId, int>.Get(out Dictionary<PrototypeId, int> autoPopulatedIngredientCounts);
             
             for (int i = 0; i < ingredientIds.Count; i++)
             {
@@ -377,7 +377,7 @@ namespace MHServerEmu.Games.Entities
 
             foreach (ItemSpec itemSpec in summary.ItemSpecs)
             {
-                using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                 settings.EntityRef = itemSpec.ItemProtoRef;
                 settings.ItemSpec = itemSpec;
                 settings.InventoryLocation = invLoc;
@@ -386,7 +386,7 @@ namespace MHServerEmu.Games.Entities
                 if (IsInGame == false)
                     settings.OptionFlags &= ~EntitySettingsOptionFlags.EnterGame;
 
-                using PropertyCollection properties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+                using var propertiesHandle = PropertyCollectionPool.Get(out PropertyCollection properties);
                 settings.Properties = properties;
                 properties[PropertyEnum.InventoryStackCount] = itemSpec.StackCount;
 
@@ -404,7 +404,7 @@ namespace MHServerEmu.Games.Entities
             }
 
             // Post-process created items
-            using var clonedItemsHandle = HashSetPool<Item>.Instance.Get(out HashSet<Item> clonedItems);
+            using var clonedItemsHandle = HashSetPool<Item>.Get(out HashSet<Item> clonedItems);
 
             // Clone post-processing
             LootNodePrototype[] lootNodes = recipeProto.RecipeOutput.Choices;
@@ -456,7 +456,7 @@ namespace MHServerEmu.Games.Entities
             // Run OnRecipeComplete eval
             if (recipeProto.OnRecipeComplete != null)
             {
-                using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+                using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
                 evalContext.Game = Game;
 
                 for (int i = 0; i < outputItems.Count; i++)

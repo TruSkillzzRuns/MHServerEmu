@@ -147,7 +147,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
             base.PostProcess();
 
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
-            using var categoryListHandle = ListPool<PrototypeId>.Instance.Get(out List<PrototypeId> categoryList);
+            using var categoryListHandle = ListPool<PrototypeId>.Get(out List<PrototypeId> categoryList);
             foreach (var affixCategoryTableEntry in GameDatabase.LootGlobalsPrototype.AffixCategoryTable)
             {
                 foreach (PrototypeId affixProtoRef in affixCategoryTableEntry.Affixes)
@@ -395,7 +395,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
         {
             if (EvalOnCreate.HasValue())
             {
-                using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+                using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
                 evalContext.SetVar_PropertyCollectionPtr(EvalContext.Default, modProperties);
                 evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Entity, entity.Properties);
                 evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Var1, indexProperties);
@@ -414,7 +414,7 @@ namespace MHServerEmu.Games.GameData.Prototypes
                     if (!Verify.IsNotNull(propEntryProto.Value))
                         continue;
 
-                    using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+                    using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
                     evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Entity, entity.Properties);
                     evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Var1, indexProperties);
 

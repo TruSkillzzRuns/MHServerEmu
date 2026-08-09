@@ -1,55 +1,16 @@
-﻿using MHServerEmu.Games.GameData.Calligraphy;
-
 namespace MHServerEmu.Games.Regions
 {
-#if GAME_VERSION_1_53
-    [AssetEnum((int)Tier00Normal)]
-    public enum DifficultyTier
-    {
-        Tier00Normal,
-        Tier01Heroic,
-        Tier02Cosmic,
-        Tier03,
-        Tier04,
-        Tier05,
-        NumTiers,
-    }
-#else
-    [AssetEnum((int)Green)]
-    public enum DifficultyTier
-    {
-        Green,
-        Red,
-        Cosmic,
-        NumTiers,
-    }
-#endif
-
-#if GAME_VERSION_1_53
-    public enum DifficultyTierMask
-    {
-        None            = 0,
-        Tier00Normal    = 1 << 0,
-        Tier01Heroic    = 1 << 1,
-        Tier02Cosmic    = 1 << 2,
-        Tier03          = 1 << 3,
-        Tier04          = 1 << 4,
-        Tier05          = 1 << 5,
-
-        All = Tier00Normal | Tier01Heroic | Tier02Cosmic | Tier03 | Tier04 | Tier05,
-    }
-#elif GAME_VERSION_1_52
-    public enum DifficultyTierMask
-    {
-        None    = 0,
-        Green   = 1 << 0,
-        Red     = 1 << 1,
-        Cosmic  = 1 << 2,
-
-        All = Green | Red | Cosmic,
-    }
-#endif
-
+    // Restored after upstream's "Clean up and add verify checks to Region
+    // classes" (f34326201) deleted RegionEnums.cs and moved this enum into
+    // MHServerEmu/Commands/Implementations/RegionCommands.cs instead — fine
+    // for the console command that only needs readable region names, but
+    // MHServerEmu.Games (Player.BountyHunt.cs, Player.BountyThemes.cs,
+    // Player.TrialOfImpossible.cs) cannot reference a type defined in
+    // MHServerEmu, which depends on Games, not the other way around. Kept
+    // as its own file (not re-merged into DifficultyPrototype.cs, where
+    // DifficultyTier/DifficultyTierMask landed) since this enum has nothing
+    // to do with difficulty prototypes — it's just readable ulong region
+    // refs, same content upstream still carries under RegionCommands.cs.
     public enum RegionPrototypeId : ulong
     {
         // Hubs

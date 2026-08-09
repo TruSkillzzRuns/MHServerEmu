@@ -446,8 +446,8 @@ namespace MHServerEmu.Games.Missions
 
         public void SendToParticipants(MissionUpdateFlags missionFlags, MissionObjectiveUpdateFlags objectiveFlags, bool contributors = false)
         {
-            using var playersHandle = ListPool<Player>.Instance.Get(out List<Player> players);
-            using var uniquePlayersHandle = HashSetPool<Player>.Instance.Get(out HashSet<Player> uniquePlayers);
+            using var playersHandle = ListPool<Player>.Get(out List<Player> players);
+            using var uniquePlayersHandle = HashSetPool<Player>.Get(out HashSet<Player> uniquePlayers);
 
             if (GetParticipants(players))
             {
@@ -489,7 +489,7 @@ namespace MHServerEmu.Games.Missions
 
                 if (missionFlags.HasFlag(MissionUpdateFlags.Rewards))
                 {
-                    using LootResultSummary lootSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+                    using var lootSummaryHandle = LootResultSummaryPool.Get(out LootResultSummary lootSummary);
 
                     if (HasLootRewards(player, lootSummary))
                         message.SetRewards(lootSummary.ToProtobuf());
@@ -535,7 +535,7 @@ namespace MHServerEmu.Games.Missions
 
         private void SendRemoteMissionNotificationToParticipants(MissionConditionRemoteNotificationPrototype notificationProto)
         {
-            using var playersHandle = ListPool<Player>.Instance.Get(out List<Player> players);
+            using var playersHandle = ListPool<Player>.Get(out List<Player> players);
             if (GetParticipants(players))
             {
                 var messageBuilder = NetMessageRemoteMissionNotification.CreateBuilder();
@@ -946,7 +946,7 @@ namespace MHServerEmu.Games.Missions
 
             if (missionProto.ShowInMissionLog != MissionShowInLog.Never && missionProto.Chapter != PrototypeId.Invalid)
             {
-                using var participantsHandle = ListPool<Player>.Instance.Get(out List<Player> participants);
+                using var participantsHandle = ListPool<Player>.Get(out List<Player> participants);
                 if (GetParticipants(participants))
                 {
                     foreach (var player in participants)
@@ -964,7 +964,7 @@ namespace MHServerEmu.Games.Missions
 
             if (isOpenMission)
             {
-                using var participantsHandle = ListPool<Player>.Instance.Get(out List<Player> participants);
+                using var participantsHandle = ListPool<Player>.Get(out List<Player> participants);
                 if (GetParticipants(participants))
                 {
                     foreach (var player in participants)
@@ -1052,7 +1052,7 @@ namespace MHServerEmu.Games.Missions
 
                     bool isAchievement = isOpenMission == false || OpenMissionPrototype.AchievementTimeLimitSeconds == 0 || Game.CurrentTime <= _achievementTime;
 
-                    using var playerActivitiesHandle = DictionaryPool<ulong, PlayerActivity>.Instance.Get(out var playerActivities);
+                    using var playerActivitiesHandle = DictionaryPool<ulong, PlayerActivity>.Get(out var playerActivities);
                     if (GetPlayerActivities(playerActivities))
                     {
                         foreach (var activity in playerActivities.Values)
@@ -1131,7 +1131,7 @@ namespace MHServerEmu.Games.Missions
                     if (isOpenMission)
                         region.OpenMissionFailedEvent.Invoke(new(missionRef));
 
-                    using var playerActivitiesHandle = DictionaryPool<ulong, PlayerActivity>.Instance.Get(out var playerActivities);
+                    using var playerActivitiesHandle = DictionaryPool<ulong, PlayerActivity>.Get(out var playerActivities);
                     if (GetPlayerActivities(playerActivities))
                     {
                         foreach (var activity in playerActivities.Values)
@@ -1445,7 +1445,7 @@ namespace MHServerEmu.Games.Missions
         public MissionObjective GetObjectiveByObjectiveIndex(byte objectiveIndex)
         {
             if (_objectiveDict.TryGetValue(objectiveIndex, out MissionObjective objective) == false)
-                return Logger.WarnReturn<MissionObjective>(null, $"GetObjectiveByObjectiveIndex(): Objective index {objectiveIndex} is not valid");
+                return null;
 
             return objective;
         }
@@ -1468,8 +1468,10 @@ namespace MHServerEmu.Games.Missions
 
         public MissionObjective InsertObjective(byte objectiveIndex, MissionObjective objective)
         {
-            if (_objectiveDict.TryAdd(objectiveIndex, objective) == false)
-                return Logger.WarnReturn<MissionObjective>(null, $"InsertObjective(): Failed to insert objective with index {objectiveIndex}");
+            if (!Verify.IsNotNull(objective)) return null;
+
+            bool inserted = _objectiveDict.TryAdd(objectiveIndex, objective);
+            if (!Verify.IsTrue(inserted)) return null;
 
             return objective;
         }
@@ -1781,7 +1783,7 @@ namespace MHServerEmu.Games.Missions
                 float contributionPercentage = contributionTotal > 0f ? playerContribution / contributionTotal : 1f;
 
                 Curve openMissionContributionReward = GameDatabase.MissionGlobalsPrototype.OpenMissionContributionReward.AsCurve();
-                if (openMissionContributionReward == null) return Logger.WarnReturn(0f, "GetContributionRewardMultiplier(): openMissionContributionReward == null");
+                if (!Verify.IsNotNull(openMissionContributionReward)) return 0f;
 
                 float contributionRewardMultiplier = openMissionContributionReward.GetAt((int)(contributionPercentage * 100f));
                 return Math.Max(contributionRewardMultiplier, 0f);
@@ -1823,7 +1825,7 @@ namespace MHServerEmu.Games.Missions
         public bool FilterHotspots(Avatar avatar, PrototypeId hotspotRef, EntityFilterPrototype entityFilter = null)
         {
             bool found = false;
-            using var hotspotsHandle = ListPool<Hotspot>.Instance.Get(out List<Hotspot> hotspots);
+            using var hotspotsHandle = ListPool<Hotspot>.Get(out List<Hotspot> hotspots);
             if (GetMissionHotspots(hotspots))
             {
                 foreach (var hotspot in hotspots)
@@ -1877,7 +1879,7 @@ namespace MHServerEmu.Games.Missions
         public bool ShouldResetForStoryWarp(int chapterNumber)
         {
             MissionPrototype missionProto = Prototype;
-            if (missionProto == null) return Logger.WarnReturn(false, "ShouldResetForStoryWarp(): missionProto == null");
+            if (!Verify.IsNotNull(missionProto)) return false;
 
             if (missionProto.SaveStatePerAvatar == false)
                 return false;
@@ -1887,7 +1889,7 @@ namespace MHServerEmu.Games.Missions
                 return true;
 
             ChapterPrototype chapterProto = chapterProtoRef.As<ChapterPrototype>();
-            if (chapterProto == null) return Logger.WarnReturn(false, "ShouldResetForStoryWarp(): chapterProto == null");
+            if (!Verify.IsNotNull(chapterProto)) return false;
 
             if (chapterProto.ResetsOnStoryWarp == false)
                 return false;
@@ -1956,7 +1958,7 @@ namespace MHServerEmu.Games.Missions
 
         public static bool AddContributorsForLootSpawn(Agent source, List<Player> playerList)
         {
-            if (source == null) return Logger.WarnReturn(false, "AddContributorsForLootSpawn(): source == null");
+            if (!Verify.IsNotNull(source)) return false;
 
             if (source.AgentPrototype.SpawnLootForMissionContributors == false)
                 return true;
@@ -1966,13 +1968,13 @@ namespace MHServerEmu.Games.Missions
                 return true;
 
             MissionManager missionManager = source.Region?.MissionManager;
-            if (missionManager == null) return Logger.WarnReturn(false, "AddContributorsForLootSpawn(): missionManager == null");
+            if (!Verify.IsNotNull(missionManager)) return false;
 
             Mission mission = missionManager.MissionByDataRef(missionProtoRef);
-            if (mission == null) return Logger.WarnReturn(false, "AddContributorsForLootSpawn(): mission == null");
+            if (!Verify.IsNotNull(mission)) return false;
 
             // This is used for SpawnLootForMissionContributors, we may want to use a set for this instead.
-            using var contributorsHandle = ListPool<Player>.Instance.Get(out List<Player> contributors);
+            using var contributorsHandle = ListPool<Player>.Get(out List<Player> contributors);
             mission.GetContributors(contributors);
 
             foreach (Player contributor in contributors)
@@ -2035,16 +2037,15 @@ namespace MHServerEmu.Games.Missions
 
         public MissionObjectivePrototype GetObjectivePrototypeByIndex(byte prototypeIndex)
         {
-            var missionProto = Prototype;
-            if (missionProto == null || missionProto.Objectives.IsNullOrEmpty()) return null;
-            if (missionProto.Objectives.Length <= prototypeIndex)
-            {
-                Logger.Warn($"Unable to get mission objective {prototypeIndex} for mission [{missionProto}]. Mission prototype only has {missionProto.Objectives.Length} objectives.");
-                return null;
-            }
+            MissionPrototype missionProto = Prototype;
+            if (!Verify.IsNotNull(missionProto)) return null;
+            if (!Verify.IsTrue(missionProto.Objectives.HasValue())) return null;
 
-            var objectiveProto = missionProto.Objectives[prototypeIndex];
-            if (objectiveProto == null) return null;
+            if (!Verify.IsTrue(missionProto.Objectives.Length > prototypeIndex, $"Unable to get mission objective {prototypeIndex} for mission [{missionProto}]. Mission prototype only has {missionProto.Objectives.Length} objectives."))
+                return null;
+
+            MissionObjectivePrototype objectiveProto = missionProto.Objectives[prototypeIndex];
+            if (!Verify.IsNotNull(objectiveProto)) return null;
 
             return objectiveProto;
         }
@@ -2108,7 +2109,7 @@ namespace MHServerEmu.Games.Missions
             if (entityTracker == null) return;
             var missionRef = PrototypeDataRef;
 
-            using var destroyListHandle = ListPool<WorldEntity>.Instance.Get(out List<WorldEntity> destroyList);
+            using var destroyListHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> destroyList);
 
             foreach (var entity in entityTracker.Iterate(missionRef, Dialog.EntityTrackingFlag.SpawnedByMission))
             {
@@ -2159,7 +2160,7 @@ namespace MHServerEmu.Games.Missions
             {
                 if (Prototype is OpenMissionPrototype openProto)
                 {
-                    using var sortedContributorsHandle = ListPool<(Player, float)>.Instance.Get(out List<(Player, float)> sortedContributors);
+                    using var sortedContributorsHandle = ListPool<(Player, float)>.Get(out List<(Player, float)> sortedContributors);
                     if (GetSortedContributors(sortedContributors))
                     {
                         int index = 0;
@@ -2174,7 +2175,7 @@ namespace MHServerEmu.Games.Missions
                 }
                 else
                 {
-                    using var participantsHandle = ListPool<Player>.Instance.Get(out List<Player> participants);
+                    using var participantsHandle = ListPool<Player>.Get(out List<Player> participants);
                     if (GetParticipants(participants))
                     {
                         int index = 0;
@@ -2192,7 +2193,7 @@ namespace MHServerEmu.Games.Missions
 
         public void RollSummaryAndAwardLootToPlayer(Player player, LootTablePrototype[] rewards, int seedOffset)
         {
-            using LootResultSummary lootSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+            using var lootSummaryHandle = LootResultSummaryPool.Get(out LootResultSummary lootSummary);
             if (RollLootSummary(lootSummary, player, rewards, _lootSeed + seedOffset, false))
                 AwardLootToPlayerFromSummary(lootSummary, player);
         }
@@ -2238,13 +2239,13 @@ namespace MHServerEmu.Games.Missions
                 if (chestEntityProtoRef != PrototypeId.Invalid)
                 {
                     // Create a chest entity if there is one specified
-                    using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                    using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                     settings.EntityRef = chestEntityProtoRef;
                     settings.Position = location.Position;
                     settings.RegionId = location.RegionId;
                     settings.Lifespan = TimeSpan.FromMinutes(10);
 
-                    using PropertyCollection properties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+                    using var propertiesHandle = PropertyCollectionPool.Get(out PropertyCollection properties);
                     properties[PropertyEnum.MissionPrototype] = PrototypeDataRef;
                     properties[PropertyEnum.LootTablePrototype, (PropertyParam)LootDropEventType.OnInteractedWith] = rewardProtoRef;
                     properties[PropertyEnum.RestrictedToPlayerGuid] = player.DatabaseUniqueId;
@@ -2257,7 +2258,7 @@ namespace MHServerEmu.Games.Missions
                 else
                 {
                     // If there is no chest, spawn the loot as is
-                    using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+                    using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
                     inputSettings.Initialize(LootContext.Drop, player, avatar);
                     lootManager.SpawnLootFromTable(rewardProtoRef, inputSettings, 1);
                 }
@@ -2275,7 +2276,7 @@ namespace MHServerEmu.Games.Missions
             if (missionProto.DropLootOnGround || lootDropper != null)
             {
                 lootDropper ??= player.CurrentAvatar;
-                using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+                using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
                 inputSettings.Initialize(LootContext.Drop, player, lootDropper);
                 lootManager.SpawnLootFromSummary(lootSummary, inputSettings);
             }
@@ -2345,13 +2346,13 @@ namespace MHServerEmu.Games.Missions
         public static bool RollLootSummaryForPrototype(Player player, Avatar avatar, MissionPrototype missionProto, LootTablePrototype[] rewards,
             int lootLevel, int lootSeed, LootResultSummary lootSummary, bool firstTime)
         {
-            using ItemResolver resolver = ObjectPoolManager.Instance.Get<ItemResolver>();
+            using var resolverHandle = ItemResolverPool.Get(out ItemResolver resolver);
             resolver.Initialize(new(lootSeed));
             resolver.SetContext(null, player);
 
             resolver.SetFlags(LootResolverFlags.FirstTime, firstTime);
 
-            using LootInputSettings settings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+            using var settingsHandle = LootInputSettingsPool.Get(out LootInputSettings settings);
             settings.Initialize(LootContext.MissionReward, player, avatar, lootLevel);
             settings.LootRollSettings.DropChanceModifiers = LootDropChanceModifiers.PreviewOnly | LootDropChanceModifiers.IgnoreCooldown;
 
@@ -2372,14 +2373,14 @@ namespace MHServerEmu.Games.Missions
             Avatar avatar = player.CurrentAvatar;
             int lootLevel = GetLootLevel(avatar);
 
-            using ItemResolver resolver = ObjectPoolManager.Instance.Get<ItemResolver>();
+            using var resolverHandle = ItemResolverPool.Get(out ItemResolver resolver);
             resolver.Initialize(new(lootSeed));
             resolver.SetContext(this, player);
 
             bool firstTime = MissionManager.HasReceivedRewardsForMission(player, avatar, PrototypeDataRef) == false;
             resolver.SetFlags(LootResolverFlags.FirstTime, firstTime);
 
-            using LootInputSettings settings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+            using var settingsHandle = LootInputSettingsPool.Get(out LootInputSettings settings);
             settings.Initialize(LootContext.MissionReward, player, avatar, lootLevel);
 
             if (previewOnly)
@@ -2416,7 +2417,7 @@ namespace MHServerEmu.Games.Missions
             if (entityId != Entity.InvalidId)
                 message.SetEntityId(entityId);
 
-            using LootResultSummary lootSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+            using var lootSummaryHandle = LootResultSummaryPool.Get(out LootResultSummary lootSummary);
 
             if (RollLootSummaryForPrototype(player, missionProto, lootSeed, lootSummary))
                 message.SetShowItems(lootSummary.ToProtobuf());
@@ -2437,7 +2438,7 @@ namespace MHServerEmu.Games.Missions
             if (entityId != Entity.InvalidId)
                 message.SetEntityId(entityId);
 
-            using LootResultSummary lootSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+            using var lootSummaryHandle = LootResultSummaryPool.Get(out LootResultSummary lootSummary);
             if (HasLootRewards(player, lootSummary))
                 message.SetShowItems(lootSummary.ToProtobuf());
 

@@ -258,7 +258,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     // so strip whatever PowerSpec/PowerSpecPending values
                     // ImportEntity just copied in before the player ever
                     // opens the Powers screen.
-                    using (var removeListHandle = MHServerEmu.Core.Memory.ListPool<MHServerEmu.Games.Properties.PropertyId>.Instance.Get(out var removeList))
+                    using (var removeListHandle = MHServerEmu.Core.Memory.ListPool<MHServerEmu.Games.Properties.PropertyId>.Get(out var removeList))
                     {
                         foreach (var kvp in avatar.Properties.IteratePropertyRange(MHServerEmu.Games.Properties.PropertyEnum.PowerSpec))
                             removeList.Add(kvp.Key);
@@ -454,7 +454,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                             continue;
                         }
 
-                        using EntitySettings settings = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<EntitySettings>();
+                        using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                         settings.EntityRef = itemRef;
                         settings.ItemSpec = itemSpec;
                         settings.InventoryLocation = new(containerId, containerInvRef, targetSlot);

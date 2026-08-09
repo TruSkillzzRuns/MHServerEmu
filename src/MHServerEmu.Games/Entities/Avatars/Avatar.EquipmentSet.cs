@@ -66,7 +66,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (_updatingEquipmentSetBonuses)
                 return;
 
-            using var tierHandle = DictionaryPool<PrototypeId, int>.Instance.Get(out Dictionary<PrototypeId, int> newTiers);
+            using var tierHandle = DictionaryPool<PrototypeId, int>.Get(out Dictionary<PrototypeId, int> newTiers);
             GetEquipmentSetTiers(newTiers);
 
             if (force == false && TiersMatch(newTiers))
@@ -180,7 +180,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (entryProto?.Properties == null)
                 return;
 
-            using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+            using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
             evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Entity, Properties);
 
             foreach (PropertySetEntryPrototype propEntry in entryProto.Properties)

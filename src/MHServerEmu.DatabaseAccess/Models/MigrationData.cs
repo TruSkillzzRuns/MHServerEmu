@@ -192,6 +192,22 @@ namespace MHServerEmu.DatabaseAccess.Models
         /// </summary>
         public int BountyThemeIndex { get; set; } = -1;
 
+        /// <summary>
+        /// Game-clock ms timestamp of the last Trial of the Impossible warp start
+        /// — same rapid-retrigger guard shape as LastBountyHuntStartMs, applied
+        /// here for consistency across every full-region-cycle warp system.
+        /// </summary>
+        public long LastTrialWarpStartMs { get; set; }
+
+        /// <summary>Same as LastTrialWarpStartMs, for Endless Wave's arena warp (Player.WaveDirector.cs).</summary>
+        public long LastEndlessWaveWarpStartMs { get; set; }
+
+        /// <summary>Same as LastTrialWarpStartMs, for Danger Room Endless Terminal (Player.DangerRoomEndlessTerminal.cs).</summary>
+        public long LastDangerRoomEndlessWarpStartMs { get; set; }
+
+        /// <summary>Same as LastTrialWarpStartMs, for Deathmatch queueing (Player.Deathmatch.cs).</summary>
+        public long LastDeathmatchWarpStartMs { get; set; }
+
         public MigrationData() { }
 
         public List<(ulong, ulong)> GetOrCreatePropertyList(ulong entityDbId)
@@ -239,6 +255,10 @@ namespace MHServerEmu.DatabaseAccess.Models
             LastBountyHuntStartMs = 0;
             BountyBoard.Clear();
             BountyThemeIndex = -1;
+            LastTrialWarpStartMs = 0;
+            LastEndlessWaveWarpStartMs = 0;
+            LastDangerRoomEndlessWarpStartMs = 0;
+            LastDeathmatchWarpStartMs = 0;
         }
     }
 

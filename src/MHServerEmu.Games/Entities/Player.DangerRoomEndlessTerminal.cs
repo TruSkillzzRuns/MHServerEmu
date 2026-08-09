@@ -138,6 +138,15 @@ namespace MHServerEmu.Games.Entities
         // Player.TrialOfImpossible.cs's _trialWarpPending.
         private bool _drWarpPending;
 
+        /// <summary>
+        /// Minimum gap between the START of one Danger Room Endless warp and the
+        /// next — same shape as Player.BountyHunt.cs's BountyHuntMinIntervalMs,
+        /// applied here for consistency: this system warps through the same
+        /// region-transfer path.
+        /// </summary>
+        private const int DrEndlessWarpMinIntervalMs = 15_000;
+        private long _lastDrEndlessWarpStartMs;
+
         private readonly EventGroup _drEndlessEvents = new();
         private readonly EventPointer<DrEndlessArenaSettleTickEvent> _drArenaSettleTick = new();
 
@@ -196,6 +205,9 @@ namespace MHServerEmu.Games.Entities
             EnsureDrEndlessArenaAllowsParty();
 
             var mig = PlayerConnection?.MigrationData;
+            if (mig != null)
+                _lastDrEndlessWarpStartMs = mig.LastDangerRoomEndlessWarpStartMs;
+
             bool freshWarp = false;
             if (mig != null && mig.PendingDangerRoomEndlessWarp)
             {
@@ -312,9 +324,14 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         internal void SnapshotDangerRoomEndlessWarpForTransfer()
         {
-            if (_drWarpPending == false) return;
             var mig = PlayerConnection?.MigrationData;
             if (mig == null) return;
+
+            // Always persisted, regardless of whether a warp is actually pending —
+            // the cooldown has to survive every hop, not just the one it started.
+            mig.LastDangerRoomEndlessWarpStartMs = _lastDrEndlessWarpStartMs;
+
+            if (_drWarpPending == false) return;
             mig.PendingDangerRoomEndlessWarp = true;
             _drWarpPending = false; // this Game instance is going away
         }
@@ -415,7 +432,7 @@ namespace MHServerEmu.Games.Entities
             dialog.Options = DialogOptionEnum.ScreenBottom;
             dialog.OnResponse = OnDrGuideDialogResponse;
             dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary, false);
-            Game.GameDialogManager.ShowDialog(dialog);
+            Game.GameDialogManager.PostDialogToClient(dialog);
         }
 
         private void OnDrGuideDialogResponse(ulong playerGuid, DialogResponse response)
@@ -426,6 +443,16 @@ namespace MHServerEmu.Games.Entities
             Avatar avatar = CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false) return;
 
+            long nowMs = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            long sinceLastMs = nowMs - _lastDrEndlessWarpStartMs;
+            if (_lastDrEndlessWarpStartMs > 0 && sinceLastMs < DrEndlessWarpMinIntervalMs)
+            {
+                int waitSec = (int)Math.Ceiling((DrEndlessWarpMinIntervalMs - sinceLastMs) / 1000.0);
+                try { SendBannerLines($"Too soon after your last Danger Room run — wait {waitSec}s and try again"); } catch { }
+                return;
+            }
+
+            _lastDrEndlessWarpStartMs = nowMs;
             _drWarpPending = true;
             avatar.TeleportToRegionFromWeb(DrEndlessArenaRegionRef);
             DrEndlessLogger.Info($"[DangerRoomEndless] {GetName()}: confirmed — warping to Endless Wave training arena");
@@ -699,7 +726,7 @@ namespace MHServerEmu.Games.Entities
             if (portalRef == PrototypeId.Invalid)
                 return; // already logged in GetValidDrEndlessReturnPortalRef
 
-            using EntitySettings entitySettings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var entitySettingsHandle = EntitySettingsPool.Get(out EntitySettings entitySettings);
             entitySettings.EntityRef = portalRef;
             entitySettings.Position = s_drEndlessTerminalPosition + s_drEndlessPortalOffset;
             entitySettings.Orientation = s_drEndlessTerminalOrientation;
@@ -828,7 +855,7 @@ namespace MHServerEmu.Games.Entities
                 dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary, false);
             }
 
-            Game.GameDialogManager.ShowDialog(dialog);
+            Game.GameDialogManager.PostDialogToClient(dialog);
         }
 
         /// <summary>
@@ -942,7 +969,7 @@ namespace MHServerEmu.Games.Entities
             dialog.Message.LocaleString = (LocaleStringId)DrEndlessDifficultyAdvancedPromptStringId;
             dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DrEndlessDifficultyVeteranStringId, ButtonStyle.Primary, false);
             dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DrEndlessDifficultyOmegaStringId, ButtonStyle.Primary, false);
-            Game.GameDialogManager.ShowDialog(dialog);
+            Game.GameDialogManager.PostDialogToClient(dialog);
         }
 
         private void OnDrTerminalDifficultyAdvancedResponse(ulong playerGuid, DialogResponse response)

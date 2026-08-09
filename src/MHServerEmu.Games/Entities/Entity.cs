@@ -298,7 +298,7 @@ namespace MHServerEmu.Games.Entities
 
             if (Prototype.EvalOnCreate.HasValue())
             {
-                using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+                using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
                 evalContext.Game = Game;
                 evalContext.SetVar_PropertyCollectionPtr(EvalContext.Default, Properties);
 
@@ -902,7 +902,7 @@ namespace MHServerEmu.Games.Entities
 
             Power.CopyPowerIndexProperties(indexProperties, modProperties);
 
-            using var procPowerRefListHandle = ListPool<PrototypeId>.Instance.Get(out List<PrototypeId> procPowerRefList);
+            using var procPowerRefListHandle = ListPool<PrototypeId>.Get(out List<PrototypeId> procPowerRefList);
             foreach (var kvp in modProperties.IteratePropertyRange(Property.ProcPropertyTypesAll))
             {
                 Property.FromParam(kvp.Key, 1, out PrototypeId procPowerRef);

@@ -347,7 +347,7 @@ namespace MHServerEmu.Games.Entities
 
             try
             {
-                using var inputSettings = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<Loot.LootInputSettings>();
+                using var inputSettingsHandle = Loot.LootInputSettingsPool.Get(out Loot.LootInputSettings inputSettings);
                 inputSettings.Initialize(Loot.LootContext.Drop, this, avatar);
                 for (int i = 0; i < BountyRewardRolls; i++)
                     Game.LootManager.SpawnLootFromTable((PrototypeId)rewardRef, inputSettings, 1);

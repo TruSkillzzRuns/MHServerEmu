@@ -60,7 +60,7 @@ namespace MHServerEmu.Games.Loot
         /// </summary>
         public void SpawnLootFromTable(PrototypeId lootTableProtoRef, LootInputSettings inputSettings, int recipientId, out int numDrops)
         {
-            using LootResultSummary lootResultSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+            using var lootResultSummaryHandle = LootResultSummaryPool.Get(out LootResultSummary lootResultSummary);
             RollLootTable(lootTableProtoRef, inputSettings, lootResultSummary);
 
             numDrops = lootResultSummary.NumDrops;
@@ -72,7 +72,7 @@ namespace MHServerEmu.Games.Loot
 
         public void GiveLootFromTable(PrototypeId lootTableProtoRef, LootInputSettings inputSettings)
         {
-            using LootResultSummary lootResultSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+            using var lootResultSummaryHandle = LootResultSummaryPool.Get(out LootResultSummary lootResultSummary);
             RollLootTable(lootTableProtoRef, inputSettings, lootResultSummary);
 
             if (lootResultSummary.HasAnyResult == false) return;
@@ -103,7 +103,7 @@ namespace MHServerEmu.Games.Loot
                 inputSettings.EventType >= LootDropEventType.OnKilled &&
                 inputSettings.EventType <= LootDropEventType.OnKilledMiniBoss)
             {
-                using var missionLootTableListHandle = ListPool<MissionLootTable>.Instance.Get(out List<MissionLootTable> missionLootTableList);
+                using var missionLootTableListHandle = ListPool<MissionLootTable>.Get(out List<MissionLootTable> missionLootTableList);
 
                 if (MissionManager.GetMissionLootTablesForEnemy(inputSettings.SourceEntity, inputSettings.Player, missionLootTableList))
                 {
@@ -126,11 +126,11 @@ namespace MHServerEmu.Games.Loot
         {
             Logger.Info($"--- Loot Table Test - {lootTableProtoRef.GetName()} ---");
 
-            using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+            using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
             inputSettings.Initialize(LootContext.Drop, player, null);
             inputSettings.LootRollSettings.DropChanceModifiers = LootDropChanceModifiers.PreviewOnly | LootDropChanceModifiers.IgnoreCooldown;
 
-            using LootResultSummary lootResultSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+            using var lootResultSummaryHandle = LootResultSummaryPool.Get(out LootResultSummary lootResultSummary);
             if (RollLootTable(lootTableProtoRef, inputSettings, lootResultSummary) == false)
                 Logger.Warn($"TestLootTable(): Failed to roll loot table {lootTableProtoRef.GetName()}");
 
@@ -193,7 +193,7 @@ namespace MHServerEmu.Games.Loot
             // Spawn what's left
 
             // Temp property collection for transfering properties
-            using PropertyCollection properties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var propertiesHandle = PropertyCollectionPool.Get(out PropertyCollection properties);
 
             if (inputSettings.MissionProtoRef != PrototypeId.Invalid)
                 properties[PropertyEnum.MissionPrototype] = inputSettings.MissionProtoRef;
@@ -294,10 +294,10 @@ namespace MHServerEmu.Games.Loot
                 return true;
 
             // Use a list to process ItemSpec + item CurrencySpec loot together
-            using var itemListHandle = ListPool<Item>.Instance.Get(out List<Item> itemList);
+            using var itemListHandle = ListPool<Item>.Get(out List<Item> itemList);
 
             // Reusable property collection for applying extra properties
-            using PropertyCollection properties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var propertiesHandle = PropertyCollectionPool.Get(out PropertyCollection properties);
 
             EntityManager entityManager = Game.EntityManager;
 
@@ -313,7 +313,7 @@ namespace MHServerEmu.Games.Loot
             {
                 foreach (ItemSpec itemSpec in lootResultSummary.ItemSpecs)
                 {
-                    using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                    using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                     settings.EntityRef = itemSpec.ItemProtoRef;
                     settings.ItemSpec = itemSpec;
 
@@ -349,7 +349,7 @@ namespace MHServerEmu.Games.Loot
 #endif
                         ItemSpec itemSpec = new(currencySpec.AgentOrItemProtoRef, rarityProtoRef, 1);
 
-                        using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                        using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                         settings.EntityRef = currencySpec.AgentOrItemProtoRef;
                         settings.ItemSpec = itemSpec;
                         settings.Properties = properties;
@@ -478,10 +478,10 @@ namespace MHServerEmu.Games.Loot
             if (!Verify.IsNotNull(itemSpec, $"Failed to create an ItemSpec! itemProto=[{itemProtoRef.GetName()}], lootContext=[{lootContext}], player=[{player}]"))
                 return false;
 
-            using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+            using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
             inputSettings.Initialize(LootContext.Drop, player, sourceEntity);
 
-            using LootResultSummary lootResultSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+            using var lootResultSummaryHandle = LootResultSummaryPool.Get(out LootResultSummary lootResultSummary);
             LootResult lootResult = new(itemSpec);
             lootResultSummary.Add(lootResult);
 
@@ -512,7 +512,7 @@ namespace MHServerEmu.Games.Loot
             if (!Verify.IsNotNull(itemSpec, $"Failed to create an ItemSpec! itemProto=[{itemProtoRef.GetName()}], lootContext=[{lootContext}], player=[{player}]"))
                 return false;
 
-            using LootResultSummary lootResultSummary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+            using var lootResultSummaryHandle = LootResultSummaryPool.Get(out LootResultSummary lootResultSummary);
             LootResult lootResult = new(itemSpec);
             lootResultSummary.Add(lootResult);
 
@@ -550,7 +550,7 @@ namespace MHServerEmu.Games.Loot
 
             AvatarPrototype avatarProto = rollForAvatarProtoOverride ?? player?.CurrentAvatar?.AvatarPrototype;
 
-            using DropFilterArguments filterArgs = ObjectPoolManager.Instance.Get<DropFilterArguments>();
+            using var filterArgsHandle = DropFilterArgumentsPool.Get(out DropFilterArguments filterArgs);
             filterArgs.ItemProto = itemProto;
             filterArgs.Level = level;
             filterArgs.RollFor = _resolver.ResolveAvatarPrototype(avatarProto, true, 1f).DataRef;
@@ -602,7 +602,7 @@ namespace MHServerEmu.Games.Loot
                 return false;
 
             // Create entity
-            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
             settings.EntityRef = itemSpec.ItemProtoRef;
             settings.RegionId = regionId;
             settings.Position = position;
@@ -665,7 +665,7 @@ namespace MHServerEmu.Games.Loot
                 return false;
 
             // Create entity
-            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
             settings.EntityRef = agentSpec.AgentProtoRef;
             settings.RegionId = regionId;
             settings.Position = position;
@@ -771,7 +771,7 @@ namespace MHServerEmu.Games.Loot
             if (!Verify.IsNotNull(lootLocationTableProto)) return sourcePosition;
 
             // Roll it
-            using LootLocationData lootLocationData = ObjectPoolManager.Instance.Get<LootLocationData>();
+            using var lootLocationDataHandle = LootLocationDataPool.Get(out LootLocationData lootLocationData);
             lootLocationData.Initialize(Game, bounds.Center, recipient);
             lootLocationTableProto.Roll(lootLocationData);
 

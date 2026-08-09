@@ -494,7 +494,7 @@ namespace MHServerEmu.Games.Entities
             }
             else
             {
-                using var destroyListHandle = ListPool<WorldEntity>.Instance.Get(out List<WorldEntity> destroyList);
+                using var destroyListHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> destroyList);
 
                 foreach (var summoned in new SummonedEntityIterator(this))
                     if (summoned.IsDead 
@@ -567,7 +567,7 @@ namespace MHServerEmu.Games.Entities
 
             Orientation orientation = avatar.RegionLocation.Orientation;
 
-            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
 
             if (newOnServer)
             {
@@ -875,7 +875,7 @@ namespace MHServerEmu.Games.Entities
                 bool excludeOwner = flags.HasFlag(ChangePositionFlags.DoNotSendToOwner);
 
                 PlayerConnectionManager networkManager = Game.NetworkManager;
-                using var interestedClientListHandle = ListPool<PlayerConnection>.Instance.Get(out List<PlayerConnection> interestedClientList);
+                using var interestedClientListHandle = ListPool<PlayerConnection>.Get(out List<PlayerConnection> interestedClientList);
                 if (networkManager.GetInterestedClients(interestedClientList, this, AOINetworkPolicyValues.AOIChannelProximity, excludeOwner))
                 {
                     var entityPositionMessageBuilder = NetMessageEntityPosition.CreateBuilder()
@@ -1738,7 +1738,7 @@ namespace MHServerEmu.Games.Entities
 
             EntityManager entityManager = Game.EntityManager;
 
-            using PropertyCollection procProperties = GetProcProperties(properties);
+            using var procPropertiesHandle = GetProcProperties(properties, out PropertyCollection procProperties);
             foreach (var kvp in procProperties.IteratePropertyRange(Property.ProcPropertyTypesAll))
             {
                 Property.FromParam(kvp.Key, 1, out PrototypeId procPowerProtoRef);
@@ -1822,7 +1822,7 @@ namespace MHServerEmu.Games.Entities
             EvalPrototype evalNegStatusResistPctFormula = GameDatabase.CombatGlobalsPrototype?.EvalNegStatusResistPctFormula;
             if (!Verify.IsNotNull(evalNegStatusResistPctFormula)) return 0f;
 
-            using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+            using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
             evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Entity, Properties);
             evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Other, otherProperties);
             evalContext.SetVar_Int(EvalContext.Var1, ccResistScore);
@@ -2499,7 +2499,7 @@ namespace MHServerEmu.Games.Entities
             if (conditionCollection == null)
                 return;
 
-            using var adjustDictHandle = DictionaryPool<DamageType, float>.Instance.Get(out Dictionary<DamageType, float> adjustDict);
+            using var adjustDictHandle = DictionaryPool<DamageType, float>.Get(out Dictionary<DamageType, float> adjustDict);
 
             foreach (Condition condition in conditionCollection)
             {
@@ -2532,7 +2532,7 @@ namespace MHServerEmu.Games.Entities
             if (IsInWorld == false || tickData.TickDurationSeconds <= 0f)
                 return;
 
-            using PropertyCollection overTimeProperties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var overTimePropertiesHandle = PropertyCollectionPool.Get(out PropertyCollection overTimeProperties);
             foreach (var kvp in tickData.PropertyList)
                 overTimeProperties[kvp.Key] = kvp.Value;
 
@@ -2661,7 +2661,7 @@ namespace MHServerEmu.Games.Entities
         private void ApplyDamageConversionInternal(ref DamageConversionContext context)
         {
             // Defer property changes because we are likely converting properties on the same collection (target -> target or user -> user)
-            using var conversionResultsHandle = ListPool<(PropertyEnum, float)>.Instance.Get(out List<(PropertyEnum, float)> conversionResults);
+            using var conversionResultsHandle = ListPool<(PropertyEnum, float)>.Get(out List<(PropertyEnum, float)> conversionResults);
 
             PropertyInfoTable propertyInfoTable = GameDatabase.PropertyInfoTable;
 
@@ -3021,7 +3021,7 @@ namespace MHServerEmu.Games.Entities
             float blockChance = Power.GetBlockChance(powerProto, attackerProperties, targetProperties, InvalidId);
             float dodgeChance = Power.GetDodgeChance(powerProto, attackerProperties, targetProperties, InvalidId);
 
-            using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+            using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
             evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Entity, targetProperties);
             evalContext.SetReadOnlyVar_PropertyCollectionPtr(EvalContext.Other, attackerProperties);
             evalContext.SetVar_Float(EvalContext.Var1, defenseRating);
@@ -3168,7 +3168,7 @@ namespace MHServerEmu.Games.Entities
             {
                 if (rank > 0)
                 {
-                    using PropertyCollection indexProperties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+                    using var indexPropertiesHandle = PropertyCollectionPool.Get(out PropertyCollection indexProperties);
                     indexProperties[PropertyEnum.CharacterLevel] = CharacterLevel;
                     indexProperties[PropertyEnum.CombatLevel] = CombatLevel;
                     indexProperties.CopyProperty(Properties, PropertyEnum.ItemLevel);
@@ -3450,11 +3450,11 @@ namespace MHServerEmu.Games.Entities
             if (_playersWithClones != null && _playersWithClones.Contains(playerDbId))
                 return false;
 
-            using PropertyCollection properties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var propertiesHandle = PropertyCollectionPool.Get(out PropertyCollection properties);
             properties.FlattenCopyFrom(Properties, false);
             properties[PropertyEnum.RestrictedToPlayerGuid] = playerDbId;
 
-            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
             settings.EntityRef = PrototypeDataRef;
             settings.RegionId = _regionLocation.RegionId;
             settings.Position = _regionLocation.Position;
@@ -3927,7 +3927,7 @@ namespace MHServerEmu.Games.Entities
             // Send locomotion update to interested clients
             // NOTE: Avatars are locomoted on their local client independently, so they are excluded from locomotion updates.
             PlayerConnectionManager networkManager = Game.NetworkManager;
-            using var interestedClientListHandle = ListPool<PlayerConnection>.Instance.Get(out List<PlayerConnection> interestedClientList);
+            using var interestedClientListHandle = ListPool<PlayerConnection>.Get(out List<PlayerConnection> interestedClientList);
             if (networkManager.GetInterestedClients(interestedClientList, this, AOINetworkPolicyValues.AOIChannelProximity, IsMovementAuthoritative == false))
             {
                 NetMessageLocomotionStateUpdate locomotionStateUpdateMessage = ArchiveMessageBuilder.BuildLocomotionStateUpdateMessage(
@@ -3996,7 +3996,7 @@ namespace MHServerEmu.Games.Entities
             var manager = Game?.EntityManager;
             if (manager == null) return;
 
-            using var overlappingEntitiesHandle = ListPool<ulong>.Instance.Get(out List<ulong> overlappingEntities);
+            using var overlappingEntitiesHandle = ListPool<ulong>.Get(out List<ulong> overlappingEntities);
             foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.NegateHotspots))
             {
                 Property.FromParam(kvp.Key, 0, out int type);
@@ -4056,7 +4056,7 @@ namespace MHServerEmu.Games.Entities
 
             bool requireCombatActive = WorldEntityPrototype.RequireCombatActiveForKillCredit;
 
-            using var playerListHandle = ListPool<Player>.Instance.Get(out List<Player> playerList);
+            using var playerListHandle = ListPool<Player>.Get(out List<Player> playerList);
             // NOTE: Compute nearby players on demand for performance reasons
 
             // Loot Tables
@@ -4125,7 +4125,7 @@ namespace MHServerEmu.Games.Entities
 
             bool requireCombatActive = WorldEntityPrototype.RequireCombatActiveForKillCredit;
 
-            using var playerListHandle = ListPool<Player>.Instance.Get(out List<Player> playerList);
+            using var playerListHandle = ListPool<Player>.Get(out List<Player> playerList);
             Power.ComputeNearbyPlayers(Region, _regionLocation.Position, 0, requireCombatActive, playerList);
             if (playerList.Count > 0)
             {
@@ -4147,7 +4147,7 @@ namespace MHServerEmu.Games.Entities
 
             // NOTE: Bowling ball dispenser is not per-player cloned, so interacting
             // with it will give a ball to all players nearby. This doesn't seem right.
-            using var playerListHandle = ListPool<Player>.Instance.Get(out List<Player> playerList);
+            using var playerListHandle = ListPool<Player>.Get(out List<Player> playerList);
 
             if (IsClonePerPlayer)
             {
@@ -4173,8 +4173,8 @@ namespace MHServerEmu.Games.Entities
             if (playerList.Count == 0)
                 return true;
 
-            using var tablesHandle = ListPool<(PrototypeId, LootActionType)>.Instance.Get(out List<(PrototypeId, LootActionType)> tables);
-            using var tablesToRemoveHandle = ListPool<PropertyId>.Instance.Get(out List<PropertyId> tablesToRemove);
+            using var tablesHandle = ListPool<(PrototypeId, LootActionType)>.Get(out List<(PrototypeId, LootActionType)> tables);
+            using var tablesToRemoveHandle = ListPool<PropertyId>.Get(out List<PropertyId> tablesToRemove);
 
             // Property loot tables
             foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.LootTablePrototype, (int)eventType))
@@ -4255,7 +4255,7 @@ namespace MHServerEmu.Games.Entities
                 int recipientId = 1;
                 foreach (Player player in playerList)
                 {
-                    using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+                    using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
                     inputSettings.Initialize(LootContext.Drop, player, this);
                     inputSettings.EventType = eventType;
                     Game.LootManager.AwardLootFromTables(tables, inputSettings, recipientId++);
@@ -4325,7 +4325,7 @@ namespace MHServerEmu.Games.Entities
 
             foreach (Player player in playerList)
             {
-                using LootInputSettings settings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+                using var settingsHandle = LootInputSettingsPool.Get(out LootInputSettings settings);
                 settings.Initialize(LootContext.Drop, player, this);
                 player.AwardBonusItemFindPoints(bonusItemFindPoints, settings);
             }
@@ -4351,7 +4351,7 @@ namespace MHServerEmu.Games.Entities
                 if (!Verify.IsTrue(worldEntityProto.LootSourceByRank == false)) return false;
 #endif
 
-                using var overridesHandle = DictionaryPool<PropertyId, PropertyValue>.Instance.Get(out Dictionary<PropertyId, PropertyValue> overrides);
+                using var overridesHandle = DictionaryPool<PropertyId, PropertyValue>.Get(out Dictionary<PropertyId, PropertyValue> overrides);
 
                 foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.LootTablePrototype))
                 {
@@ -4407,7 +4407,7 @@ namespace MHServerEmu.Games.Entities
                 if (!Verify.IsTrue(rankProto.LootSource != AssetId.Invalid)) return false;
 
                 // Clear existing loot tables
-                using var propsToRemoveHandle = ListPool<PropertyId>.Instance.Get(out List<PropertyId> propsToRemove);
+                using var propsToRemoveHandle = ListPool<PropertyId>.Get(out List<PropertyId> propsToRemove);
                 foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.LootTablePrototype))
                 {
                     Property.FromParam(kvp.Key, 1, out int index);
@@ -4551,7 +4551,7 @@ namespace MHServerEmu.Games.Entities
             {
                 // Apply mods from boosts and rank
 
-                using var enemyBoostsHandle = DictionaryPool<PropertyId, PropertyValue>.Instance.Get(out Dictionary<PropertyId, PropertyValue> enemyBoosts);
+                using var enemyBoostsHandle = DictionaryPool<PropertyId, PropertyValue>.Get(out Dictionary<PropertyId, PropertyValue> enemyBoosts);
 
                 foreach (var kvp in Properties.IteratePropertyRange(PropertyEnum.EnemyBoost))
                     enemyBoosts.Add(kvp.Key, kvp.Value);

@@ -49,20 +49,21 @@ namespace MHServerEmu.PlayerManagement.Regions
 
         public bool AddRegion(RegionHandle region)
         {
-            if (region == null) return Logger.WarnReturn(false, "AddRegion(): region == null");
+            if (!Verify.IsNotNull(region)) return false;
 
             if (region.IsPublic == false)
                 return false;
 
-            if (region.State == RegionHandleState.Shutdown)
-                return Logger.WarnReturn(false, $"AddRegion(): Attempting to add region {region} that has already been shut down");
+            if (!Verify.IsTrue(region.State != RegionHandleState.Shutdown, $"Attempting to add region {region} that has already been shut down"))
+                return false;
 
             return _regions.Add(region);
         }
 
         public bool RemoveRegion(RegionHandle region)
         {
-            if (region == null) return Logger.WarnReturn(false, "RemoveRegion(): region == null");
+            if (!Verify.IsNotNull(region)) return false;
+
             return _regions.Remove(region);
         }
 
@@ -72,8 +73,8 @@ namespace MHServerEmu.PlayerManagement.Regions
                 return;
 
             // SortedSet cannot be modified during iteration, so we need to store regions we want to remove in separate lists.
-            using var shutdownRegionsHandle = ListPool<RegionHandle>.Instance.Get(out List<RegionHandle> shutdownRegions);
-            using var expiredRegionsHandle = ListPool<RegionHandle>.Instance.Get(out List<RegionHandle> expiredRegions);
+            using var shutdownRegionsHandle = ListPool<RegionHandle>.Get(out List<RegionHandle> shutdownRegions);
+            using var expiredRegionsHandle = ListPool<RegionHandle>.Get(out List<RegionHandle> expiredRegions);
 
             foreach (RegionHandle region in _regions)
             {

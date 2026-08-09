@@ -203,7 +203,7 @@ namespace MHServerEmu.Games.Populations
 
             var manager = Area.Region.PopulationManager;
 
-            using var zonesHandle = ListPool<BlackOutZone>.Instance.Get(out List<BlackOutZone> zones);
+            using var zonesHandle = ListPool<BlackOutZone>.Get(out List<BlackOutZone> zones);
             foreach (BlackOutZone zone in manager.IterateBlackOutZoneInVolume(Area.RegionBounds))
                 zones.Add(zone);
 
@@ -530,7 +530,7 @@ namespace MHServerEmu.Games.Populations
             if (HeatReturnPerSecondEval != null)
             {
                 int playerCount = Area.PopulationArea.PlayerCount;
-                using EvalContextData evalContext = ObjectPoolManager.Instance.Get<EvalContextData>();
+                using var evalContextHandle = EvalContextDataPool.Get(out EvalContextData evalContext);
                 evalContext.SetVar_Int(EvalContext.Var1, playerCount);
                 heatReturn = Eval.RunInt(HeatReturnPerSecondEval, evalContext);
             }

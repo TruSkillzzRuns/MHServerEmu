@@ -637,7 +637,7 @@ namespace MHServerEmu.Games.Entities
 
                             pos = RegionLocation.ProjectToFloor(region, pos);
 
-                            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                             settings.EntityRef = (PrototypeId)hotspotRef;
                             settings.Position = pos;
                             settings.Orientation = Orientation.Zero;
@@ -910,13 +910,13 @@ namespace MHServerEmu.Games.Entities
                     // from the caster prototype itself, not from anything
                     // patched on here (see the block comment above for why
                     // patching a visible prototype does not work).
-                    using EntitySettings casterSettings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                    using var casterSettingsHandle = EntitySettingsPool.Get(out EntitySettings casterSettings);
                     casterSettings.EntityRef = casterProto.DataRef;
                     casterSettings.Position = casterPos;
                     casterSettings.Orientation = orientation;
                     casterSettings.RegionId = region.Id;
 
-                    using PropertyCollection casterProps = ObjectPoolManager.Instance.Get<PropertyCollection>();
+                    using var casterPropsHandle = PropertyCollectionPool.Get(out PropertyCollection casterProps);
                     casterProps[PropertyEnum.CharacterLevel] = avatar.CharacterLevel;
                     casterProps[PropertyEnum.CombatLevel] = avatar.CharacterLevel;
                     casterProps[PropertyEnum.AIStartsEnabled] = false;
@@ -1113,7 +1113,7 @@ namespace MHServerEmu.Games.Entities
 
             try
             {
-                using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                 settings.EntityRef = portalRef;
                 settings.Position = RegionLocation.ProjectToFloor(region, position);
                 settings.Orientation = Orientation.Zero;

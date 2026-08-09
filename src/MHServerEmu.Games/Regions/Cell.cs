@@ -26,7 +26,6 @@ namespace MHServerEmu.Games.Regions
 
     public class Cell
     {
-        private static readonly Logger Logger = LogManager.CreateLogger();
         private CellStatusFlag _status;
         private float _playableNavArea;
         private float _spawnableNavArea;
@@ -200,11 +199,11 @@ namespace MHServerEmu.Games.Regions
             var hotspotProto = GameDatabase.GetPrototype<WorldEntityPrototype>(hotspotRef);
             if (hotspotProto == null) return false;
 
-            using EntitySettings hotspotSettings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var hotspotSettingsHandle = EntitySettingsPool.Get(out EntitySettings hotspotSettings);
             hotspotSettings.EntityRef = hotspotRef;
             hotspotSettings.HotspotSkipCollide = true;
 
-            using PropertyCollection settingsProperties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var settingsPropertiesHandle = PropertyCollectionPool.Get(out PropertyCollection settingsProperties);
             int level = region.RegionLevel;
             settingsProperties[PropertyEnum.CharacterLevel] = level;
             settingsProperties[PropertyEnum.CombatLevel] = level;
@@ -342,12 +341,10 @@ namespace MHServerEmu.Games.Regions
 
         public bool InstanceMarkerSet(MarkerSetPrototype markerSet, in Transform3 transform, MarkerSetOptions instanceMarkerSetOptions)
         {
-            if (instanceMarkerSetOptions.HasFlag(MarkerSetOptions.SpawnMissionAssociated) &&
-                instanceMarkerSetOptions.HasFlag(MarkerSetOptions.NoSpawnMissionAssociated))
-            {
-                return Logger.WarnReturn(false,
-                    "InstanceMarkerSet(): SpawnMissionAssociated and NoSpawnMissionAssociated cannot be set at the same time");
-            }
+            // SpawnMissionAssociated and NoSpawnMissionAssociated cannot be set at the same time.
+            bool bothMissionAssociatedFlagsSet = instanceMarkerSetOptions.HasFlag(MarkerSetOptions.SpawnMissionAssociated) &&
+                instanceMarkerSetOptions.HasFlag(MarkerSetOptions.NoSpawnMissionAssociated);
+            if (!Verify.IsTrue(bothMissionAssociatedFlagsSet == false)) return false;
 
             if (markerSet.Markers.HasValue())
             {
@@ -418,7 +415,7 @@ namespace MHServerEmu.Games.Regions
                 return;
             }
 
-            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
             settings.EntityRef = entityProto.DataRef;
 
             if (entityMarker.OverrideSnapToFloor)
@@ -435,7 +432,7 @@ namespace MHServerEmu.Games.Regions
             if (entityProto.Bounds != null)
                 entityPosition.Z += entityProto.Bounds.GetBoundHalfHeight();
 
-            using PropertyCollection settingsProperties = ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var settingsPropertiesHandle = PropertyCollectionPool.Get(out PropertyCollection settingsProperties);
             settings.Properties = settingsProperties;
             int level = Area.GetCharacterLevel(entityProto); 
             settings.Properties[PropertyEnum.CharacterLevel] = level;
@@ -647,7 +644,7 @@ namespace MHServerEmu.Games.Regions
         public bool GetEntitiesInCellBounds(List<WorldEntity> entityList)
         {
             Region region = Region;
-            if (region == null) return Logger.WarnReturn(false, "GetEntitiesInCellBounds(): region == null");
+            if (!Verify.IsNotNull(region)) return false;
 
             region.GetEntitiesInVolume(entityList, RegionBounds, new());
             return true;
@@ -657,13 +654,12 @@ namespace MHServerEmu.Games.Regions
         {
             Generate();
             _numInterestedPlayers++;
-            //Logger.Debug($"OnAddedToAOI(): {PrototypeName}[{Id}] (_numInterestedPlayers={_numInterestedPlayers})");
 
             if (_numInterestedPlayers == 1)
             {
                 SpawnSpecScheduler.Spawn(false);
 
-                using var entityListHandle = ListPool<WorldEntity>.Instance.Get(out List<WorldEntity> entityList);
+                using var entityListHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> entityList);
                 GetEntitiesInCellBounds(entityList);
 
                 foreach (WorldEntity worldEntity in entityList)
@@ -678,17 +674,13 @@ namespace MHServerEmu.Games.Regions
         public void OnRemovedFromAOI()
         {
             _numInterestedPlayers--;
-            //Logger.Debug($"OnRemovedFromAOI(): {PrototypeName}[{Id}] (_numInterestedPlayers={_numInterestedPlayers})");
 
-            if (_numInterestedPlayers < 0)
-            {
-                Logger.Warn("OnRemovedFromAOI(): _numInterestedPlayers < 0");
+            if (!Verify.IsTrue(_numInterestedPlayers >= 0))
                 _numInterestedPlayers = 0;
-            }
 
             if (_numInterestedPlayers == 0)
             {
-                using var entityListHandle = ListPool<WorldEntity>.Instance.Get(out List<WorldEntity> entityList);
+                using var entityListHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> entityList);
                 GetEntitiesInCellBounds(entityList);
 
                 foreach (WorldEntity worldEntity in entityList)

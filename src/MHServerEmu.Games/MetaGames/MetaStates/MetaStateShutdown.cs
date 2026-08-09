@@ -124,7 +124,7 @@ namespace MHServerEmu.Games.MetaGames.MetaStates
             }
 
             if (dialog != null)
-                Game.GameDialogManager.ShowDialog(dialog);
+                Game.GameDialogManager.PostDialogToClient(dialog);
         }
 
         private void OnResponse(ulong playerGuid, DialogResponse response)
@@ -152,7 +152,7 @@ namespace MHServerEmu.Games.MetaGames.MetaStates
         private void RemoveDialog(ulong playerGuid)
         {
             if (_dialogs.TryGetValue(playerGuid, out var dialog))
-                Game.GameDialogManager.RemoveDialog(dialog);
+                Game.GameDialogManager.RemoveDialogFromClient(dialog);
         }
 
         private void SetReadyCheckWidget()
@@ -243,7 +243,7 @@ namespace MHServerEmu.Games.MetaGames.MetaStates
                     targetRef = region.Prototype.StartTarget;
             }
 
-            using var playersHandle = ListPool<Player>.Instance.Get(out List<Player> players);
+            using var playersHandle = ListPool<Player>.Get(out List<Player> players);
             foreach (Player player in MetaGame.Players)
                 players.Add(player);
 
@@ -258,7 +258,7 @@ namespace MHServerEmu.Games.MetaGames.MetaStates
             {
                 if (status == PlayerState.Fallback)
                 {
-                    using Teleporter teleporter = ObjectPoolManager.Instance.Get<Teleporter>();
+                    using var teleporterHandle = TeleporterPool.Get(out Teleporter teleporter);
                     teleporter.Initialize(player, TeleportContextEnum.TeleportContext_MetaGame);
                     teleporter.TeleportToLastTown();
                 }
@@ -267,7 +267,7 @@ namespace MHServerEmu.Games.MetaGames.MetaStates
                     var region = Region;
                     if (targetRef == PrototypeId.Invalid || region == null) return;
 
-                    using Teleporter teleporter = ObjectPoolManager.Instance.Get<Teleporter>();
+                    using var teleporterHandle = TeleporterPool.Get(out Teleporter teleporter);
                     teleporter.Initialize(player, TeleportContextEnum.TeleportContext_MetaGame);
 
                     RegionPrototype regionProto;

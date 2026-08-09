@@ -22,6 +22,11 @@ namespace MHServerEmu.Games.Events
         public LinkedListNode<ScheduledEvent> EventGroupNode { get; }
 
         /// <summary>
+        /// Event type identifier for pooling.
+        /// </summary>
+        public ushort EventTypeId { get; init; }
+
+        /// <summary>
         /// The time this event is supposed to be fired at.
         /// </summary>
         public TimeSpan FireTime { get; set; }

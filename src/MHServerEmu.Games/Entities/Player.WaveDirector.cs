@@ -60,6 +60,18 @@ namespace MHServerEmu.Games.Entities
         private long _waveIntermissionMs = 5000;
         private long _waveNextSpawnAtMs;
         private long _waveRunStartMs;
+
+        /// <summary>
+        /// Minimum gap between the START of one arena-warping wave run and the
+        /// next — same shape as Player.BountyHunt.cs's BountyHuntMinIntervalMs,
+        /// applied here for consistency: this only guards the branch of
+        /// StartWaveRun that actually warps through a region transfer (an
+        /// arena requested and not already standing in it); starting a wave
+        /// run with no arena, or already in the arena, is unaffected.
+        /// </summary>
+        private const int WaveArenaWarpMinIntervalMs = 15_000;
+        private long _lastWaveArenaWarpStartMs;
+
         private PrototypeId _waveArenaRegionRef = PrototypeId.Invalid;
         private bool _waveClearArena;
         private long _waveWarpDeadlineMs;
@@ -354,6 +366,25 @@ namespace MHServerEmu.Games.Entities
                         || path.IndexOf("/OnslaughtRaid/", StringComparison.OrdinalIgnoreCase) >= 0)
                         continue;
 
+                    // Individually excluded bosses — confirmed live 2026-08-08:
+                    // SkrullNickFury (Entity/Characters/Bosses/SecretInvasion/)
+                    // rolled as a Rogue Encounter "real boss ambush" and was
+                    // effectively unkillable — a real hit's damage was measured
+                    // dropping from 4758 (raw) to 60 (final) via instrumented
+                    // logging, ~95% of that from his own intrinsic
+                    // DamagePctResist (read directly at PowerPayload.cs:1782,
+                    // baked into his own prototype data, not a property this
+                    // fork's code ever sets). No scripted "remove the shield"
+                    // mechanic was found anywhere in his AI profile or any
+                    // Nick-Fury-named mission/power/condition prototype after
+                    // an exhaustive search — whatever neutralizes it in his
+                    // real Chapter 10 story encounter isn't something a
+                    // standalone Rogue Encounter/Bounty Hunt/manual spawn can
+                    // reproduce, so he's excluded from this pool entirely
+                    // rather than guessing at a numeric override.
+                    if (path.Equals("Entity/Characters/Bosses/SecretInvasion/SkrullNickFury.prototype", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     if (proto.BehaviorProfile == null || proto.BehaviorProfile.Brain == PrototypeId.Invalid) continue;
 
                     pool.Add(agentRef);
@@ -390,6 +421,20 @@ namespace MHServerEmu.Games.Entities
             Orientation orientation = Orientation.FromDeltaVector(avatar.RegionLocation.Position - position);
             Agent agent = EntityHelper.CreateAgent(bossProto, avatar, position, orientation);
             if (agent == null) { error = "CreateAgent returned null"; return 0; }
+
+            // Confirmed live 2026-08-08 (Nick Fury rogue ambush, ~500k
+            // signature hit landing for ~90k): PowerPayload.
+            // CalculateResultDamageLevelScaling scales player->mob damage by
+            // the ratio between the target's real HealthMax and what it
+            // would be at the ATTACKER's CombatLevel, whenever attacker and
+            // target CombatLevel differ. A curated boss spawned here never
+            // had its CombatLevel touched — it stays at whatever the
+            // prototype's own default is, which is essentially guaranteed to
+            // differ from the player's, silently gutting outgoing damage.
+            // The phantom-hero spawn path (Avatar.PhantomHero.cs) already
+            // does exactly this — matching CombatLevel to the caller — for
+            // the same reason.
+            agent.CombatLevel = avatar.CombatLevel;
 
             // Shared with BossRosterWebHandler.cs's manual test spawn —
             // Dormant clear, AllianceOverride, LootCooldown fallback,
@@ -494,10 +539,15 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         internal void SnapshotWaveRunForTransfer()
         {
-            if (_waveState != WaveState.WarpingToArena || _waveDefs == null) return;
-
             var mig = PlayerConnection?.MigrationData;
             if (mig == null) return;
+
+            // Always persisted, regardless of whether a run is actually
+            // mid-warp — the cooldown has to survive every hop, not just the
+            // one it started.
+            mig.LastEndlessWaveWarpStartMs = _lastWaveArenaWarpStartMs;
+
+            if (_waveState != WaveState.WarpingToArena || _waveDefs == null) return;
 
             var intent = new WaveRunIntent
             {
@@ -558,6 +608,9 @@ namespace MHServerEmu.Games.Entities
         internal void RestoreWaveRunFromMigration(Avatar caller)
         {
             var mig = PlayerConnection?.MigrationData;
+            if (mig != null)
+                _lastWaveArenaWarpStartMs = mig.LastEndlessWaveWarpStartMs;
+
             WaveRunIntent intent = mig?.PendingWaveRun;
             if (intent == null || caller == null) return;
             mig.PendingWaveRun = null;
@@ -641,6 +694,15 @@ namespace MHServerEmu.Games.Entities
             if (_waveArenaRegionRef != PrototypeId.Invalid &&
                 avatar.Region?.PrototypeDataRef != _waveArenaRegionRef)
             {
+                long nowMs = WaveNowMs;
+                long sinceLastMs = nowMs - _lastWaveArenaWarpStartMs;
+                if (_lastWaveArenaWarpStartMs > 0 && sinceLastMs < WaveArenaWarpMinIntervalMs)
+                {
+                    int waitSec = (int)Math.Ceiling((WaveArenaWarpMinIntervalMs - sinceLastMs) / 1000.0);
+                    return $"too soon after your last arena warp — wait {waitSec}s and try again";
+                }
+                _lastWaveArenaWarpStartMs = nowMs;
+
                 _waveState = WaveState.WarpingToArena;
                 _waveWarpDeadlineMs = WaveNowMs + ArenaWarpTimeoutMs;
                 avatar.TeleportToRegionFromWeb(arenaRegionRef);
@@ -687,7 +749,10 @@ namespace MHServerEmu.Games.Entities
                 return int.MaxValue;
 
             const int maxTotalSlots = 4;
-            int realPlayerCount = Math.Max(1, region.PlayerCount);
+            // Region.PlayerCount was removed upstream — count via PlayerIterator instead.
+            int actualPlayerCount = 0;
+            foreach (Player _ in new PlayerIterator(region)) actualPlayerCount++;
+            int realPlayerCount = Math.Max(1, actualPlayerCount);
             int leftoverSlots = Math.Max(0, maxTotalSlots - realPlayerCount);
 
             if (realPlayerCount <= 1) return leftoverSlots; // solo: 3
@@ -912,7 +977,7 @@ namespace MHServerEmu.Games.Entities
 
                             pos = RegionLocation.ProjectToFloor(region, pos);
 
-                            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                             settings.EntityRef = (PrototypeId)hotspotRef;
                             settings.Position = pos;
                             settings.Orientation = Orientation.Zero;
@@ -1495,7 +1560,7 @@ namespace MHServerEmu.Games.Entities
             {
                 if (_waveRewardLootTableRef != PrototypeId.Invalid)
                 {
-                    using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+                    using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
                     inputSettings.Initialize(LootContext.Drop, interactingPlayer, avatar, chestPos);
 
                     if (spec.rarities != null && spec.rarities.Count > 0)
@@ -1611,7 +1676,7 @@ namespace MHServerEmu.Games.Entities
 
             try
             {
-                using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+                using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
                 inputSettings.Initialize(LootContext.Drop, this, avatar);
 
                 if (allowedRarities != null && allowedRarities.Count > 0)
@@ -1887,6 +1952,13 @@ namespace MHServerEmu.Games.Entities
                     if (bossId != 0)
                     {
                         _waveAliveIds.Add(bossId);
+                        // Same gap Bounty Hunt's TrackBossNemesisForRetire fix closed
+                        // elsewhere (Player.Nemesis.cs's doc comment): SpawnCuratedBoss
+                        // bypasses the phantom corpse-cleanup tick's auto-retire, so if
+                        // this randomly-picked boss happens to also be on the player's
+                        // Nemesis Roster with an active bounty/grudge, killing it here
+                        // wouldn't otherwise retire the roster entry or pay out.
+                        TrackBossNemesisForRetire(bossId, (ulong)bossRef, avatar.Region);
                         string bossName = LeafHeroName(bossRef);
                         BroadcastEndlessBannerLines($"☠ A BOSS HAS ARRIVED — {bossName}!");
                         WaveLogger.Info($"[WaveDirector] {GetName()}: Endless boss spawned at wave {scaleIndex} ({bossName})");

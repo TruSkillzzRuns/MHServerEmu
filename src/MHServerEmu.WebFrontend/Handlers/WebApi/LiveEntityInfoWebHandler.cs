@@ -113,6 +113,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 #endif
                     SuperCritDamageMult = (float)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.SuperCritDamageMult],
                     CritDamageMult = (float)entity.Properties[MHServerEmu.Games.Properties.PropertyEnum.CritDamageMult],
+                    CombatLevel = entity.CombatLevel,
+                    CharacterLevel = entity.CharacterLevel,
                 };
             });
             await context.SendJsonAsync(result);
