@@ -149,6 +149,19 @@ namespace MHServerEmu.Games.GameData
             AchievementDatabase.Instance.Initialize();
             LeaderboardInfoCache.Instance.Initialize();
 
+            // Auto-generate any missing per-hero phantom AI profile files
+            // (Data/Game/PhantomHeroes/AIProfiles/<Hero>.json) — needs every
+            // AvatarPrototype/AgentTeamUpPrototype/PowerPrototype loaded, so
+            // this has to run after the IterateAllPrototypes() force-load
+            // above, same requirement AchievementDatabase has. Never
+            // overwrites an existing (possibly hand-edited) file, so this is
+            // safe and cheap to run on every server start rather than
+            // requiring an operator to remember a manual command.
+            Stopwatch aiProfileWatch = Stopwatch.StartNew();
+            var (aiWritten, aiSkipped, aiTotal) = MHServerEmu.Games.Entities.Player.GeneratePhantomAIProfiles();
+            aiProfileWatch.Stop();
+            Logger.Info($"Phantom AI profiles: {aiWritten} generated, {aiSkipped} already existed, {aiTotal} total ({aiProfileWatch.ElapsedMilliseconds} ms)");
+
             // Initialize game data tables
             Stopwatch tablesWatch = Stopwatch.StartNew();
             GameDataTables tables = GameDataTables.Instance;

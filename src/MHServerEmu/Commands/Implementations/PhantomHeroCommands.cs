@@ -346,5 +346,15 @@ namespace MHServerEmu.Commands.Implementations
 
             return $"PlayerPartyMaxSize={globals.PlayerPartyMaxSize} PlayerRaidMaxSize={globals.PlayerRaidMaxSize} | current region: {regionInfo}";
         }
+
+        [Command("aiprofiles")]
+        [CommandDescription("Generate per-hero AI profile files (Data/Game/PhantomHeroes/AIProfiles/<Hero>.json) from real power data for every hero/team-up that doesn't already have one. Never overwrites an existing file.")]
+        [CommandInvokerType(CommandInvokerType.Client)]
+        [CommandUserLevel(AccountUserLevel.Admin)]
+        public string AIProfiles(string[] @params, NetClient client)
+        {
+            var (written, skipped, total) = MHServerEmu.Games.Entities.Player.GeneratePhantomAIProfiles();
+            return $"AI profiles: {written} written, {skipped} already existed, {total} heroes/team-ups total.";
+        }
     }
 }
