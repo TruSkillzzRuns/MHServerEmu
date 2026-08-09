@@ -252,7 +252,33 @@ namespace MHServerEmu.Games.Entities.Avatars
                     }
                     (stale ??= new List<ulong>()).Add(id);
                     s_phantomReattachGraceSinceMs.Remove(id);
+                    s_phantomDmgLogged.Remove(id);
                     continue;
+                }
+
+                // Settled damage readout, once per phantom.
+                //
+                // Both spawn-time readouts were taken too early to be
+                // trustworthy: the Rank prototype's mod bundle (RankPrototype
+                // is a ModPrototype carrying Properties + PassivePowers) is not
+                // attached until SetSimulated fires, and gear child collections
+                // aggregate after that too. Measuring here — several ticks into
+                // real life in the world — is the only place the numbers are
+                // final, and it puts BOSS and AVATAR side by side in the same
+                // settled state so the gap can be sized instead of guessed.
+                if (phantom.IsInWorld && s_phantomDmgLogged.Add(phantom.Id))
+                {
+                    string kind = IsBossPhantomRef(phantom.PrototypeDataRef) ? "BOSS"
+                                : phantom.IsTeamUpAgent ? "TEAMUP" : "AVATAR";
+                    PrototypeId rankRef = phantom.Properties[PropertyEnum.Rank];
+                    PhantomLogger.Info($"[PhantomHero:DmgSettled] {kind} {phantom.PrototypeDataRef.GetName()} " +
+                                       $"lvl={phantom.CharacterLevel} " +
+                                       $"DamageMult={(float)phantom.Properties[PropertyEnum.DamageMult]:F2} " +
+                                       $"DamagePctBonus={(float)phantom.Properties[PropertyEnum.DamagePctBonus]:F2} " +
+                                       $"DamageRating={(float)phantom.Properties[PropertyEnum.DamageRating]:F0} " +
+                                       $"HealthMax={(long)phantom.Properties[PropertyEnum.HealthMax]} " +
+                                       $"powers={CountPowers(phantom)} " +
+                                       $"rank={(rankRef != PrototypeId.Invalid ? rankRef.GetNameFormatted() : "<unset>")}");
                 }
 
                 if (phantom.IsInWorld == false)
@@ -3560,6 +3586,44 @@ namespace MHServerEmu.Games.Entities.Avatars
         private const float PhantomDmgRatingLvl1  = 0f;
         private const float PhantomDmgRatingLvl60 = 1200f;
 
+        // ---------------------------------------------------------------
+        // Boss-phantom damage compensation.
+        //
+        // Measured live 2026-08-09 with matched settled readouts (values read
+        // off both entities several ticks after SetSimulated, so rank mods and
+        // gear aggregation are final) — BullseyeCH4 vs a BiS level-60 Carnage
+        // phantom, both level 60:
+        //
+        //     BOSS   DamageMult 1.60  PctBonus 0.40  DamageRating 1200  powers 11
+        //     AVATAR DamageMult 1.60  PctBonus 0.40  DamageRating ~2000 powers 117
+        //
+        // Two findings, and they point at different fixes:
+        //
+        //  1. DamageRating is the ONLY stat gap (~40% down). Its cause is
+        //     structural: gear contributes it, and a plain boss AgentPrototype
+        //     has no equipment slots at all, so a boss phantom can never be
+        //     geared (see ApplyPhantomGear's note). BossPhantomDmgRatingBonus
+        //     closes that to parity with a geared avatar. This number is
+        //     measured, not chosen.
+        //
+        //  2. Everything else was already equal — DamageMult, DamagePctBonus,
+        //     and the boss actually has MORE health. So flat stats do not
+        //     explain "feels very weak". The real difference is the kit:
+        //     11 boss powers versus 117 avatar powers, and a boss's powers are
+        //     balanced to hurt a PLAYER (tens of thousands of HP), not to kill
+        //     endgame enemies (millions of HP). An avatar's rotation is built
+        //     for the latter. No stat readout can size that gap.
+        //
+        // BossPhantomDmgMult is therefore an explicit BALANCE DIAL, not a
+        // derived value — it multiplies the friendly phantom damage curve for
+        // boss phantoms only. Starting at 3.0; raise it if bosses still feel
+        // soft in endgame, lower it if they trivialise content. Nothing else
+        // reads these, so tuning them cannot affect avatar phantoms, team-ups,
+        // enemy phantoms, Deathmatch, or real story/endgame bosses.
+        // ---------------------------------------------------------------
+        private const float BossPhantomDmgRatingBonus = 800f;   // 1200 -> ~2000, matching a geared avatar phantom
+        private const float BossPhantomDmgMult        = 3.0f;   // balance dial for the encounter-tuned power kit
+
         // Enemy-phantom damage curve (Rogue Encounter, Wave Director,
         // Enemy Phantoms tool). Only mildly higher than the friendly curve
         // � the challenge should come from HP + kit variety + rank scaling,
@@ -4392,6 +4456,15 @@ namespace MHServerEmu.Games.Entities.Avatars
         {
             var applied = new List<ulong>();
             PrototypeId phantomRef = phantomAgent.PrototypeDataRef;
+            // NOTE: only Avatar and AgentTeamUpPrototype declare
+            // EquipmentInventories — a plain boss AgentPrototype has no
+            // equipment slots at all, so boss phantoms can never be geared
+            // and always return empty here. That is a real balance problem,
+            // not an oversight to fix in this method: DamageMult is an
+            // AGGREGATE and gear contributes as a separate child collection
+            // stacked on top of the flat formula value (see the balance note
+            // above ClampEnemyPhantomDamageMult). Boss phantoms are therefore
+            // compensated directly in SpawnBossPhantomHero instead.
             AvatarEquipInventoryAssignmentPrototype[] equipmentInventories = phantomAgent is Avatar phantomAvatar
                 ? phantomAvatar.AvatarPrototype?.EquipmentInventories
                 : phantomRef.As<GameData.Prototypes.AgentTeamUpPrototype>()?.EquipmentInventories;
@@ -4674,6 +4747,34 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             List<ulong> applied = ApplyPhantomGear(phantomOwner, phantom, level, null);
             host.UpdatePhantomGear(phantom.Id, applied);
+        }
+
+        /// <summary>One-shot guard for the settled damage readout in OnPhantomTick.</summary>
+        private static readonly HashSet<ulong> s_phantomDmgLogged = new();
+
+        // [DmgProbe] cast-throughput counters — see the probe block in
+        // TryPhantomAttack. Temporary, for sizing the boss damage gap.
+        private static readonly Dictionary<ulong, int> s_dmgProbeCasts = new();
+        private static readonly Dictionary<ulong, int> s_dmgProbeFails = new();
+        private static readonly Dictionary<ulong, long> s_dmgProbeNextReportMs = new();
+
+        /// <summary>One-shot guard for the [KitAudit] power-eligibility dump.</summary>
+        private static readonly HashSet<ulong> s_kitAuditLogged = new();
+
+        /// <summary>
+        /// Powers picked this tick that must be aimed at the phantom itself
+        /// rather than the hostile target (boss-phantom summons, shields and
+        /// self-buffs). Cleared at the start of every candidate scan.
+        /// </summary>
+        private static readonly HashSet<PrototypeId> selfCastPowers = new();
+
+        /// <summary>Power count, for comparing a boss's kit against an avatar's.</summary>
+        private static int CountPowers(Agent phantom)
+        {
+            if (phantom.PowerCollection == null) return 0;
+            int n = 0;
+            foreach (var _ in phantom.PowerCollection) n++;
+            return n;
         }
 
         private static void ApplyPhantomDamageScaling(Agent phantom, int level, bool enemy = false, bool deathmatch = false)
@@ -5397,9 +5498,59 @@ namespace MHServerEmu.Games.Entities.Avatars
                 PrototypeId fallbackBlacklistedPower = PrototypeId.Invalid;
                 long fallbackBlacklistedExpiresAt = long.MaxValue;
 
+                // [KitAudit] One-shot per phantom: record why each power in the
+                // collection is or isn't eligible. Boss phantoms were reported
+                // using only 1-2 powers and mostly spamming one; this shows
+                // whether the rest are being filtered out here (and by which
+                // gate) rather than simply losing the weighted roll.
+                bool auditKit = s_kitAuditLogged.Add(phantom.Id);
+                List<string> auditRows = auditKit ? new List<string>() : null;
+
+                // ---------------------------------------------------------
+                // Boss-phantom kit unlocking. EVERY relaxation below is gated
+                // on this flag, so avatar phantoms, team-ups, enemy/nemesis
+                // phantoms, Deathmatch combatants and real story/endgame
+                // bosses all keep their existing behaviour exactly.
+                //
+                // Measured 2026-08-09 via [KitAudit]: a boss's collection is
+                // 11-26 powers but only 1-2 ever reach the candidate pool,
+                // which is why they visibly spam one attack. Most of the kit
+                // is combo follow-ups (correctly excluded - they fire
+                // automatically via power events), but two categories were
+                // being lost that shouldn't be:
+                //   * self-cast powers, above all SUMMONS (WarMachine's
+                //     IronManCallInSummon / VisionDFADenseSummon), whose
+                //     GetRange() is ~0, so the target-distance gate below
+                //     rejects them whenever the enemy isn't already inside
+                //     melee reach - i.e. essentially always.
+                //   * support powers (N'Astirh's HealingShield), skipped
+                //     because the pool is only ever evaluated against the
+                //     HOSTILE target, so a friendly boss can never shield or
+                //     heal itself or the squad.
+                // ---------------------------------------------------------
+                bool isBossPhantom = IsBossPhantomRef(phantom.PrototypeDataRef);
+                selfCastPowers.Clear();
+
                 foreach (var kvp in phantom.PowerCollection)
                 {
                     PowerCollectionRecord rec = kvp.Value;
+                    if (auditKit)
+                    {
+                        PowerPrototype apn = rec?.Power?.Prototype;
+                        string aname = apn?.DataRef.GetNameFormatted() ?? "<null>";
+                        string averdict =
+                              apn == null ? "no-prototype"
+                            : apn is MovementPowerPrototype ? "REJECT movement"
+                            : apn.PowerCategory != PowerCategoryType.NormalPower ? $"REJECT category={apn.PowerCategory}"
+                            : apn.Activation == PowerActivationType.Passive ? "REJECT passive"
+                            : apn.IsToggled ? "REJECT toggled"
+                            : apn.IsTravelPower ? "REJECT travel"
+                            : apn.GetTargetingReach() == null ? "REJECT no-targeting-reach"
+                            : (phantom.IsHostileTo(target) && apn.GetTargetingReach().TargetsEnemy == false) ? "REJECT !TargetsEnemy"
+                            : (phantom.IsHostileTo(target) == false && apn.GetTargetingReach().TargetsFriendly == false) ? "REJECT !TargetsFriendly"
+                            : "eligible-so-far";
+                        auditRows.Add($"{aname}={averdict}");
+                    }
                     Power power = rec?.Power;
                     if (power == null) continue;
                     PowerPrototype pp = power.Prototype;
@@ -5435,7 +5586,20 @@ namespace MHServerEmu.Games.Entities.Avatars
                     var targetingReach = pp.GetTargetingReach();
                     if (targetingReach == null) continue;
                     bool targetIsHostileToPhantom = phantom.IsHostileTo(target);
-                    if (targetIsHostileToPhantom)
+
+                    // Boss phantoms only: a power that can't hit the hostile
+                    // target may still be a self-buff, shield, heal or summon
+                    // worth using. Keep it, and remember to aim it at the
+                    // phantom itself rather than the enemy (see the self-cast
+                    // handling at activation).
+                    bool selfCast = false;
+                    if (isBossPhantom && targetIsHostileToPhantom
+                        && targetingReach.TargetsEnemy == false
+                        && (targetingReach.TargetsFriendly || targetingReach.WillTargetCaster || pp is SummonPowerPrototype))
+                    {
+                        selfCast = true;
+                    }
+                    else if (targetIsHostileToPhantom)
                     {
                         if (targetingReach.TargetsEnemy == false) continue;
                     }
@@ -5443,6 +5607,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                     {
                         if (targetingReach.TargetsFriendly == false) continue;
                     }
+
+                    // Boss phantoms only: summons and other genuinely
+                    // self-centred powers are cast on the phantom, not thrown
+                    // at the enemy, so the target-distance gate below must not
+                    // apply to them.
+                    if (isBossPhantom && (pp is SummonPowerPrototype || targetingReach.WillTargetCaster))
+                        selfCast = true;
+
+                    if (selfCast) selfCastPowers.Add(rec.PowerPrototypeRef);
 
                     // GetRange() reporting <= 0 does NOT mean "unlimited" �
                     // it means this power has no genuine ranged-targeting
@@ -5464,7 +5637,11 @@ namespace MHServerEmu.Games.Entities.Avatars
                     // added back on this side.
                     float pRange = power.GetRange();
                     float engineRange = MathF.Max(phantom.Bounds.Radius, pRange) + 5f;
-                    if (targetDist > engineRange) continue;
+                    // Self-cast boss powers (summons, shields, self-buffs) are
+                    // aimed at the phantom, so the distance to the enemy is
+                    // irrelevant — gating them on it is what silently deleted
+                    // every boss summon from the rotation.
+                    if (selfCast == false && targetDist > engineRange) continue;
 
                     if (power.IsOnCooldown()) continue;
 
@@ -5558,6 +5735,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                     }
 
                     candidates.Add((fallbackBlacklistedPower, 0f, 0));
+                }
+
+                if (auditKit)
+                {
+                    string kindA = IsBossPhantomRef(phantom.PrototypeDataRef) ? "BOSS"
+                                 : phantom.IsTeamUpAgent ? "TEAMUP" : "AVATAR";
+                    PhantomLogger.Info($"[PhantomHero:KitAudit] {kindA} {phantom.PrototypeDataRef.GetName()} " +
+                                       $"collection={CountPowers(phantom)} survivedToCandidates={candidates.Count} " +
+                                       $"dist={targetDist:F0}\n    " + string.Join("\n    ", auditRows));
                 }
 
                 PrototypeId chosenPower;
@@ -5689,13 +5875,55 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // 3680) to include the owner client and skip the combo-
                 // effect early-out.
                 int fxSeed = rng.Next(1, 10000);
-                var settings = new PowerActivationSettings(target.Id, target.RegionLocation.Position, phantomPos)
-                {
-                    Flags = PowerActivationSettingsFlags.NotifyOwner | PowerActivationSettingsFlags.ServerCombo,
-                    FXRandomSeed = fxSeed,
-                    PowerRandomSeed = fxSeed,
-                };
+                // Self-cast boss powers (summons/shields/self-buffs) must be
+                // aimed at the phantom itself — handing them the hostile
+                // target's id makes the engine reject them as an invalid
+                // target, which would undo the gate relaxation above.
+                bool chosenIsSelfCast = selfCastPowers.Contains(chosenPower);
+                var settings = chosenIsSelfCast
+                    ? new PowerActivationSettings(phantom.Id, phantomPos, phantomPos)
+                    {
+                        Flags = PowerActivationSettingsFlags.NotifyOwner | PowerActivationSettingsFlags.ServerCombo,
+                        FXRandomSeed = fxSeed,
+                        PowerRandomSeed = fxSeed,
+                    }
+                    : new PowerActivationSettings(target.Id, target.RegionLocation.Position, phantomPos)
+                    {
+                        Flags = PowerActivationSettingsFlags.NotifyOwner | PowerActivationSettingsFlags.ServerCombo,
+                        FXRandomSeed = fxSeed,
+                        PowerRandomSeed = fxSeed,
+                    };
                 var result = phantom.ActivatePower(chosenPower, ref settings);
+
+                // [DmgProbe] Cast-rate instrumentation.
+                //
+                // Stats are ruled out: boss phantoms measured DamageMult 4.80
+                // vs a BiS avatar's 1.60 (3x higher) and DamageRating at
+                // parity, and they still feel weak in cosmic content. The
+                // remaining explanation is throughput — how often they
+                // actually land a cast, and which powers get rejected. Counts
+                // successes and failures per phantom and reports every 10s so
+                // BOSS and AVATAR rates are directly comparable.
+                {
+                    ulong pid = phantom.Id;
+                    if (result == PowerUseResult.Success)
+                        s_dmgProbeCasts[pid] = s_dmgProbeCasts.TryGetValue(pid, out int c) ? c + 1 : 1;
+                    else
+                        s_dmgProbeFails[pid] = s_dmgProbeFails.TryGetValue(pid, out int f) ? f + 1 : 1;
+
+                    if (s_dmgProbeNextReportMs.TryGetValue(pid, out long nextMs) == false)
+                        s_dmgProbeNextReportMs[pid] = nowMs + 10000;
+                    else if (nowMs >= nextMs)
+                    {
+                        s_dmgProbeNextReportMs[pid] = nowMs + 10000;
+                        s_dmgProbeCasts.TryGetValue(pid, out int okN);
+                        s_dmgProbeFails.TryGetValue(pid, out int failN);
+                        string kind = IsBossPhantomRef(phantom.PrototypeDataRef) ? "BOSS"
+                                    : phantom.IsTeamUpAgent ? "TEAMUP" : "AVATAR";
+                        PhantomLogger.Info($"[PhantomHero:DmgProbe] {kind} {phantom.PrototypeDataRef.GetName()} " +
+                                           $"casts={okN} fails={failN} lastPower={chosenPower.GetName()} lastResult={result}");
+                    }
+                }
 
                 // Charge-and-release powers: the first activation only
                 // STARTS the charge and waits for a button-release message
@@ -6866,6 +7094,36 @@ namespace MHServerEmu.Games.Entities.Avatars
             boss.Properties[PropertyEnum.Health] = boss.Properties[PropertyEnum.HealthMax];
             ApplyPhantomDamageScaling(boss, effectiveLevel, enemy: false);
 
+            // Boss-only compensation on top of the shared friendly curve —
+            // see BossPhantomDmgRatingBonus / BossPhantomDmgMult for the
+            // measurements behind the rating figure and why the multiplier is
+            // a balance dial rather than a derived number.
+            boss.Properties[PropertyEnum.DamageRating] =
+                (float)boss.Properties[PropertyEnum.DamageRating] + BossPhantomDmgRatingBonus;
+            boss.Properties[PropertyEnum.DamageMult] =
+                (float)boss.Properties[PropertyEnum.DamageMult] * BossPhantomDmgMult;
+
+            // Damage calibration readout — boss phantoms only.
+            //
+            // Boss phantoms cannot be geared (no equipment slots on a plain
+            // AgentPrototype — see ApplyPhantomGear's note), while avatar and
+            // team-up phantoms are. Since DamageMult is an AGGREGATE that gear
+            // stacks into, that alone leaves bosses fighting well below a real
+            // phantom hero, and the gap grows at endgame because gear is what
+            // scales. The Popcorn rank they are given to suppress the boss
+            // encounter bar also replaces the boss stat/passive mod bundle
+            // (RankPrototype is a ModPrototype) with trash-tier.
+            //
+            // Log the values read back OFF THE ENTITY rather than picking a
+            // compensation multiplier by eye — the matching [PhantomHero:Dmg]
+            // line for avatar phantoms gives the target to calibrate against.
+            PhantomLogger.Info($"[PhantomHero:Dmg] BOSS {bossRef.GetName()} lvl={effectiveLevel} " +
+                               $"DamageMult={(float)boss.Properties[PropertyEnum.DamageMult]:F2} " +
+                               $"DamagePctBonus={(float)boss.Properties[PropertyEnum.DamagePctBonus]:F2} " +
+                               $"DamageRating={(float)boss.Properties[PropertyEnum.DamageRating]:F0} " +
+                               $"HealthMax={(long)boss.Properties[PropertyEnum.HealthMax]} " +
+                               $"rank={(boss.Properties[PropertyEnum.Rank] != PrototypeId.Invalid ? ((PrototypeId)boss.Properties[PropertyEnum.Rank]).GetNameFormatted() : "<unset>")}");
+
             // Rank is deliberately NOT left at bossProto.Rank (Boss) — confirmed
             // live 2026-08-08/09: it triggers the client's full boss-encounter UI
             // (top-screen health bar + "Boss" banner), the same Rank-driven
@@ -7669,6 +7927,21 @@ namespace MHServerEmu.Games.Entities.Avatars
             // its own lower PvP curve, applied to every combatant regardless
             // of team � see DeathmatchPhantomDmgMultLvl60's comment.
             ApplyPhantomDamageScaling(phantomAvatar, effectiveLevel, enemy, inDeathmatch);
+
+            // Calibration counterpart to the [PhantomHero:Dmg] BOSS line in
+            // SpawnBossPhantomHero. Placed HERE, after ApplyPhantomDamageScaling
+            // and HealthMaxMult — logging it right after ApplyPhantomGear read
+            // DamageMult=0.00 because avatar scaling had not run yet. This is
+            // the target a boss phantom should land near.
+            if (enemy == false && inDeathmatch == false)
+            {
+                PhantomLogger.Info($"[PhantomHero:Dmg] AVATAR {avatarRef.GetName()} lvl={effectiveLevel} " +
+                                   $"gearPieces={appliedGearRefs?.Count ?? 0} bis={(bisLoadout != null)} " +
+                                   $"DamageMult={(float)phantomAvatar.Properties[PropertyEnum.DamageMult]:F2} " +
+                                   $"DamagePctBonus={(float)phantomAvatar.Properties[PropertyEnum.DamagePctBonus]:F2} " +
+                                   $"DamageRating={(float)phantomAvatar.Properties[PropertyEnum.DamageRating]:F0} " +
+                                   $"HealthMax={(long)phantomAvatar.Properties[PropertyEnum.HealthMax]}");
+            }
 
             // Nemesis-only damage boost � applied AFTER ApplyPhantomDamageScaling
             // so it doesn't get overwritten by the level curve. Per-rank
