@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Games.GameData;
@@ -57,13 +58,26 @@ namespace MHServerEmu.Games.Entities
             else _combatRangePrefs[heroRef] = pref;
         }
 
-        /// <summary>Lookup used by the phantom movement logic.</summary>
+        /// <summary>
+        /// Lookup used by the phantom movement logic. Checks this player's own
+        /// explicit override first (set via OmegaDev2 / SetCombatRangePref),
+        /// then falls back to the server-wide per-hero AI profile file (Data/
+        /// Game/PhantomHeroes/AIProfiles/&lt;Hero&gt;.json — see
+        /// Player.PhantomAIProfiles.cs), then finally the kit-derived Auto
+        /// heuristic if neither is set.
+        /// </summary>
         public PhantomCombatRangePref GetCombatRangePref(PrototypeId heroRef)
         {
             if (heroRef == PrototypeId.Invalid) return PhantomCombatRangePref.Auto;
-            return _combatRangePrefs.TryGetValue((ulong)heroRef, out int p)
-                ? (PhantomCombatRangePref)p
-                : PhantomCombatRangePref.Auto;
+
+            if (_combatRangePrefs.TryGetValue((ulong)heroRef, out int p))
+                return (PhantomCombatRangePref)p;
+
+            PhantomHeroAIProfile fileProfile = GetPhantomAIProfile(heroRef);
+            if (fileProfile != null && Enum.TryParse(fileProfile.CombatRangePref, true, out PhantomCombatRangePref filePref))
+                return filePref;
+
+            return PhantomCombatRangePref.Auto;
         }
 
         internal void SnapshotCombatRangePrefsForTransfer(MigrationData mig)

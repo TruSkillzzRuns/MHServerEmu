@@ -201,6 +201,25 @@ namespace MHServerEmu.Games.Entities.Avatars
             // tick's work, but the tick loop keeps running for next time.
             if (IsInWorld == false) return;
 
+            // Event hook — OnPlayerLowHP, once per dip below the same
+            // threshold TryPhantomSurvivalRetreat uses for phantoms, so a
+            // future support-behavior subscriber (or the debug logger) has
+            // a consistent definition of "low" across the whole squad.
+            float callerHealthMax = Properties[PropertyEnum.HealthMax];
+            if (callerHealthMax > 0f)
+            {
+                float callerHpPct = (float)Properties[PropertyEnum.Health] / callerHealthMax;
+                if (callerHpPct <= PhantomSoftRetreatHpPct)
+                {
+                    if (s_avatarLowHpNotified.Add(Id))
+                        PhantomAIEvents.RaisePlayerLowHP(this);
+                }
+                else
+                {
+                    s_avatarLowHpNotified.Remove(Id);
+                }
+            }
+
             Vector3 callerPos = RegionLocation.Position;
             var rng = Game.Random;
             List<ulong> stale = null;
@@ -1113,16 +1132,21 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// teams behaviour for the duration of a match.
         /// </summary>
         /// <summary>
-        /// How far a Team Deathmatch combatant can see. Deliberately SHORT.
+        /// How far a Team Deathmatch combatant can see. Effectively region-wide.
         ///
-        /// This was briefly region-wide, which was a mistake: every combatant
-        /// could see every other from the moment the match started, so all three
-        /// teams beelined at each other and collapsed into one pile — measured
-        /// live, both rival teams locked onto RED because RED happened to be the
-        /// nearest spawn to both. A short sight range means teams have to find
-        /// each other by roaming, and fights start where they meet.
+        /// This was briefly capped short (1800u) to make teams find each other by
+        /// roaming instead of beelining from spawn — but on the arena pool's larger
+        /// maps that produced the opposite problem: combatants standing still or
+        /// wandering to random navmesh points for long stretches without ever
+        /// getting close enough to see anyone (reported live 2026-08-08 — teams
+        /// "stuck just standing still" and "getting lost trying to navigate the
+        /// region"). Reverted to region-wide sight per that request: everyone can
+        /// always see the other team and commits to closing the distance instead
+        /// of roaming blind. Spawn anchors are still dispersed to opposite ends of
+        /// the map (ChooseDeathmatchTeamAnchorsDefault), so this does not reproduce
+        /// the original spawn-pileup problem — it only removes the blind-roam phase.
         /// </summary>
-        private const float DeathmatchSightRange = 1800f;
+        private const float DeathmatchSightRange = 1_000_000f;
 
         private bool IsDeathmatchTeamCombatant(ulong entityId)
         {
@@ -1594,6 +1618,8 @@ namespace MHServerEmu.Games.Entities.Avatars
             ulong committedTargetId = s_phantomCommittedTargetId.TryGetValue(phantom.Id, out ulong committedId) ? committedId : 0;
             bool diagWant = ShouldEmitPhantomDiag(phantom.Id);
             long nowMsSweep = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
+            PhantomPersonality personality = GetPhantomPersonality(phantom.Id, phantom.PrototypeDataRef, rng);
+            GetPersonalityThreatMult(personality, out float persDistanceMult, out float persPeelMult, out float persFinishMult, out float persFocusMult);
             foreach (WorldEntity we in region.IterateEntitiesInVolume(sweepSphere, ctx))
             {
                 if (we == null || we.Id == phantom.Id) continue;
@@ -1746,7 +1772,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 float threat = 0f;
                 float edgeDistForScore = MathF.Sqrt(d);
                 float closeness = 1f - Math.Clamp(edgeDistForScore / PhantomSearchRange, 0f, 1f);
-                threat += closeness * PhantomThreatDistanceWeight;
+                threat += closeness * PhantomThreatDistanceWeight * persDistanceMult;
 
                 // Peel — is this hostile currently attacking the person we're
                 // protecting? Only meaningful for friendly phantoms; enemy
@@ -1757,7 +1783,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     WorldEntity itsTarget = threatAgent.AIController?.TargetEntity;
                     if (itsTarget != null && itsTarget.Id == Id)
-                        threat += PhantomThreatPeelWeight;
+                        threat += PhantomThreatPeelWeight * persPeelMult;
                 }
 
                 // Finish — bias toward targets close to death so damage isn't
@@ -1767,19 +1793,36 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     float hpPct = (float)we.Properties[PropertyEnum.Health] / hpMax;
                     if (hpPct > 0f && hpPct < PhantomThreatFinishHpPct)
-                        threat += PhantomThreatFinishWeight * (1f - (hpPct / PhantomThreatFinishHpPct));
+                        threat += PhantomThreatFinishWeight * persFinishMult * (1f - (hpPct / PhantomThreatFinishHpPct));
                 }
 
                 // Focus fire — converge on what a squadmate already committed
                 // to, so a group actually kills things instead of chipping.
                 if (squadFocusId != 0 && we.Id == squadFocusId)
-                    threat += PhantomThreatFocusWeight;
+                    threat += PhantomThreatFocusWeight * persFocusMult;
 
                 // Sticky — my own committed target from last tick keeps a lead
                 // so score jitter can't flip-flop me between two similar
                 // targets every tick. See PhantomThreatStickyWeight.
                 if (committedTargetId != 0 && we.Id == committedTargetId)
                     threat += PhantomThreatStickyWeight;
+
+                // Event hooks — fire once per unique boss/elite this phantom
+                // encounters (not every tick it's still in range). Rank is
+                // the same real classification the rest of this AI already
+                // reads (ComputePhantomFollowStopDist's Boss/MiniBoss checks
+                // elsewhere use the identical Rank enum).
+                Rank weRank = we.GetRankPrototype()?.Rank ?? Rank.Popcorn;
+                if (weRank == Rank.Boss || weRank == Rank.MiniBoss || weRank == Rank.GroupBoss)
+                {
+                    if (s_phantomSeenBossIds.Add((phantom.Id, we.Id)))
+                        PhantomAIEvents.RaiseBossSpawn(phantom, we);
+                }
+                else if (weRank == Rank.Elite)
+                {
+                    if (s_phantomSeenEliteIds.Add((phantom.Id, we.Id)))
+                        PhantomAIEvents.RaiseEliteSpawn(phantom, we);
+                }
 
                 candidates.Add((we, d, threat));
             }
@@ -1881,7 +1924,7 @@ namespace MHServerEmu.Games.Entities.Avatars
                 var idleLoco = phantom.Locomotor;
                 if (idleLoco != null)
                 {
-                    Vector3 slotPos = ComputePhantomIdleSlot(phantom.Id, region);
+                    Vector3 slotPos = ComputePhantomIdleSlot(phantom, region);
                     float slotDistSq = Vector3.DistanceSquared2D(phantomPos, slotPos);
                     if (slotDistSq > PhantomFormationArriveDist * PhantomFormationArriveDist)
                     {
@@ -1925,6 +1968,21 @@ namespace MHServerEmu.Games.Entities.Avatars
             // (The LoS concept itself: the engine's own mob AI checks it in
             // Combat.cs:166, UsePower.cs:360 and MoveTo.cs:192 — this AI
             // historically checked none of them.)
+            //
+            // Mistake rate — imperfect-decision-modeling: swap in the
+            // second-best candidate instead of the objectively best one, at
+            // a small personality-tuned probability, so target selection
+            // doesn't read as a perfect optimizer every single tick. Never
+            // applied to Team Deathmatch's distance-sorted list — that sort
+            // exists for fairness/pacing, not a "best pick," and a mistake
+            // there would just look like random target flailing rather than
+            // a believable misjudgment.
+            if (candidates.Count >= 2 && IsDeathmatchTeamCombatant(phantom.Id) == false
+                && rng.NextFloat() < GetPersonalityMistakeRate(personality))
+            {
+                (candidates[0], candidates[1]) = (candidates[1], candidates[0]);
+            }
+
             WorldEntity primaryTarget = candidates[0].we;
             float primaryDistSq = candidates[0].distSq;
             bool primaryLoS = phantom.LineOfSightTo(primaryTarget);
@@ -1946,6 +2004,37 @@ namespace MHServerEmu.Games.Entities.Avatars
             // visibility scan, so stickiness reinforces a target the phantom
             // can actually fight, never one it is blind to.
             s_phantomCommittedTargetId[phantom.Id] = primaryTarget.Id;
+
+            // Survival Logic — checked AFTER self-heal already had its shot
+            // (at the top of this method) and failed/wasn't available, so
+            // retreat is the FALLBACK survivability response, not competing
+            // with the primary one. See TryPhantomSurvivalRetreat's header.
+            if (TryPhantomSurvivalRetreat(phantom, region, primaryTarget, primaryDistSq, enemyMode, nowMsSweep, rng))
+                return;
+
+            // Team Deathmatch, long-range target: go straight to the short-hop
+            // roam instead of ever calling FollowEntity on a target this far away.
+            //
+            // Region-wide sight (added 2026-08-08, DeathmatchSightRange) means a
+            // combatant can see a target 9000-10000+ units off from the moment the
+            // match starts. FollowEntity on a target that far tries to generate one
+            // single path across the whole map — the previous "roam on path
+            // failure" fallback assumed that call would visibly fail
+            // (NaviPathResult.Failed) and catch it, but that stopped producing any
+            // movement at all on a live retest (reported 2026-08-08: combatants
+            // spawn in and never move, worse than before region-wide sight, when
+            // short-range roam at least wandered visibly). Rather than keep
+            // trusting a specific pathfinder result code to decide when to fall
+            // back, skip the long-range FollowEntity attempt entirely and always
+            // take the short reliable hops toward the target — the same roam this
+            // AI already uses successfully once no direct-range candidate exists.
+            const float DeathmatchDirectPathMaxDist = 3500f;
+            const float DeathmatchDirectPathMaxDistSq = DeathmatchDirectPathMaxDist * DeathmatchDirectPathMaxDist;
+            if (IsDeathmatchTeamCombatant(phantom.Id) && primaryDistSq > DeathmatchDirectPathMaxDistSq)
+            {
+                TryDeathmatchRoam(phantom, region, rng, primaryTarget.RegionLocation.Position);
+                return;
+            }
 
             // Always keep the Locomotor advancing toward the target — even when
             // we're inside attack range. Stopping while attacking was the reason
@@ -1983,6 +2072,18 @@ namespace MHServerEmu.Games.Entities.Avatars
                     PhantomLogger.Info($"[PhantomHero:Loco] {phantom} authoritative={phantom.IsMovementAuthoritative} simulated={phantom.IsSimulated} inWorld={phantom.IsInWorld} target={primaryTarget.Id:X} dist={MathF.Sqrt(primaryDistSq):F0} FollowEntity returned={ok} locoEnabled={loco.IsEnabled} isMoving={loco.IsMoving} method={loco.Method} baseSpeed={loco.DefaultRunSpeed} hasPath={loco.HasPath} pathResult={loco.LastGeneratedPathResult} canMove={phantom.CanMove()}");
                 }
 
+                // Throttled (not one-shot) version for Team Deathmatch specifically —
+                // added 2026-08-08 alongside the TDM:Roam log, same reason: the
+                // one-shot log above fired during the pre-match lock on the report
+                // we're chasing and told us nothing about behavior after unlock.
+                // Remove once confirmed working.
+                if (IsDeathmatchTeamCombatant(phantom.Id)
+                    && (s_deathmatchRoamNextDiagMs.TryGetValue(phantom.Id, out long nextFollowDiagMs) == false || nowMsSweep >= nextFollowDiagMs))
+                {
+                    s_deathmatchRoamNextDiagMs[phantom.Id] = nowMsSweep + 3000;
+                    PhantomLogger.Info($"[TDM:Follow] {phantom} target={primaryTarget.Id:X} dist={MathF.Sqrt(primaryDistSq):F0} FollowEntity={ok} isMoving={loco.IsMoving} pathResult={loco.LastGeneratedPathResult} canMove={phantom.CanMove()}");
+                }
+
                 // Pathfinding failure — enemy phantoms in Manhattan / verticality
                 // regions can end up on an elevated platform (Z=49) while the
                 // player is at ground level (Z=1), and FollowEntity's navmesh
@@ -2015,7 +2116,9 @@ namespace MHServerEmu.Games.Entities.Avatars
 
                 if (pathFailed && stranded && IsDeathmatchTeamCombatant(phantom.Id))
                 {
-                    TryDeathmatchRoam(phantom, region, rng);
+                    // Bias the roam toward the target we actually know about,
+                    // not a random direction — see TryDeathmatchRoam's header.
+                    TryDeathmatchRoam(phantom, region, rng, primaryTarget.RegionLocation.Position);
                     return;
                 }
 
@@ -2098,16 +2201,19 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // cooldown means this is rare, ~every 10-16s per phantom).
                 // See PhantomSpacingDashCooldownMs.
                 //
-                // Skipped when already in melee range or when this is a
-                // solo enemy phantom (only one hostile in its candidate
-                // list, i.e. just the real player) — the whole point of
-                // this dash is anti-CLUSTERING for a squad; a melee phantom
-                // that just spent seconds closing the gap immediately
-                // dashing away created an approach-dash-approach loop, and
-                // a nemesis dueling one player 1v1 has no squad to space
-                // out from, so it just randomly disengaged mid-fight
-                // (confirmed live 2026-07-20 audit).
-                bool skipDashHere = inMelee || (enemyMode && candidates.Count <= 1);
+                // Skipped when already in melee range or when there's only one
+                // hostile in the candidate list — the whole point of this dash
+                // is anti-CLUSTERING for a squad; a melee phantom that just spent
+                // seconds closing the gap immediately dashing away created an
+                // approach-dash-approach loop, and anything effectively 1v1 has
+                // no squad to space out from, so it just randomly disengaged
+                // mid-fight (confirmed live 2026-07-20 audit for enemy/nemesis
+                // phantoms). Originally gated to enemyMode only, which left
+                // friendly phantoms doing the same walk-in-then-dash-away dance
+                // whenever they were effectively 1v1 in Deathmatch (reported
+                // live 2026-08-08: ally phantoms looked far less committed to
+                // closing the distance than enemy phantoms did).
+                bool skipDashHere = inMelee || candidates.Count <= 1;
                 if (skipDashHere == false && TryPhantomSpacingDash(phantom, region, rng))
                     return;
 
@@ -2116,6 +2222,12 @@ namespace MHServerEmu.Games.Entities.Avatars
                 // closer to 1 attack per 800-1200 ms after animation locks.
                 long now = Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond;
                 bool attackReady = s_phantomNextAttackMs.TryGetValue(phantom.Id, out long nextAt) == false || now >= nextAt;
+
+                // Reaction delay — see IsPhantomReactionReady's header. Gates
+                // only the FIRST attack against a brand-new primary target;
+                // has no effect on an already-engaged one, since the target
+                // id passed in hasn't changed tick to tick.
+                attackReady = attackReady && IsPhantomReactionReady(phantom.Id, primaryTarget.Id, personality, now, rng);
 
                 // The statue window: arrived, in range, but the attack timer
                 // has not elapsed. This used to be a hard stand-still — the
@@ -2487,8 +2599,21 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// Walks a Team Deathmatch combatant toward a roam point, picking a new
         /// one when it arrives, the point goes stale, or it has none. Movement
         /// only — no teleporting.
+        ///
+        /// <paramref name="towardPos"/>, when given, biases the pick toward that
+        /// direction instead of a fully random angle. This is what lets a
+        /// combatant that CAN see a distant rival (region-wide sight) but whose
+        /// direct FollowEntity path failed still make real progress toward them —
+        /// short hops in roughly the right direction, each one well within the
+        /// navmesh pathfinder's search budget (NaviPathGenerator caps its search
+        /// at 256 steps, which a single-shot path across a 9000+u open map like
+        /// Savage Land can exceed outright, returning FailedNoPathFound and
+        /// leaving the phantom standing still — confirmed live 2026-08-08 via
+        /// FollowEntity's own path-result field: every long-range attempt failed
+        /// while nearer ones later succeeded). A null bias keeps the old fully
+        /// random wander, used only when no candidate exists to walk toward at all.
         /// </summary>
-        private static void TryDeathmatchRoam(Agent phantom, Region region, MHServerEmu.Core.System.Random.GRandom rng)
+        private static void TryDeathmatchRoam(Agent phantom, Region region, MHServerEmu.Core.System.Random.GRandom rng, Vector3? towardPos = null)
         {
             if (phantom == null || region == null) return;
 
@@ -2505,8 +2630,11 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             if (needNew)
             {
-                Vector3 dest = ChooseScatteredArenaPos(region, pos, pos, rng, phantom.Bounds.Radius,
-                    DeathmatchRoamMinDist, DeathmatchRoamMaxDist);
+                Vector3 dest = towardPos.HasValue
+                    ? ChooseScatteredArenaPosBiased(region, pos, towardPos.Value, pos, rng, phantom.Bounds.Radius,
+                        DeathmatchRoamMinDist, DeathmatchRoamMaxDist)
+                    : ChooseScatteredArenaPos(region, pos, pos, rng, phantom.Bounds.Radius,
+                        DeathmatchRoamMinDist, DeathmatchRoamMaxDist);
                 s_deathmatchRoam[phantom.Id] = (dest, nowMs);
                 roam = (dest, nowMs);
             }
@@ -2515,13 +2643,28 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (loco == null) return;
 
             var opts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(500) };
-            if (loco.PathTo(roam.dest, ref opts) == false)
+            bool pathOk = loco.PathTo(roam.dest, ref opts);
+
+            // Throttled visibility into whether roam is actually making progress —
+            // added 2026-08-08 after a "still standing still" report we could not
+            // confirm or rule out from the existing one-shot FollowEntity log (it
+            // only fires once ever per phantom, and had already fired during the
+            // pre-match lock on the report in question). Remove once confirmed working.
+            if (s_deathmatchRoamNextDiagMs.TryGetValue(phantom.Id, out long nextDiagMs) == false || nowMs >= nextDiagMs)
+            {
+                s_deathmatchRoamNextDiagMs[phantom.Id] = nowMs + 3000;
+                PhantomLogger.Info($"[TDM:Roam] {phantom} pos={pos.ToStringNames()} dest={roam.dest.ToStringNames()} pathOk={pathOk} isMoving={loco.IsMoving} canMove={phantom.CanMove()} pathResult={loco.LastGeneratedPathResult}");
+            }
+
+            if (pathOk == false)
             {
                 // Unreachable — drop it and pick a fresh one next tick rather
                 // than teleporting there.
                 s_deathmatchRoam.Remove(phantom.Id);
             }
         }
+
+        private static readonly Dictionary<ulong, long> s_deathmatchRoamNextDiagMs = new();
 
         /// <summary>
         /// Pick a leash-teleport position near the caller that lands on the
@@ -2588,6 +2731,38 @@ namespace MHServerEmu.Games.Entities.Avatars
                     return candidate;
             }
             return fallback;
+        }
+
+        /// <summary>
+        /// Same walkable-point search as <see cref="ChooseScatteredArenaPos"/>, but
+        /// the angle is drawn from a +/-50 degree cone facing <paramref name="towardPos"/>
+        /// instead of the full circle — a short hop that's actually progress toward
+        /// a known, far-off target rather than a random wander. See
+        /// TryDeathmatchRoam's header for why this exists.
+        /// </summary>
+        private static Vector3 ChooseScatteredArenaPosBiased(Region region, Vector3 origin, Vector3 towardPos, Vector3 fallback,
+            MHServerEmu.Core.System.Random.GRandom rng, float avatarRadius, float minRadius, float maxRadius)
+        {
+            if (region == null) return fallback;
+            var walkCheck = new DefaultContainsPathFlagsCheck(PathFlags.Walk);
+            Vector3 toTarget = towardPos - origin;
+            float baseAngle = MathF.Atan2(toTarget.Y, toTarget.X);
+            const float coneHalfWidth = MathF.PI * 50f / 180f;
+
+            for (int attempt = 0; attempt < 24; attempt++)
+            {
+                float angle = baseAngle + ((float)(rng.NextDouble() * 2.0 - 1.0) * coneHalfWidth);
+                float radius = minRadius + (float)(rng.NextDouble() * Math.Max(1f, maxRadius - minRadius));
+                Vector3 candidate = origin + new Vector3((float)Math.Cos(angle) * radius, (float)Math.Sin(angle) * radius, 0f);
+                candidate = RegionLocation.ProjectToFloor(region, candidate);
+
+                if (region.NaviMesh.Contains(candidate, MathF.Max(20f, avatarRadius), walkCheck)
+                    && region.GetCellAtPosition(candidate) != null)
+                    return candidate;
+            }
+            // Cone search failed every attempt (obstruction, edge of mesh) —
+            // fall back to the old fully-random search rather than freezing.
+            return ChooseScatteredArenaPos(region, origin, fallback, rng, avatarRadius, minRadius, maxRadius);
         }
 
         /// <summary>
@@ -2660,23 +2835,58 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static readonly HashSet<ulong> s_phantomLocoLogged = new();
 
         /// <summary>
+        /// True if this phantom's kit has a genuine (TargetingReach.Melee-
+        /// flagged) power ready — same real, data-driven check
+        /// ComputePhantomFollowStopDist already uses to decide combat
+        /// standoff, reused here to decide frontline-vs-backline formation
+        /// placement while idle.
+        /// </summary>
+        private static bool IsPhantomMeleeKit(Agent phantom)
+        {
+            var pc = phantom.PowerCollection;
+            if (pc == null) return false;
+            foreach (var kvp in pc)
+            {
+                Power power = kvp.Value?.Power;
+                if (power == null) continue;
+                PowerPrototype pp = power.Prototype;
+                if (pp == null) continue;
+                if (pp is MovementPowerPrototype) continue;
+                if (pp.PowerCategory != PowerCategoryType.NormalPower) continue;
+                if (pp.Activation == PowerActivationType.Passive) continue;
+                if (pp.IsToggled) continue;
+                if (pp.IsTravelPower) continue;
+                if (Power.IsMelee(pp)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Per-phantom preferred idle slot around the caller. Each phantom
         /// gets a personal (angle, distance) derived from a hash of its
         /// runtime id: because the angle is unique per phantom, they never
-        /// converge on the same follow spot — no stacking. Distance varies
-        /// too, so a squad spreads at natural depths instead of a perfect
-        /// ring. Slot is always computed against the caller's current
-        /// position so it tracks as the caller walks around.
+        /// converge on the same follow spot — no stacking. Distance is
+        /// frontline/backline-biased on top of that per-phantom variance —
+        /// a standard MMO/ARPG companion-AI formation pattern: melee-kit
+        /// phantoms hold a closer slot (first into a fight), ranged-kit
+        /// phantoms hold further back — instead of every phantom sharing
+        /// one uniform ring regardless of role. Slot is always computed
+        /// against the caller's current position so it tracks as the caller
+        /// walks around.
         /// </summary>
-        private Vector3 ComputePhantomIdleSlot(ulong phantomId, Region region)
+        private Vector3 ComputePhantomIdleSlot(Agent phantom, Region region)
         {
             Vector3 callerPos = RegionLocation.Position;
+            ulong phantomId = phantom.Id;
 
             // Hash-mix the id so consecutive phantom ids don't produce
             // near-identical slots. Constants are arbitrary large primes.
             ulong h = phantomId * 2654435761UL ^ (phantomId >> 16);
             float angle = ((h & 0xFFFF) / 65535f) * MathF.PI * 2f;              // 0 .. 2π
-            float dist  = PhantomIdleFollowStopDist + (((h >> 16) & 0xFF) / 255f - 0.5f) * 140f; // 130 .. 270
+
+            bool frontline = IsPhantomMeleeKit(phantom);
+            float baseDist = frontline ? PhantomIdleFollowStopDist * 0.6f : PhantomIdleFollowStopDist * 1.3f;
+            float dist = baseDist + (((h >> 16) & 0xFF) / 255f - 0.5f) * 140f;
 
             Vector3 slot = callerPos + new Vector3(MathF.Cos(angle) * dist,
                                                     MathF.Sin(angle) * dist, 0f);
@@ -2694,7 +2904,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             var loco = phantom.Locomotor;
             if (loco == null) return;
             Region region = phantom.Region ?? Region;
-            Vector3 slotPos = ComputePhantomIdleSlot(phantom.Id, region);
+            Vector3 slotPos = ComputePhantomIdleSlot(phantom, region);
             float slotDistSq = Vector3.DistanceSquared2D(phantom.RegionLocation.Position, slotPos);
             if (slotDistSq > PhantomFormationArriveDist * PhantomFormationArriveDist)
             {
@@ -3602,6 +3812,8 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             if (standingIn == null) return false;
 
+            PhantomAIEvents.RaiseHazardDetected(phantom, standingIn.RegionLocation.Position);
+
             // Walk out the short way: directly away from the hazard centre,
             // far enough to clear its radius with margin.
             Vector3 hazardPos = standingIn.RegionLocation.Position;
@@ -3933,7 +4145,18 @@ namespace MHServerEmu.Games.Entities.Avatars
                 if (power.IsOnCooldown()) continue;
 
                 float r = power.GetRange();
-                if (Power.IsMelee(pp) || r <= 0f)
+                // Power.IsMelee reads the real, data-driven
+                // TargetingReachPrototype.Melee flag — trustworthy. The
+                // "|| r <= 0f" fallback this used to have was not: plenty of
+                // non-melee powers (self-targeted buffs/heals, anything
+                // whose range isn't a travel distance) also return 0 range
+                // without being melee attacks at all, and every one of them
+                // was flipping hasUsableMelee and forcing a genuinely ranged
+                // hero to close to point-blank range. Confirmed live
+                // 2026-08-08: ranged heroes standing "right on top of the
+                // enemy" instead of holding their weapon range. Melee-ness
+                // is now judged solely by the real flag.
+                if (Power.IsMelee(pp))
                     hasUsableMelee = true;
                 else if (r > bestRange)
                     bestRange = r;
@@ -4634,6 +4857,15 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// <summary>Target this phantom committed to on its previous tick — see PhantomThreatStickyWeight.</summary>
         private static readonly Dictionary<ulong, ulong> s_phantomCommittedTargetId = new();
 
+        // Event Hooks — one-shot-per-encounter tracking for PhantomAIEvents'
+        // OnBossSpawn/OnEliteSpawn. Keyed by (phantomId, entityId) so the
+        // same boss doesn't re-fire the event every tick it stays in a
+        // phantom's candidate sweep, but a DIFFERENT phantom seeing the same
+        // boss (or the same phantom seeing a different boss) still fires
+        // its own event.
+        private static readonly HashSet<(ulong phantomId, ulong entityId)> s_phantomSeenBossIds = new();
+        private static readonly HashSet<(ulong phantomId, ulong entityId)> s_phantomSeenEliteIds = new();
+
         // Squad focus-fire: the first phantom of a given host to commit to a
         // target publishes it here; squadmates get a scoring bonus for the
         // same target while the entry is fresh. Soft convergence, not a hard
@@ -4669,6 +4901,134 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (hostId == 0 || targetId == 0) return;
             s_phantomSquadFocus[(hostId, enemyMode)] = (targetId, nowMs + PhantomSquadFocusTtlMs);
         }
+
+        // ---- Personality profiles (Utility AI archetype weighting) -------
+        //
+        // Assigns each phantom a fixed behavioral archetype on first use,
+        // analogous to build-based role weighting in documented companion AI
+        // (Guild Wars 2 Hero AI, Diablo III follower presets). Personality
+        // only scales the EXISTING threat weights above and the human-
+        // simulation timings below — it never changes candidate eligibility,
+        // so it can't make a phantom attack something it otherwise couldn't
+        // reach or see.
+        private enum PhantomPersonality
+        {
+            Aggressive,  // favors Finish/Distance — rushes to close and kill
+            Defensive,   // favors Peel — prioritizes protecting its owner
+            Supportive,  // favors Focus (squad convergence) over finishing blows
+            Reckless,    // aggressive weighting, higher mistake rate
+            Smart,       // balanced weighting, lowest mistake rate, fastest reaction
+        }
+
+        private static readonly Dictionary<ulong, PhantomPersonality> s_phantomPersonality = new();
+
+        private static PhantomPersonality GetPhantomPersonality(ulong phantomId, PrototypeId heroRef, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            if (s_phantomPersonality.TryGetValue(phantomId, out PhantomPersonality p)) return p;
+
+            // Per-hero file override (Data/Game/PhantomHeroes/AIProfiles/<Hero>.json,
+            // PersonalityOverride field) — hand-edited, takes priority over the
+            // random roll below when set to anything but "Auto".
+            PhantomHeroAIProfile fileProfile = Player.GetPhantomAIProfile(heroRef);
+            if (fileProfile != null && Enum.TryParse(fileProfile.PersonalityOverride, true, out PhantomPersonality filePersonality))
+            {
+                s_phantomPersonality[phantomId] = filePersonality;
+                return filePersonality;
+            }
+
+            // Weighted roll, not uniform: Smart/Aggressive are the common
+            // baseline, Reckless/Supportive are less common flavor variants.
+            int roll = rng.Next(100);
+            p = roll switch
+            {
+                < 30 => PhantomPersonality.Aggressive,
+                < 55 => PhantomPersonality.Smart,
+                < 75 => PhantomPersonality.Defensive,
+                < 90 => PhantomPersonality.Supportive,
+                _ => PhantomPersonality.Reckless,
+            };
+            s_phantomPersonality[phantomId] = p;
+            return p;
+        }
+
+        /// <summary>Per-term threat weight multiplier for a personality — see PhantomPersonality.</summary>
+        private static void GetPersonalityThreatMult(PhantomPersonality p, out float distanceMult, out float peelMult, out float finishMult, out float focusMult)
+        {
+            distanceMult = peelMult = finishMult = focusMult = 1f;
+            switch (p)
+            {
+                case PhantomPersonality.Aggressive:
+                    finishMult = 1.4f; distanceMult = 1.2f; peelMult = 0.7f;
+                    break;
+                case PhantomPersonality.Defensive:
+                    peelMult = 1.6f; finishMult = 0.8f;
+                    break;
+                case PhantomPersonality.Supportive:
+                    focusMult = 1.5f; finishMult = 0.7f;
+                    break;
+                case PhantomPersonality.Reckless:
+                    finishMult = 1.3f; distanceMult = 1.3f;
+                    break;
+                case PhantomPersonality.Smart:
+                    // Balanced — Smart's edge is lower mistake rate and faster
+                    // reaction time (below), not skewed threat weights.
+                    break;
+            }
+        }
+
+        // ---- Human simulation layer ----------------------------------------
+        //
+        // Reaction delay: documented bot-avoidance/humanization technique —
+        // a short delay between a stimulus (a brand-new primary target) and
+        // the AI's response (its first attack on it), instead of reacting
+        // the same tick a target is acquired. Modeled on typical human
+        // visual-motor reaction time (~200-350ms), the same baseline range
+        // used for companion-AI humanization elsewhere (e.g. Warframe
+        // Specter response delay). Only gates the FIRST attack on a newly
+        // acquired target — an already-engaged target still fires on the
+        // normal attack cooldown with no added delay, matching the
+        // documented pattern that reaction time applies to new stimuli, not
+        // sustained action.
+        private static readonly Dictionary<ulong, ulong> s_phantomReactionTargetId = new();
+        private static readonly Dictionary<ulong, long> s_phantomReactionReadyMs = new();
+
+        private const int PhantomReactionDelayMinMs = 180;
+        private const int PhantomReactionDelayMaxMs = 380;
+        // Smart personality reacts faster (closer to a skilled player).
+        private const int PhantomReactionDelaySmartMinMs = 120;
+        private const int PhantomReactionDelaySmartMaxMs = 220;
+
+        /// <summary>
+        /// True once the reaction-delay window for this phantom's CURRENT
+        /// target has elapsed. Checked once per tick alongside the existing
+        /// attack-cooldown gate in UpdatePhantomHunt's attackReady check.
+        /// </summary>
+        private static bool IsPhantomReactionReady(ulong phantomId, ulong targetId, PhantomPersonality personality, long nowMs, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            if (s_phantomReactionTargetId.TryGetValue(phantomId, out ulong lastTargetId) == false || lastTargetId != targetId)
+            {
+                // New target acquired this tick — roll a fresh delay window.
+                s_phantomReactionTargetId[phantomId] = targetId;
+                int minMs = personality == PhantomPersonality.Smart ? PhantomReactionDelaySmartMinMs : PhantomReactionDelayMinMs;
+                int maxMs = personality == PhantomPersonality.Smart ? PhantomReactionDelaySmartMaxMs : PhantomReactionDelayMaxMs;
+                s_phantomReactionReadyMs[phantomId] = nowMs + minMs + rng.Next(maxMs - minMs);
+                return false;
+            }
+
+            return s_phantomReactionReadyMs.TryGetValue(phantomId, out long readyMs) == false || nowMs >= readyMs;
+        }
+
+        // Mistake rate: documented imperfect-decision-modeling technique — a
+        // small chance the AI picks its second-best option instead of the
+        // objectively best one, so target selection doesn't read as a
+        // perfect optimizer. Personality-tuned: Smart phantoms rarely
+        // misjudge, Reckless ones misjudge more often (impulsive picks).
+        private static float GetPersonalityMistakeRate(PhantomPersonality p) => p switch
+        {
+            PhantomPersonality.Smart => 0.03f,
+            PhantomPersonality.Reckless => 0.18f,
+            _ => 0.08f,
+        };
 
         private static void DumpPhantomHuntDiag(Agent phantom, Vector3 phantomPos, WorldEntity picked,
             float pickedDistSq, List<(WorldEntity we, float distSq, string reason)> rejected,
@@ -4737,6 +5097,73 @@ namespace MHServerEmu.Games.Entities.Avatars
         // shipped unverified.
         private const long PhantomSelfHealThrottleMsEnemy = 45_000;
         private static readonly Dictionary<ulong, long> s_phantomNextSelfHealMs = new();
+
+        // ---- Survival Logic -------------------------------------------
+        //
+        // Soft/hard retreat thresholds — a standard AI survival heuristic:
+        // create distance from the threat well before death, then fully
+        // disengage if that isn't enough. Checked in UpdatePhantomHunt right
+        // after target commitment, AFTER self-heal already had its shot at
+        // the top of the tick — this is the fallback survivability response
+        // for when healing isn't available (on cooldown, throttled, or (on
+        // 1.48) no such power exists at all), not a competing one.
+        private const float PhantomSoftRetreatHpPct = 0.40f;
+        private const float PhantomHardRetreatHpPct = 0.15f;
+        // Deliberately wider than any real weapon-range standoff — this is
+        // about survival distance, not attack range, so it can exceed what
+        // the phantom's own kit could ever justify on its own.
+        private const float PhantomSoftRetreatStandoff = 700f;
+
+        /// <summary>
+        /// Below PhantomSoftRetreatHpPct: kites away from the current threat
+        /// at a wider-than-normal standoff (reuses TryPhantomKite, the same
+        /// primitive ranged kits already use to hold weapon range, just HP-
+        /// triggered instead of kit-triggered). Below PhantomHardRetreatHpPct,
+        /// friendly phantoms abandon the fight and run to the human player
+        /// instead of retreating in a random direction, so they end up
+        /// somewhere they can actually be helped. Enemy phantoms have no
+        /// "owner" to run to, so soft retreat is their survival ceiling.
+        /// Returns true if it took over movement this tick (caller should
+        /// skip its normal engagement logic), false otherwise (full HP,
+        /// no threat, kite already on its own cooldown, etc.).
+        /// </summary>
+        // Fires OnPhantomLowHP once per dip below the threshold, not every
+        // single tick spent below it — cleared once the phantom recovers.
+        private static readonly HashSet<ulong> s_phantomLowHpNotified = new();
+        // Same one-shot-per-dip pattern, keyed by the real avatar's own id — see OnPhantomTick's OnPlayerLowHP hook.
+        private static readonly HashSet<ulong> s_avatarLowHpNotified = new();
+
+        private bool TryPhantomSurvivalRetreat(Agent phantom, Region region, WorldEntity threat, float threatDistSq, bool enemyMode, long nowMs, MHServerEmu.Core.System.Random.GRandom rng)
+        {
+            if (phantom.IsDead || phantom.IsInWorld == false) return false;
+            if (threat == null) return false;
+
+            float healthMax = phantom.Properties[PropertyEnum.HealthMax];
+            if (healthMax <= 0f) return false;
+            float hpPct = (float)phantom.Properties[PropertyEnum.Health] / healthMax;
+            if (hpPct > PhantomSoftRetreatHpPct)
+            {
+                s_phantomLowHpNotified.Remove(phantom.Id);
+                return false;
+            }
+
+            if (s_phantomLowHpNotified.Add(phantom.Id))
+                PhantomAIEvents.RaisePhantomLowHP(phantom);
+
+            if (enemyMode == false && hpPct <= PhantomHardRetreatHpPct)
+            {
+                var hardLoco = phantom.Locomotor;
+                if (hardLoco != null)
+                {
+                    var hardOpts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(250) };
+                    hardLoco.FollowEntity(Id, PhantomFollowStopMin, PhantomFollowStopMin, ref hardOpts, false);
+                    return true;
+                }
+            }
+
+            Vector3 threatPos = threat.RegionLocation.Position;
+            return TryPhantomKite(phantom, region, threatPos, MathF.Sqrt(threatDistSq), PhantomSoftRetreatStandoff, nowMs, rng);
+        }
 
         /// <summary>
         /// Fires the same medkit/self-heal power real players use

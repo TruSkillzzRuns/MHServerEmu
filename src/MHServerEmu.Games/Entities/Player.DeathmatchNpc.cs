@@ -174,8 +174,6 @@ namespace MHServerEmu.Games.Entities
             "Regions/EndGame/TierX/PatrolMidtown/AltRegions/XManhattanRegion60Cosmic.prototype",   // Midtown Patrol, lvl 63 (1.48/1.52)
             "Regions/EndGame/TierX/PatrolMidtown/AltRegions/MidtownPatrolL1to60Region.prototype",  // same map, 1.53 name — only one of the two resolves per version
             "Regions/EndGame/Terminals/Green/AsgardInstance/AltRegions/DailyGAsgardINSTRegionL60.prototype", // Asgard, lvl 63
-            "Regions/StoryRevamp/CH02JerseyDocks/CH0208CanneryRegion.prototype",                   // industrial interior
-            "Regions/StoryRevamp/CH01HellsKitchen/CH0101HellsKitchenRegion.prototype",             // street layout, alleys
             "Regions/ZZZDemoBranch/PAX2013Demo/PAX2013SavageRegion.prototype",                     // open savage land
             "Regions/EndGame/DangerRoomMode/Marsh/Testing/DRMarshRegionTestingOnly.prototype",     // Danger Room marsh
             "Regions/EndGame/DangerRoomMode/AIMFacility/Testing/DRAIMBase1RegionTestingOnly.prototype", // Danger Room AIM base — limit 40, own start target, no kismet
@@ -191,6 +189,8 @@ namespace MHServerEmu.Games.Entities
             //   SCSewer2Region                 (kept in the Solos pool, too tight for ten)
             // REMOVED 2026-08-08 on request:
             //   CH0205ConstructionRegion
+            //   CH0101HellsKitchenRegion
+            //   CH0208CanneryRegion
         };
 
         /// <summary>
@@ -242,27 +242,85 @@ namespace MHServerEmu.Games.Entities
             // server start. Reported live: two consecutive Solos matches both
             // landed in the sewer, which is the first entry of the pool.
             //
-            // No-repeat: EXCLUDE the previous arena from the candidate list rather
-            // than re-rolling. A single re-roll can land on the same entry again —
-            // reported live as "getting the same maps back to back" — and with a
-            // 3-entry pool that happens roughly one match in nine. Removing it
-            // outright makes a back-to-back repeat impossible.
-            string lastPicked = solos ? _dmLastSolosArena : _dmLastTeamsArena;
+            // No-repeat: EXCLUDE the last couple of arenas from the candidate list
+            // rather than re-rolling. A single-entry exclusion still let an A/B/A
+            // pattern through — landing back on the map from two matches ago reads
+            // just as much like "the same maps back to back" as an immediate repeat
+            // (reported live 2026-08-08). Excluding the last 2 picks (as many as the
+            // pool can spare while still leaving a choice) stops that too.
+            List<string> recent = solos ? _dmRecentSolosArenas : _dmRecentTeamsArenas;
 
-            if (usable.Count > 1 && lastPicked != null)
-                usable.Remove(lastPicked);
+            List<string> excluded = new(usable);
+            foreach (string prior in recent)
+            {
+                if (excluded.Count <= 1) break;
+                excluded.Remove(prior);
+            }
 
-            string picked = usable[s_dmArenaRng.Next(usable.Count)];
+            string picked = excluded[s_dmArenaRng.Next(excluded.Count)];
 
             // Remembered so arena setup can verify we actually arrived where we
             // asked — see the redirect check in StartDeathmatchTeams.
             _deathmatchRequestedArena = ((PrototypeId)GameDatabase.GetPrototypeRefByName(picked)).GetNameFormatted();
 
-            if (solos) _dmLastSolosArena = picked;
-            else _dmLastTeamsArena = picked;
+            recent.Insert(0, picked);
+            if (recent.Count > 2) recent.RemoveAt(recent.Count - 1);
 
             DeathmatchLogger.Info($"[Deathmatch] arena rotation: picked {picked} from {usable.Count}/{pool.Length} usable {(solos ? "Solos" : "Teams")} region(s) for {combatantCount} combatant(s)");
             return picked;
+        }
+
+        /// <summary>
+        /// Resolves a short, typeable name (e.g. "cannery", "savage", "fireandice")
+        /// against the Teams or Solos arena pool by matching it as a substring of
+        /// each pool entry's resolved region name — so a tester doesn't have to
+        /// type full prototype paths like
+        /// "Metagame/DefenderPvP/Regions/PvPDefenderRegion.prototype" into a chat
+        /// command. Falls back to treating the input as a literal prototype path if
+        /// it contains a '/' (still supported for exact control). Case-insensitive.
+        /// Returns null and sets <paramref name="error"/> if nothing matches, or if
+        /// the alias matches more than one pool entry (ambiguous).
+        /// </summary>
+        public string ResolveDeathmatchArenaAlias(string alias, bool solos, out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(alias)) { error = "no map given"; return null; }
+
+            if (alias.Contains('/'))
+                return alias; // literal prototype path — let the caller validate it
+
+            string[] pool = solos ? DeathmatchSolosArenaPool : DeathmatchTeamsArenaPool;
+            var matches = new List<(string path, string name)>();
+            foreach (string path in pool)
+            {
+                PrototypeId regionRef = GameDatabase.GetPrototypeRefByName(path);
+                if (regionRef == PrototypeId.Invalid) continue;
+                string name = regionRef.GetNameFormatted();
+                if (name.Contains(alias, StringComparison.OrdinalIgnoreCase))
+                    matches.Add((path, name));
+            }
+
+            if (matches.Count == 0) { error = $"no {(solos ? "Solos" : "Teams")} map matches \"{alias}\" — see !dm maps"; return null; }
+            if (matches.Count > 1)
+            {
+                error = $"\"{alias}\" matches {matches.Count} maps ({string.Join(", ", matches.ConvertAll(m => m.name))}) — be more specific";
+                return null;
+            }
+            return matches[0].path;
+        }
+
+        /// <summary>Short names for every usable arena in the given bracket's pool, for the !dm maps command.</summary>
+        public List<string> ListDeathmatchArenas(bool solos)
+        {
+            string[] pool = solos ? DeathmatchSolosArenaPool : DeathmatchTeamsArenaPool;
+            var names = new List<string>();
+            foreach (string path in pool)
+            {
+                PrototypeId regionRef = GameDatabase.GetPrototypeRefByName(path);
+                if (regionRef == PrototypeId.Invalid) continue;
+                names.Add(regionRef.GetNameFormatted());
+            }
+            return names;
         }
 
         /// <summary>
@@ -272,8 +330,8 @@ namespace MHServerEmu.Games.Entities
         /// </summary>
         private static readonly System.Random s_dmArenaRng = new(Environment.TickCount);
 
-        private string _dmLastSolosArena;
-        private string _dmLastTeamsArena;
+        private readonly List<string> _dmRecentSolosArenas = new();
+        private readonly List<string> _dmRecentTeamsArenas = new();
 
         /// <summary>Arena the picker asked for, checked against what actually loaded.</summary>
         private string _deathmatchRequestedArena;

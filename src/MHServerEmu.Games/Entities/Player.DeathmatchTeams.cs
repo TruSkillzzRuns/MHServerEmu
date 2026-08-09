@@ -124,11 +124,32 @@ namespace MHServerEmu.Games.Entities
 
         private readonly EventPointer<DeathmatchPlayerPlacementEvent> _tdmPlayerPlacement = new();
         private readonly EventPointer<DeathmatchSterilizeEvent> _tdmSterilize = new();
+        private readonly EventPointer<DeathmatchAllianceCheckEvent> _tdmAllianceCheck = new();
 
-        /// <summary>How many more sterilize passes to run, and how far apart.</summary>
+        /// <summary>How many more alliance-watchdog passes to run, and how far apart.</summary>
+        private int _tdmAllianceCheckPassesLeft;
+        private const int DeathmatchAllianceCheckPasses = 8;
+        private const int DeathmatchAllianceCheckIntervalMs = 500;
+
+        /// <summary>How many more RAPID sterilize passes to run at match start, and how far apart.</summary>
         private int _tdmSterilizePassesLeft;
         private const int DeathmatchSterilizePasses = 4;
         private const int DeathmatchSterilizeIntervalMs = 1500;
+
+        /// <summary>
+        /// Once the initial burst above is spent, sterilize keeps running at this
+        /// much slower cadence for the rest of the match rather than stopping.
+        ///
+        /// The burst-only version cleared everything visible in the first ~6
+        /// seconds and then never ran again — fine for small arenas, but on the
+        /// pool's larger maps (Savage Land, Midtown Patrol, the Danger Room
+        /// regions) combatants roam into cells that were not yet loaded/simulated
+        /// during that opening burst, and any population or mission-triggered
+        /// spawn in a cell like that never gets swept (reported live 2026-08-08:
+        /// "still seeing mobs" in 5v5). A slow ongoing pass catches those without
+        /// re-running the expensive full sweep every tick.
+        /// </summary>
+        private const int DeathmatchSterilizeMaintenanceIntervalMs = 15_000;
 
         /// <summary>How far a team's members scatter around their own anchor. Small on purpose — a team starts together.</summary>
         private const float DeathmatchDuoSpread = 350f;
@@ -221,6 +242,22 @@ namespace MHServerEmu.Games.Entities
             new Vector3(2353.25f,  12070.88f, 61f),   // BLUE
         };
 
+        /// <summary>
+        /// PvPDefenderRegion ("Fire &amp; Ice") spawn points, walked to and
+        /// captured in game 2026-08-08. Confirmed live: the generated
+        /// dispersed/ring anchors for this region were landing on a
+        /// different Z level than the player (anchors at z:-126/z:7 vs the
+        /// player's real z:60) — the enemy team registered as spawned per
+        /// the server logs but was on an unreachable level, reading as "not
+        /// spawning" from the player's side. 2 entries only (RED, WHITE) —
+        /// this region is Teams (2-team) only, never used for 1v1v1.
+        /// </summary>
+        private static readonly Vector3[] PvPDefenderSpawns =
+        {
+            new Vector3(-2912.5f, 4229.25f,  60f),   // RED  (player's team)
+            new Vector3(4215.875f, -2949.5f, 60f),   // WHITE (enemy team)
+        };
+
         // NOTE: declared ABOVE the dictionary below on purpose. Static field
         // initializers run in declaration order, so a dictionary that referenced
         // this array while it was still declared further down captured null and
@@ -254,6 +291,8 @@ namespace MHServerEmu.Games.Entities
             [0xBE4FACDACAB01C22] = MidtownSpawns,   // MidtownPatrolRegionBand   (1.53)
             [0x86522A2A4C5920D9] = MidtownSpawns,   // MidtownPatrolL1to60Region (1.53)
             [0xED769F08CAF71C28] = MidtownSpawns,   // MidtownPatrolRegionBase   (1.53)
+
+            [0x637BBA527ADC16A1] = PvPDefenderSpawns, // PvPDefenderRegion ("Fire & Ice")
         };
 
 
@@ -341,6 +380,11 @@ namespace MHServerEmu.Games.Entities
             _tdmSterilizePassesLeft = DeathmatchSterilizePasses;
             ScheduleDeathmatchSterilize();
 
+            // Alliance watchdog — see DoDeathmatchAllianceCheck's header for why
+            // a single check isn't enough on PvPDefenderRegion.
+            _tdmAllianceCheckPassesLeft = DeathmatchAllianceCheckPasses;
+            ScheduleDeathmatchAllianceCheck();
+
             // One-shot self-check a few seconds later — see Player.DeathmatchDiag.cs.
             ScheduleDeathmatchDiagnostics();
             UpdateDeathmatchTeamWidget();
@@ -418,6 +462,15 @@ namespace MHServerEmu.Games.Entities
         /// the placement tick must not re-pick it in that case.
         /// </summary>
         private bool _tdmEnemyAnchorPinned;
+
+        /// <summary>
+        /// True when the player's OWN team anchor is a hand-picked fixed spawn
+        /// rather than a provisional pre-placement guess. DoDeathmatchPlayerPlacement
+        /// must not overwrite this with the avatar's live position — it must instead
+        /// teleport the avatar TO it, the same way the enemy anchor pin stops that
+        /// side from being re-picked.
+        /// </summary>
+        private bool _tdmMyAnchorPinned;
 
         /// <summary>
         /// The verified-walkable point in the region farthest from
@@ -556,6 +609,16 @@ namespace MHServerEmu.Games.Entities
                 for (int i = 0; i < count; i++)
                     DeathmatchLogger.Info($"[TDM] team {i} anchor {_tdmTeamAnchors[i].ToStringNames()}");
 
+                // Same "on top of each other" alarm the ring fallback has further
+                // down — this path never had one, so a small/tight map (several of
+                // the Solos pool's single-room TreasureRoom instances qualify) could
+                // silently produce a tight closest-pair and it would only ever show
+                // up as an easy-to-miss Info line. Promote it to a Warn instead so a
+                // pass through the Solos pool actually surfaces which maps need a
+                // hand-picked fixed-spawn override (see DeathmatchFixedSpawns).
+                if (smallestGap < DeathmatchMinTeamSeparation)
+                    DeathmatchLogger.Warn($"[TDM] dispersed spawns for {region.PrototypeName}: closest pair only {smallestGap:F0}u apart (want {DeathmatchMinTeamSeparation:F0}u+) — teams may start too close together");
+
                 return true;
             }
             catch (Exception ex)
@@ -593,6 +656,7 @@ namespace MHServerEmu.Games.Entities
             // position 250ms later regardless (DoDeathmatchPlayerPlacement), so
             // only the ENEMY anchor matters here.
             _tdmEnemyAnchorPinned = false;
+            _tdmMyAnchorPinned = false;
 
             if (_tdmTeamCount == 2 && region != null && LastArenaBossSpawnerPos.HasValue)
             {
@@ -639,6 +703,23 @@ namespace MHServerEmu.Games.Entities
             {
                 for (int team = 0; team < _tdmTeamCount; team++)
                     _tdmTeamAnchors[team] = fixedSpawns[team];
+
+                // Same reason the boss-spawn pin sets this in
+                // ChooseDeathmatchTeamAnchors: without it,
+                // DoDeathmatchPlayerPlacement's "re-pick enemy anchor
+                // opposite the player" step (TryPickFarthestWalkablePoint)
+                // runs unconditionally 250ms later and silently overwrites
+                // team 1's hand-picked spot with the same generated pick
+                // these fixed spawns exist to replace.
+                if (_tdmTeamCount == 2)
+                    _tdmEnemyAnchorPinned = true;
+
+                // Same problem on the player's own side: DoDeathmatchPlayerPlacement
+                // unconditionally overwrites _tdmTeamAnchors[myTeam] with wherever the
+                // region's own entry point happened to drop the avatar, discarding this
+                // hand-picked spot entirely. Pin it so placement teleports the avatar
+                // TO the fixed spawn instead of adopting whatever position it landed at.
+                _tdmMyAnchorPinned = true;
 
                 DeathmatchLogger.Info($"[TDM] using hand-picked spawns for {region.PrototypeName}");
                 for (int i = 0; i < _tdmTeamCount; i++)
@@ -741,9 +822,13 @@ namespace MHServerEmu.Games.Entities
 
         private void ScheduleDeathmatchSterilize()
         {
-            if (_tdmSterilizePassesLeft <= 0 || _tdmSterilize.IsValid) return;
+            // Once the opening burst is spent, keep going at the slow maintenance
+            // cadence for as long as the match is active — see
+            // DeathmatchSterilizeMaintenanceIntervalMs's header for why.
+            if (_tdmActive == false || _tdmSterilize.IsValid) return;
+            int intervalMs = _tdmSterilizePassesLeft > 0 ? DeathmatchSterilizeIntervalMs : DeathmatchSterilizeMaintenanceIntervalMs;
             Game.GameEventScheduler?.ScheduleEvent(_tdmSterilize,
-                TimeSpan.FromMilliseconds(DeathmatchSterilizeIntervalMs), _deathmatchEvents);
+                TimeSpan.FromMilliseconds(intervalMs), _deathmatchEvents);
             _tdmSterilize.Get()?.Initialize(this);
         }
 
@@ -814,14 +899,78 @@ namespace MHServerEmu.Games.Entities
             }
             catch (Exception ex) { DeathmatchLogger.Warn($"[TDM] metagame teardown threw: {ex.Message}"); }
 
-            _tdmSterilizePassesLeft--;
-            DeathmatchLogger.Info($"[TDM] sterilize pass: removed {removed}, {_tdmSterilizePassesLeft} pass(es) left");
+            if (_tdmSterilizePassesLeft > 0)
+            {
+                _tdmSterilizePassesLeft--;
+                DeathmatchLogger.Info($"[TDM] sterilize pass: removed {removed}, {_tdmSterilizePassesLeft} burst pass(es) left");
+            }
+            else
+            {
+                // Always logged, even at removed=0 — a silent "only log when it finds
+                // something" version made it impossible to tell live whether this
+                // loop was still actually running every 15s or had silently died,
+                // which is exactly what was in question investigating a live report
+                // of mobs not staying cleared (2026-08-08). At most ~48 lines over a
+                // full 12-minute match, not real spam.
+                DeathmatchLogger.Info($"[TDM] maintenance sterilize pass: removed {removed}");
+            }
             ScheduleDeathmatchSterilize();
         }
 
         private sealed class DeathmatchSterilizeEvent : CallMethodEvent<Player>
         {
             protected override CallbackDelegate GetCallback() => static (player) => player.DoDeathmatchSterilize();
+        }
+
+        private void ScheduleDeathmatchAllianceCheck()
+        {
+            if (_tdmAllianceCheckPassesLeft <= 0 || _tdmAllianceCheck.IsValid) return;
+            Game.GameEventScheduler?.ScheduleEvent(_tdmAllianceCheck,
+                TimeSpan.FromMilliseconds(DeathmatchAllianceCheckIntervalMs), _deathmatchEvents);
+            _tdmAllianceCheck.Get()?.Initialize(this);
+        }
+
+        /// <summary>
+        /// Re-asserts the player's own PvP alliance for the first few seconds of a
+        /// match, rather than trusting the single application SetupDeathmatchTeams
+        /// made via PvPTeam.AddPlayer at region-entry time.
+        ///
+        /// That earlier call writes through Player.CurrentAvatar, and on
+        /// PvPDefenderRegion ("Fire & Ice") specifically the avatar re-enters the
+        /// world a SECOND time about 500ms into the match — confirmed live via two
+        /// separate EnableCurrentAvatar log lines for the same match, the second
+        /// one AFTER "arena ready" had already logged. A single re-check at the
+        /// 250ms player-placement tick (the first fix attempt, 2026-08-08) landed
+        /// BEFORE that second entry and got overwritten by it, so the self-check
+        /// still read "BAD player alliance Players" and the player still could not
+        /// target the enemy team on retest. This map is the only one observed to
+        /// re-enter the avatar mid-setup — a one-shot fix cannot outrace an event
+        /// with unknown timing, so this instead keeps checking every 500ms for 4
+        /// seconds, which comfortably covers it regardless of exactly when it fires.
+        /// </summary>
+        private void DoDeathmatchAllianceCheck()
+        {
+            if (_tdmActive == false || _tdmMyTeam < 0) return;
+
+            Avatar avatar = CurrentAvatar;
+            if (avatar != null && avatar.IsInWorld
+                && GetDeathmatchMetaGame() is PvP pvpForAlliance
+                && _tdmMyTeam < pvpForAlliance.Teams.Count
+                && pvpForAlliance.Teams[_tdmMyTeam] is PvPTeam myAllianceTeam
+                && myAllianceTeam.Alliance != null
+                && avatar.Alliance != myAllianceTeam.Alliance)
+            {
+                DeathmatchLogger.Warn($"[TDM] {GetName()}: player alliance was {(avatar.Alliance?.DataRef.GetNameFormatted() ?? "NULL")}, expected {myAllianceTeam.Alliance.DataRef.GetNameFormatted()} — re-applying (pass {DeathmatchAllianceCheckPasses - _tdmAllianceCheckPassesLeft + 1}/{DeathmatchAllianceCheckPasses})");
+                SetAllianceOverride(myAllianceTeam.Alliance);
+            }
+
+            _tdmAllianceCheckPassesLeft--;
+            ScheduleDeathmatchAllianceCheck();
+        }
+
+        private sealed class DeathmatchAllianceCheckEvent : CallMethodEvent<Player>
+        {
+            protected override CallbackDelegate GetCallback() => static (player) => player.DoDeathmatchAllianceCheck();
         }
 
         /// <summary>Moves the player onto their team's anchor once region entry has finished.</summary>
@@ -854,8 +1003,28 @@ namespace MHServerEmu.Games.Entities
                 // spacing that keeps the three fighters apart.
                 if (_tdmTeamSize > 1)
                 {
-                    Vector3 myPos = avatar.RegionLocation.Position;
-                    _tdmTeamAnchors[_tdmMyTeam] = myPos;
+                    Vector3 myPos;
+                    if (_tdmMyAnchorPinned)
+                    {
+                        // Hand-picked fixed spawn — teleport the player onto it
+                        // instead of adopting wherever the region's own entry
+                        // point dropped them. Without this, a fixed-spawn map
+                        // (e.g. PvPDefenderRegion) silently ignored its captured
+                        // coordinates the moment a team had more than 1 member,
+                        // because this method used to always overwrite the
+                        // anchor with the avatar's live position (reported live
+                        // 2026-08-08: player did not end up where they stood
+                        // when the spawn was captured).
+                        myPos = _tdmTeamAnchors[_tdmMyTeam];
+                        avatar.Locomotor?.Stop();
+                        avatar.ChangeRegionPosition(myPos, null);
+                        DeathmatchLogger.Info($"[TDM] {GetName()}: teleported to pinned team {_tdmMyTeam} anchor {myPos.ToStringNames()}");
+                    }
+                    else
+                    {
+                        myPos = avatar.RegionLocation.Position;
+                        _tdmTeamAnchors[_tdmMyTeam] = myPos;
+                    }
 
                     // Re-pick the ENEMY anchor now that the player's real
                     // position is finally known. The original anchors were
