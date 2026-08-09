@@ -173,7 +173,7 @@ namespace MHServerEmu.Games.Loot
         /// </summary>
         private static bool GiveItemDirectly(Player player, ItemSpec itemSpec)
         {
-            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
             settings.EntityRef = itemSpec.ItemProtoRef;
             settings.ItemSpec = itemSpec;
 

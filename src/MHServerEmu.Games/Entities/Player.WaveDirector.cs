@@ -977,7 +977,7 @@ namespace MHServerEmu.Games.Entities
 
                             pos = RegionLocation.ProjectToFloor(region, pos);
 
-                            using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                             settings.EntityRef = (PrototypeId)hotspotRef;
                             settings.Position = pos;
                             settings.Orientation = Orientation.Zero;
@@ -1560,7 +1560,7 @@ namespace MHServerEmu.Games.Entities
             {
                 if (_waveRewardLootTableRef != PrototypeId.Invalid)
                 {
-                    using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+                    using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
                     inputSettings.Initialize(LootContext.Drop, interactingPlayer, avatar, chestPos);
 
                     if (spec.rarities != null && spec.rarities.Count > 0)
@@ -1676,7 +1676,7 @@ namespace MHServerEmu.Games.Entities
 
             try
             {
-                using LootInputSettings inputSettings = ObjectPoolManager.Instance.Get<LootInputSettings>();
+                using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
                 inputSettings.Initialize(LootContext.Drop, this, avatar);
 
                 if (allowedRarities != null && allowedRarities.Count > 0)

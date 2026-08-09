@@ -316,7 +316,7 @@ namespace MHServerEmu.Games.Entities
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
 
-                using Loot.LootInputSettings inputSettings = Core.Memory.ObjectPoolManager.Instance.Get<Loot.LootInputSettings>();
+                using var inputSettingsHandle = Loot.LootInputSettingsPool.Get(out Loot.LootInputSettings inputSettings);
                 inputSettings.Initialize(Loot.LootContext.Drop, this, avatar, _tdmFinaleDropPos);
                 inputSettings.LootRollSettings.Level = avatar.CharacterLevel;
                 inputSettings.LootRollSettings.LevelForRequirementCheck = avatar.CharacterLevel;
@@ -442,7 +442,7 @@ namespace MHServerEmu.Games.Entities
 
                 long snapshotMs = perfSw.ElapsedMilliseconds;
 
-                using Loot.LootInputSettings inputSettings = Core.Memory.ObjectPoolManager.Instance.Get<Loot.LootInputSettings>();
+                using var inputSettingsHandle = Loot.LootInputSettingsPool.Get(out Loot.LootInputSettings inputSettings);
                 inputSettings.Initialize(Loot.LootContext.Drop, this, avatar, dropPos);
 
                 // Roll everything at the player's own level. Below 60 this is the

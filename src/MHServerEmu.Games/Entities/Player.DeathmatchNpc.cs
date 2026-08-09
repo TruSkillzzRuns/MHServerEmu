@@ -455,7 +455,7 @@ namespace MHServerEmu.Games.Entities
             dialog.OnResponse = OnDeathmatchDialogResponse;
             dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DmStrSolos, ButtonStyle.Primary, false);
             dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DmStrOtherBracket, ButtonStyle.SecondaryPositive, false);
-            Game.GameDialogManager.ShowDialog(dialog);
+            Game.GameDialogManager.PostDialogToClient(dialog);
 
             DeathmatchLogger.Info($"[Deathmatch] {GetName()}: {source} — Solos screen shown");
         }
@@ -470,7 +470,7 @@ namespace MHServerEmu.Games.Entities
             dialog.OnResponse = OnDeathmatchTeamsDialogResponse;
             dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DmStrDuos, ButtonStyle.Primary, false);
             dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DmStrCancel, ButtonStyle.SecondaryNegative, false);
-            Game.GameDialogManager.ShowDialog(dialog);
+            Game.GameDialogManager.PostDialogToClient(dialog);
 
             DeathmatchLogger.Info($"[Deathmatch] {GetName()}: Teams screen shown");
         }

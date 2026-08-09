@@ -349,7 +349,7 @@ namespace MHServerEmu.Games.Entities
                 PrototypeId metaGameRef = GameDatabase.GetPrototypeRefByName(DeathmatchMetaGamePath);
                 if (metaGameRef == PrototypeId.Invalid) return false;
 
-                using EntitySettings settings = ObjectPoolManager.Instance.Get<EntitySettings>();
+                using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
                 settings.RegionId = region.Id;
                 settings.EntityRef = metaGameRef;
 

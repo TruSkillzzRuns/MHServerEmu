@@ -432,7 +432,7 @@ namespace MHServerEmu.Games.Entities
             dialog.Options = DialogOptionEnum.ScreenBottom;
             dialog.OnResponse = OnDrGuideDialogResponse;
             dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary, false);
-            Game.GameDialogManager.ShowDialog(dialog);
+            Game.GameDialogManager.PostDialogToClient(dialog);
         }
 
         private void OnDrGuideDialogResponse(ulong playerGuid, DialogResponse response)
@@ -726,7 +726,7 @@ namespace MHServerEmu.Games.Entities
             if (portalRef == PrototypeId.Invalid)
                 return; // already logged in GetValidDrEndlessReturnPortalRef
 
-            using EntitySettings entitySettings = ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var entitySettingsHandle = EntitySettingsPool.Get(out EntitySettings entitySettings);
             entitySettings.EntityRef = portalRef;
             entitySettings.Position = s_drEndlessTerminalPosition + s_drEndlessPortalOffset;
             entitySettings.Orientation = s_drEndlessTerminalOrientation;
@@ -855,7 +855,7 @@ namespace MHServerEmu.Games.Entities
                 dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary, false);
             }
 
-            Game.GameDialogManager.ShowDialog(dialog);
+            Game.GameDialogManager.PostDialogToClient(dialog);
         }
 
         /// <summary>
@@ -969,7 +969,7 @@ namespace MHServerEmu.Games.Entities
             dialog.Message.LocaleString = (LocaleStringId)DrEndlessDifficultyAdvancedPromptStringId;
             dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)DrEndlessDifficultyVeteranStringId, ButtonStyle.Primary, false);
             dialog.AddButton(GameDialogResultEnum.eGDR_Option2, (LocaleStringId)DrEndlessDifficultyOmegaStringId, ButtonStyle.Primary, false);
-            Game.GameDialogManager.ShowDialog(dialog);
+            Game.GameDialogManager.PostDialogToClient(dialog);
         }
 
         private void OnDrTerminalDifficultyAdvancedResponse(ulong playerGuid, DialogResponse response)

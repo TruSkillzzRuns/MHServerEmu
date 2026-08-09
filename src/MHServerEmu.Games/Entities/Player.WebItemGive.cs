@@ -132,7 +132,7 @@ namespace MHServerEmu.Games.Entities
                                 break;
                             }
 
-                            using LootResultSummary summary = ObjectPoolManager.Instance.Get<LootResultSummary>();
+                            using var summaryHandle = LootResultSummaryPool.Get(out LootResultSummary summary);
                             summary.Add(new LootResult(itemSpec));
                             if (lootManager.GiveLootFromSummary(summary, this) == false)
                             {

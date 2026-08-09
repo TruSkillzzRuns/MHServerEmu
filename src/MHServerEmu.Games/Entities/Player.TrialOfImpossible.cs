@@ -492,7 +492,7 @@ namespace MHServerEmu.Games.Entities
             dialog.Options = DialogOptionEnum.ScreenBottom;
             dialog.OnResponse = OnTrialDialogResponse;
             dialog.AddButton(GameDialogResultEnum.eGDR_Option1, (LocaleStringId)TrialDialogYesStringId, ButtonStyle.Primary, false);
-            Game.GameDialogManager.ShowDialog(dialog);
+            Game.GameDialogManager.PostDialogToClient(dialog);
         }
 
         private void OnTrialDialogResponse(ulong playerGuid, DialogResponse response)
@@ -866,7 +866,7 @@ namespace MHServerEmu.Games.Entities
                 // less than 30 pieces of loot"); BiS gear above is bonus on
                 // top. Rarity is force-restricted to Cosmic/Unique so no
                 // normal/uncommon/rare/epic gear can roll here.
-                using LootInputSettings inputSettings = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<LootInputSettings>();
+                using var inputSettingsHandle = LootInputSettingsPool.Get(out LootInputSettings inputSettings);
                 inputSettings.Initialize(LootContext.Drop, this, avatar, chest.RegionLocation.Position);
 
                 var lootGlobals = GameDatabase.LootGlobalsPrototype;
@@ -931,7 +931,7 @@ namespace MHServerEmu.Games.Entities
             if (EntityHelper.GetSpawnPositionNearAvatar(avatar, avatar.Region, chestProto.Bounds, 250f, out pos) == false)
                 pos = fallbackPos;
 
-            using EntitySettings settings = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
             settings.EntityRef = chestRef;
             settings.Position = pos;
             settings.Orientation = avatar.RegionLocation.Orientation;
@@ -995,14 +995,14 @@ namespace MHServerEmu.Games.Entities
 
         private void SpawnTrialOrb(PrototypeId orbRef, Vector3 position, Region region)
         {
-            using EntitySettings settings = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<EntitySettings>();
+            using var settingsHandle = EntitySettingsPool.Get(out EntitySettings settings);
             settings.EntityRef = orbRef;
             settings.Position = position;
             settings.Orientation = new(3.14f, 0f, 0f);
             settings.RegionId = region.Id;
             settings.Lifespan = TimeSpan.FromSeconds(TrialOrbLifespanSec);
 
-            using PropertyCollection properties = MHServerEmu.Core.Memory.ObjectPoolManager.Instance.Get<PropertyCollection>();
+            using var propertiesHandle = PropertyCollectionPool.Get(out PropertyCollection properties);
             properties[PropertyEnum.AIStartsEnabled] = false;
             properties[PropertyEnum.NoEntityCollide] = true;
             settings.Properties = properties;
