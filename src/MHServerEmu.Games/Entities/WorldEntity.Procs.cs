@@ -270,7 +270,7 @@ namespace MHServerEmu.Games.Entities
             if (IsInWorld == false)
                 return;
 
-            using var procPropertiesHandle = GetProcProperties(Properties, out PropertyCollection procProperties);
+            using var procPropertiesHandle = GetProcProperties(condition.Properties, out PropertyCollection procProperties);
 
             // Run common proc logic
             TryActivateProcsCommon(ProcTriggerType.OnConditionEnd, procProperties);
@@ -304,7 +304,7 @@ namespace MHServerEmu.Games.Entities
             if (param == 0)
                 return;
 
-            using var procPropertiesHandle = GetProcProperties(Properties, out PropertyCollection procProperties);
+            using var procPropertiesHandle = GetProcProperties(condition.Properties, out PropertyCollection procProperties);
             foreach (var kvp in procProperties.IteratePropertyRange(PropertyEnum.Proc, (int)ProcTriggerType.OnConditionStackCount))
             {
                 if (CheckProc(kvp, out Power procPower, param) == false)
