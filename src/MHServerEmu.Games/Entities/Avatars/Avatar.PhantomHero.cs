@@ -236,12 +236,14 @@ namespace MHServerEmu.Games.Entities.Avatars
                 Agent phantom = Game.EntityManager.GetEntity<Agent>(id);
                 if (phantom == null || phantom.IsDestroyed)
                 {
-                    // Team-up respawn hook: friendly team-up phantoms that
-                    // died get re-queued for spawn 90s later so the squad
-                    // heals itself instead of shrinking permanently.
+                    // Team-up/boss respawn hook: friendly team-up and boss
+                    // phantoms that died get re-queued for spawn 90s later so
+                    // the squad heals itself instead of shrinking permanently.
+                    // Neither has an avatar-style downed/revive state.
                     var goneDescriptor = host.GetPhantomDescriptor(id);
                     if (goneDescriptor.AvatarRef != 0
-                        && ((PrototypeId)goneDescriptor.AvatarRef).As<AgentTeamUpPrototype>() != null)
+                        && (((PrototypeId)goneDescriptor.AvatarRef).As<AgentTeamUpPrototype>() != null
+                         || IsBossPhantomRef((PrototypeId)goneDescriptor.AvatarRef)))
                     {
                         long dueAt = (Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond) + TeamUpRespawnDelayMs;
                         host.EnqueueTeamUpRespawn(goneDescriptor, dueAt);
@@ -256,10 +258,11 @@ namespace MHServerEmu.Games.Entities.Avatars
                 {
                     var descriptor = host.GetPhantomDescriptor(id);
                     bool isTeamUp = descriptor.AvatarRef != 0
-                        && ((PrototypeId)descriptor.AvatarRef).As<AgentTeamUpPrototype>() != null;
+                        && (((PrototypeId)descriptor.AvatarRef).As<AgentTeamUpPrototype>() != null
+                         || IsBossPhantomRef((PrototypeId)descriptor.AvatarRef));
 
-                    // Team-ups have no persistent revive flow — keep their
-                    // existing immediate-requeue behavior unchanged.
+                    // Team-ups and boss phantoms have no persistent revive
+                    // flow — keep their existing immediate-requeue behavior.
                     if (isTeamUp)
                     {
                         long dueAt = (Game.CurrentTime.Ticks / TimeSpan.TicksPerMillisecond) + TeamUpRespawnDelayMs;
@@ -600,7 +603,15 @@ namespace MHServerEmu.Games.Entities.Avatars
                     try
                     {
                         var refId = (PrototypeId)entry.Descriptor.AvatarRef;
-                        ulong id = SpawnTeamUpPhantomHero(refId, entry.Descriptor.Level, out string err, enemy: false, nemesisRank: 0, usernameOverride: entry.Descriptor.Username, gearOverride: entry.Descriptor.GearRefs);
+                        // Same queue, same 90s cooldown — a boss phantom uses
+                        // it identically to a team-up, just dispatched to its
+                        // own spawn method instead (see IsBossPhantomRef).
+                        ulong id;
+                        string err;
+                        if (IsBossPhantomRef(refId))
+                            id = SpawnBossPhantomHero(refId, entry.Descriptor.Level, out err, usernameOverride: entry.Descriptor.Username);
+                        else
+                            id = SpawnTeamUpPhantomHero(refId, entry.Descriptor.Level, out err, enemy: false, nemesisRank: 0, usernameOverride: entry.Descriptor.Username, gearOverride: entry.Descriptor.GearRefs);
                         if (id == 0)
                             PhantomLogger.Warn($"[PhantomHero:TeamUp:Respawn] respawn failed for {refId.GetName()}: {err} — re-queueing 30s");
                         // On failure, re-queue in 30s so a transient issue
@@ -5969,6 +5980,11 @@ namespace MHServerEmu.Games.Entities.Avatars
             if (avatarRefOverride != PrototypeId.Invalid && avatarRefOverride.As<AgentTeamUpPrototype>() != null)
                 return SpawnTeamUpPhantomHero(avatarRefOverride, level, out error, enemy: false, nemesisRank: 0, usernameOverride: username, gearOverride: gearRefs, bypassCap: bypassCap);
 
+            // Same reasoning as the team-up branch above, for boss-phantom
+            // intents (stored with a real curated-boss AgentPrototype ref).
+            if (IsBossPhantomRef(avatarRefOverride))
+                return SpawnBossPhantomHero(avatarRefOverride, level, out error, usernameOverride: username, bypassCap: bypassCap);
+
             return SpawnPhantomHeroCore(avatarRefOverride, level, username, lockLevel, costumeRef, gearRefs, out error, enemy: false, invincible: invincible, bypassCap: bypassCap);
         }
 
@@ -6313,6 +6329,222 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             PhantomLogger.Info($"[PhantomHero:TeamUp] {this} spawned {(enemy ? "HOSTILE" : "friendly")} team-up '{teamUpRef.GetName()}' (agentId 0x{teamUp.Id:X}) at {teamUp.RegionLocation.Position.ToStringNames()} level {effectiveLevel}");
             return teamUp.Id;
+        }
+
+        /// <summary>
+        /// True when <paramref name="bossRef"/> is a real curated boss-tier
+        /// AgentPrototype (Sabretooth, Rhino, etc. — the same "/Bosses/"
+        /// pool the Boss Roster tool spawns as hostile enemies from), NOT a
+        /// mob, champion, or mini-boss. Used to dispatch a phantom spawn
+        /// request to SpawnBossPhantomHero instead of the avatar/team-up
+        /// paths, the same way an AgentTeamUpPrototype ref is detected and
+        /// routed to SpawnTeamUpPhantomHero.
+        /// </summary>
+        private static bool IsBossPhantomRef(PrototypeId bossRef)
+            => bossRef != PrototypeId.Invalid && Player.GetRawBossCandidatePool().Contains(bossRef);
+
+        /// <summary>
+        /// Spawn a real boss-tier AgentPrototype (Sabretooth, Rhino, etc. —
+        /// see IsBossPhantomRef) as a FRIENDLY phantom teammate, fighting
+        /// alongside the caller the same way avatar-type and team-up phantom
+        /// heroes do. Friendly only — this is explicitly a squad member, not
+        /// another hostile-enemy spawn path (that already exists via
+        /// SpawnCuratedBoss/BossRosterWebHandler for the Boss Roster tool).
+        ///
+        /// Modeled directly on SpawnTeamUpPhantomHero, which already proved
+        /// a non-Avatar Agent can be hosted by a synthetic phantom Player,
+        /// bound to the party HUD via the AvatarInPlay inventory slot, and
+        /// driven entirely by this AI (UpdatePhantomHunt) instead of the
+        /// engine's own behavior tree — per user request 2026-08-08, a boss
+        /// phantom must use "the same AI as my other [phantom heroes]", not
+        /// its native boss brain, and the same HP/damage curve regular
+        /// phantom heroes use, not native boss-tier stats.
+        ///
+        /// Real bosses don't have a TeamUpLibrary-shaped inventory of their
+        /// own to create into first the way a team-up does — TeamUpLibrary
+        /// is reused here purely as a container that is already proven to
+        /// accept a non-Avatar Agent entity at creation time; the boss
+        /// entity is moved out to AvatarInPlay immediately after and never
+        /// visibly occupies a team-up slot.
+        /// </summary>
+        public ulong SpawnBossPhantomHero(PrototypeId bossRef, int level, out string error, string usernameOverride = null, bool bypassCap = false)
+        {
+            error = null;
+            if (IsInWorld == false) { error = "avatar not in world"; return 0; }
+            Region region = Region;
+            if (region == null) { error = "no region"; return 0; }
+
+            if (IsBossPhantomRef(bossRef) == false) { error = "not a real curated boss (mobs/champions/mini-bosses are not eligible)"; return 0; }
+            AgentPrototype bossProto = bossRef.As<AgentPrototype>();
+            if (bossProto == null) { error = "bossRef did not resolve to an AgentPrototype"; return 0; }
+
+            Player host = PhantomHost;
+            if (host == null) { error = "no Player host to register phantom against"; return 0; }
+
+            if (bypassCap == false)
+            {
+                string squadGate = CheckPhantomSquadGate(host);
+                if (squadGate != null) { error = squadGate; return 0; }
+
+                int cap = GetPhantomPartyCap(region);
+                if (1 + host.PhantomHeroCount > cap)
+                {
+                    error = $"squad full ({host.PhantomHeroCount + 1}/{cap}) — this region's party/raid cap won't allow another phantom";
+                    return 0;
+                }
+            }
+
+            // Step 1: phantom Player as owner (same pattern as avatar/team-up spawn).
+            ulong phantomDbId = System.Threading.Interlocked.Increment(ref s_phantomDbIdSeed);
+            string username = string.IsNullOrEmpty(usernameOverride) ? NewPhantomUsername(Game.Random) : usernameOverride;
+            Player phantomPlayer;
+            using (var playerSettings = ObjectPoolManager.Instance.Get<EntitySettings>())
+            {
+                playerSettings.DbGuid = phantomDbId;
+                playerSettings.EntityRef = GameDatabase.GlobalsPrototype.DefaultPlayer;
+                playerSettings.OptionFlags = EntitySettingsOptionFlags.PopulateInventories;
+                playerSettings.PlayerConnection = null;
+                playerSettings.PlayerName = username;
+                playerSettings.ArchiveSerializeType = ArchiveSerializeType.Database;
+                playerSettings.ArchiveData = null;
+                phantomPlayer = Game.EntityManager.CreateEntity(playerSettings) as Player;
+            }
+            if (phantomPlayer == null) { error = "phantom Player entity create failed"; return 0; }
+            phantomPlayer.PhantomCreatorId = host.Id;
+
+            // Step 2: create the boss Agent — see this method's header for why
+            // TeamUpLibrary is reused purely as a creation-time container.
+            Inventory teamUpLibrary = phantomPlayer.GetInventory(InventoryConvenienceLabel.TeamUpLibrary);
+            if (teamUpLibrary == null) { error = "TeamUpLibrary missing on phantom Player"; DestroyPhantomPlayer(phantomPlayer); return 0; }
+
+            Agent boss;
+            using (var settings = ObjectPoolManager.Instance.Get<EntitySettings>())
+            {
+                settings.InventoryLocation = new(phantomPlayer.Id, teamUpLibrary.PrototypeDataRef);
+                settings.EntityRef = bossRef;
+                boss = Game.EntityManager.CreateEntity(settings) as Agent;
+            }
+            if (boss == null) { error = $"boss create failed for {bossRef.GetName()}"; DestroyPhantomPlayer(phantomPlayer); return 0; }
+
+            // Owning this boss to the CALLER (not just the phantom Player) via
+            // PowerUserOverrideID makes Entity.CanBePlayerOwned() return true
+            // (Entity.cs: owner is Avatar -> true). Without this, a plain
+            // AgentPrototype's CanBePlayerOwned() is false, which means
+            // Agent.Resurrect() force-re-enables the native AIController on
+            // any revive (Entity.cs's CanBePlayerOwned==false branch) — that
+            // would silently hand combat decisions back to the boss's own
+            // native brain the first time it's revived, breaking the "same
+            // AI as my other phantoms" requirement this exists to satisfy.
+            boss.Properties[PropertyEnum.PowerUserOverrideID] = Id;
+
+            boss.IsPhantomHero = true;
+
+            Inventory avatarInPlay = phantomPlayer.GetInventory(InventoryConvenienceLabel.AvatarInPlay);
+            if (avatarInPlay != null)
+            {
+                ulong? stackEntityId = null;
+                var moveResult = Inventory.ChangeEntityInventoryLocation(boss, avatarInPlay, 0, ref stackEntityId, false);
+                if (moveResult != InventoryResult.Success)
+                    PhantomLogger.Warn($"[PhantomHero:Boss] AvatarInPlay move failed ({moveResult}) — HP bar may not bind on client");
+            }
+
+            int effectiveLevel = level > 0 ? level : CharacterLevel;
+
+            try { phantomPlayer.EnterGame(); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Boss] phantomPlayer.EnterGame() partial: {ex.Message}"); }
+            try { phantomPlayer.OnLoadingScreenFinished(); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Boss] OnLoadingScreenFinished failed: {ex.Message}"); }
+
+            try
+            {
+                boss.SetAsPersistent(this, true);
+
+                // SetAsPersistent's own placement (WorldEntity.GetPositionNearAvatar)
+                // validates the spot against the CALLER's bounds, not the boss's own —
+                // fine for a team-up (roughly avatar-sized), but a boss like Rhino,
+                // Blob, or a Sentinel is much bigger and can end up overlapping real
+                // geometry at a spot that reads as clear for a normal-sized avatar.
+                // Confirmed live 2026-08-08: every single boss phantom's first
+                // FollowEntity attempt failed at short range (52-567u, nowhere near
+                // the long-distance pathfinder cap), meaning they were stuck from the
+                // very first tick — never actually followed the caller at all.
+                // Re-validate against the boss's REAL bounds the same way
+                // SpawnCuratedBoss/BossRosterWebHandler already do for hostile boss
+                // spawns, and correct the position if it moved.
+                if (EntityHelper.GetSpawnPositionNearAvatar(this, region, bossProto.Bounds, 250f, out Vector3 validatedPos))
+                    boss.ChangeRegionPosition(validatedPos, null);
+                else
+                    PhantomLogger.Warn($"[PhantomHero:Boss] no bounds-validated spawn spot found for {bossRef.GetName()} — keeping SetAsPersistent's placement");
+
+                // CreateAgent (the standalone-enemy-boss path) sets these
+                // explicitly rather than relying on defaults — mirror that
+                // here since we're not going through CreateAgent.
+                boss.Properties[PropertyEnum.DifficultyTier] = region.DifficultyTierRef;
+                boss.Properties[PropertyEnum.Rank] = bossProto.Rank.DataRef;
+                boss.InitializeLevel(effectiveLevel);
+                boss.CombatLevel = effectiveLevel;
+                boss.Properties[PropertyEnum.PowerProgressionVersion] = boss.GetLatestPowerProgressionVersion();
+
+                // Same fixups a standalone hostile boss gets (Dormant clear,
+                // LootCooldown fallback, AICustomThinkRateMS, MODOK AI-
+                // bootstrap fix) MINUS the AllianceOverride line — a friendly
+                // boss phantom uses the CALLER's own alliance instead of the
+                // hostile phantom alliance those fixups apply.
+                EntityHelper.ApplyStandaloneBossFixups(boss, bossProto);
+                boss.SetSummonedAllianceOverride(Alliance);
+
+                boss.Properties[PropertyEnum.Health] = boss.Properties[PropertyEnum.HealthMax];
+            }
+            catch (Exception ex)
+            {
+                error = $"boss world entry failed: {ex.Message}";
+                try { if (boss.IsInWorld) boss.ExitWorld(); boss.Destroy(); }
+                catch (Exception cleanupEx) { PhantomLogger.Warn($"[PhantomHero:Boss] cleanup after failed entry threw: {cleanupEx.Message}"); }
+                DestroyPhantomPlayer(phantomPlayer);
+                return 0;
+            }
+
+            if (boss.IsInWorld == false)
+            {
+                error = "boss SetAsPersistent did not enter world";
+                try { boss.Destroy(); }
+                catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Boss] Destroy() after failed world entry threw: {ex.Message}"); }
+                DestroyPhantomPlayer(phantomPlayer);
+                return 0;
+            }
+
+            // Same friendly HP/damage curve regular phantom heroes and
+            // team-ups use — per user request, NOT the boss's native
+            // (much higher/lower, un-tuned-for-a-squad-slot) stats.
+            boss.Properties[PropertyEnum.HealthMaxMult] = ScaleHealthMultForLevel(PhantomHealthMult, effectiveLevel);
+            boss.Properties[PropertyEnum.Health] = boss.Properties[PropertyEnum.HealthMax];
+            ApplyPhantomDamageScaling(boss, effectiveLevel, enemy: false);
+
+            try { boss.SetSimulated(true); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Boss] SetSimulated(true) failed: {ex.Message}"); }
+
+            var descriptor = new MHServerEmu.DatabaseAccess.Models.PhantomIntent
+            {
+                AvatarRef = (ulong)bossRef,
+                Level = effectiveLevel,
+                Username = username,
+                LockLevel = false,
+                CostumeRef = 0,
+                GearRefs = null,
+                Invincible = false,
+                BypassCap = bypassCap,
+            };
+            host.RegisterPhantom(boss.Id, phantomPlayer.Id, descriptor);
+            SchedulePhantomTick();
+
+            // Take over combat decision-making from the native AIController —
+            // same one-time disable as team-up phantoms. Safe here because of
+            // the PowerUserOverrideID fix above (see its comment).
+            try { boss.AIController?.SetIsEnabled(false); }
+            catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero:Boss] AIController disable failed: {ex.Message}"); }
+
+            PhantomLogger.Info($"[PhantomHero:Boss] {this} spawned friendly boss phantom '{bossRef.GetName()}' (agentId 0x{boss.Id:X}) at {boss.RegionLocation.Position.ToStringNames()} level {effectiveLevel}");
+            return boss.Id;
         }
 
         /// <summary>
