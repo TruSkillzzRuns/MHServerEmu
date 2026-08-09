@@ -17,6 +17,7 @@ using MHServerEmu.Core.VectorMath;
 using MHServerEmu.Games.Entities;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
+using MHServerEmu.Games.Properties;
 
 namespace MHServerEmu.WebFrontend.Handlers.WebApi
 {
@@ -70,6 +71,16 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     // the only two raid subfolders that exist in the data.
                     || path.IndexOf("/SurturRaid/", StringComparison.OrdinalIgnoreCase) >= 0
                     || path.IndexOf("/OnslaughtRaid/", StringComparison.OrdinalIgnoreCase) >= 0)
+                    continue;
+
+                // Same individual exclusion added to Player.WaveDirector.cs's
+                // GetRawBossCandidatePool (2026-08-08) — kept in sync here
+                // since this handler duplicates that filter rather than
+                // calling it directly (internal, different assembly). See
+                // that method's comment for the full investigation — his own
+                // intrinsic DamagePctResist made him effectively unkillable
+                // outside his native Chapter 10 story encounter.
+                if (path.Equals("Entity/Characters/Bosses/SecretInvasion/SkrullNickFury.prototype", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 if (proto.BehaviorProfile == null || proto.BehaviorProfile.Brain == PrototypeId.Invalid) continue;
@@ -190,6 +201,15 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         firstError ??= "CreateAgent returned null";
                         continue;
                     }
+
+                    // Same CombatLevel fix as Player.WaveDirector.cs's
+                    // SpawnCuratedBoss (2026-08-08) — this handler duplicates
+                    // that method's spawn logic instead of calling it, so it
+                    // needs its own copy of the fix too. Without this a
+                    // manually test-spawned boss fights at its native level
+                    // instead of the player's, gutting outgoing damage via
+                    // PowerPayload.CalculateResultDamageLevelScaling.
+                    agent.CombatLevel = avatar.CombatLevel;
 
                     // Same fixups Player.WaveDirector.cs's SpawnCuratedBoss
                     // applies — Dormant clear, AllianceOverride, LootCooldown
