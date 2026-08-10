@@ -71,6 +71,24 @@ machine (e.g. from a stable release download), reuse its `Apache24/` folder.
 Copy the `SiteConfig.xml` shipped with this repo (or from an existing
 install) into `Apache24\htdocs\SiteConfig.xml`.
 
+> **If you copied `Apache24/` to a different path than it was installed at,
+> you must fix `SRVROOT` or Apache will not start.** `httpd.conf` records the
+> folder it was configured for, so a copied config still points at the old
+> location. Open `Apache24\conf\httpd.conf` and find the line starting
+> `Define SRVROOT`:
+>
+> - If it reads `Define SRVROOT "c:/some/old/path"`, change it to your actual
+>   `Apache24` folder, using **forward slashes** — e.g.
+>   `Define SRVROOT "C:/Apache24"`.
+> - If it reads `Define SRVROOT "${APACHE_SERVER_ROOT}"`, it expects an
+>   environment variable instead — see the `APACHE_SERVER_ROOT` step under
+>   **Fresh install** below.
+>
+> This is the single most common setup failure: Apache's window opens and
+> closes instantly with no visible error. See
+> [Apache opens and closes immediately](#apache-opens-and-closes-immediately)
+> in step 5 to read the real message.
+
 **Fresh install** — download an Apache 2.4 Win64 build, unpack to a folder
 you'll remember (e.g. `C:\Apache24`), then:
 
@@ -101,6 +119,37 @@ Start-Process 'C:\Apache24\bin\httpd.exe' -WindowStyle Hidden
 
 Verify it's up: <http://localhost/SiteConfig.xml> in a browser should return
 an XML file, not "Can't reach this page."
+
+### Apache opens and closes immediately
+
+`httpd.exe` prints its error and exits, so double-clicking it hides the
+message. Run it from a Command Prompt that stays open to see what's actually
+wrong:
+
+```
+cd C:\Apache24\bin
+httpd.exe -t
+```
+
+The two usual answers:
+
+- **`ServerRoot must be a valid directory`**, or
+  `Config variable ${APACHE_SERVER_ROOT} is not defined` — the `SRVROOT` fix
+  in step 4 applies. This is what you get after copying `Apache24/` from
+  another install.
+- **`(OS 10048) ... make_sock: could not bind to address 0.0.0.0:80`** —
+  something else already owns port 80. Find it with:
+
+  ```
+  netstat -ano | findstr :80
+  ```
+
+  Common culprits on Windows are IIS, the "World Wide Web Publishing Service",
+  and VMware. Stop the offender, or change Apache's `Listen 80`
+  (you'd then need matching changes in `SiteConfig.xml`).
+
+If `httpd.exe -t` prints `Syntax OK` but Apache still won't stay up, check
+`Apache24\logs\error.log`.
 
 ## 6. Start the server
 
