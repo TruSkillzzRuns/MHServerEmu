@@ -2084,18 +2084,6 @@ namespace MHServerEmu.Games.Entities.Avatars
                     PhantomLogger.Info($"[PhantomHero:Loco] {phantom} authoritative={phantom.IsMovementAuthoritative} simulated={phantom.IsSimulated} inWorld={phantom.IsInWorld} target={primaryTarget.Id:X} dist={MathF.Sqrt(primaryDistSq):F0} FollowEntity returned={ok} locoEnabled={loco.IsEnabled} isMoving={loco.IsMoving} method={loco.Method} baseSpeed={loco.DefaultRunSpeed} hasPath={loco.HasPath} pathResult={loco.LastGeneratedPathResult} canMove={phantom.CanMove()}");
                 }
 
-                // Throttled (not one-shot) version for Team Deathmatch specifically �
-                // added 2026-08-08 alongside the TDM:Roam log, same reason: the
-                // one-shot log above fired during the pre-match lock on the report
-                // we're chasing and told us nothing about behavior after unlock.
-                // Remove once confirmed working.
-                if (IsDeathmatchTeamCombatant(phantom.Id)
-                    && (s_deathmatchRoamNextDiagMs.TryGetValue(phantom.Id, out long nextFollowDiagMs) == false || nowMsSweep >= nextFollowDiagMs))
-                {
-                    s_deathmatchRoamNextDiagMs[phantom.Id] = nowMsSweep + 3000;
-                    PhantomLogger.Info($"[TDM:Follow] {phantom} target={primaryTarget.Id:X} dist={MathF.Sqrt(primaryDistSq):F0} FollowEntity={ok} isMoving={loco.IsMoving} pathResult={loco.LastGeneratedPathResult} canMove={phantom.CanMove()}");
-                }
-
                 // Pathfinding failure � enemy phantoms in Manhattan / verticality
                 // regions can end up on an elevated platform (Z=49) while the
                 // player is at ground level (Z=1), and FollowEntity's navmesh
@@ -2657,17 +2645,6 @@ namespace MHServerEmu.Games.Entities.Avatars
             var opts = new LocomotionOptions { RepathDelay = TimeSpan.FromMilliseconds(500) };
             bool pathOk = loco.PathTo(roam.dest, ref opts);
 
-            // Throttled visibility into whether roam is actually making progress �
-            // added 2026-08-08 after a "still standing still" report we could not
-            // confirm or rule out from the existing one-shot FollowEntity log (it
-            // only fires once ever per phantom, and had already fired during the
-            // pre-match lock on the report in question). Remove once confirmed working.
-            if (s_deathmatchRoamNextDiagMs.TryGetValue(phantom.Id, out long nextDiagMs) == false || nowMs >= nextDiagMs)
-            {
-                s_deathmatchRoamNextDiagMs[phantom.Id] = nowMs + 3000;
-                PhantomLogger.Info($"[TDM:Roam] {phantom} pos={pos.ToStringNames()} dest={roam.dest.ToStringNames()} pathOk={pathOk} isMoving={loco.IsMoving} canMove={phantom.CanMove()} pathResult={loco.LastGeneratedPathResult}");
-            }
-
             if (pathOk == false)
             {
                 // Unreachable � drop it and pick a fresh one next tick rather
@@ -2675,8 +2652,6 @@ namespace MHServerEmu.Games.Entities.Avatars
                 s_deathmatchRoam.Remove(phantom.Id);
             }
         }
-
-        private static readonly Dictionary<ulong, long> s_deathmatchRoamNextDiagMs = new();
 
         /// <summary>
         /// Pick a leash-teleport position near the caller that lands on the
