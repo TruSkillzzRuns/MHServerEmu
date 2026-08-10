@@ -34,7 +34,9 @@ namespace MHServerEmu.Core.Collections
                 uint size = (uint)Size;
                 success &= archive.Transfer(ref size);
 
-                Span<byte> buffer = MemoryMarshal.Cast<ulong, byte>(_bits);
+                // .AsSpan() is required: passing the array directly binds the
+                // ReadOnlySpan overload under C# 14's first-class span conversions.
+                Span<byte> buffer = MemoryMarshal.Cast<ulong, byte>(_bits.AsSpan());
                 success &= archive.WriteBytes(buffer);
             }
             else

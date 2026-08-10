@@ -35,7 +35,15 @@ namespace MHServerEmu.Core.Network
                     throw new Exception($"Message length {_length} exceeded the max allowed length of {MaxSize}.");
 
                 _buffer = BufferPool.Rent(_length);
-                stream.Read(_buffer, 0, _length);
+
+                // ReadExactly, not Read: a short read used to be silently ignored, leaving
+                // the tail of the rented buffer filled with stale bytes from a previously
+                // pooled message, which Deserialize() would then parse as if they were real.
+                // A packet declaring a message longer than the data it actually carries is
+                // the malformed/malicious case ParseHeader() guards against, so fail loudly —
+                // this throws EndOfStreamException, which the catch below turns into
+                // InvalidMessageId, and MuxReader disconnects the client.
+                stream.ReadExactly(_buffer, 0, _length);
             }
             catch (Exception e)
             {

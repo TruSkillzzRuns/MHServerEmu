@@ -109,7 +109,9 @@ namespace MHServerEmu.Games.Entities
 
         private static readonly Logger Logger = LogManager.CreateLogger();
 
-        private InlineArray3<InvasiveListNode<Entity>> _entityListNodes;
+        // Fully qualified: .NET 10 added System.Runtime.CompilerServices.InlineArray3<T>,
+        // which collides with ours in files that import both namespaces.
+        private MHServerEmu.Core.Collections.InlineArray3<InvasiveListNode<Entity>> _entityListNodes;
 
         private readonly EventGroup _pendingEvents = new();
 

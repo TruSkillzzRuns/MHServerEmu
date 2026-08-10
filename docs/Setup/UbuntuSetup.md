@@ -4,18 +4,18 @@ This guide covers running MHServerEmu on Linux (tested on Ubuntu 24.04).
 
 ## Prerequisites
 
-- .NET 8 Desktop Runtime
+- .NET 10 Desktop Runtime
 - Game client files (version 1.52.0.1700)
 - Apache2
 
 ## Install Dependencies
 
 ```bash
-# Install .NET 8
+# Install .NET 10
 wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
 sudo dpkg -i packages-microsoft-prod.deb
 sudo apt update
-sudo apt install -y dotnet-runtime-8.0
+sudo apt install -y dotnet-runtime-10.0
 
 # Install Apache
 sudo apt install -y apache2
@@ -102,7 +102,7 @@ sudo systemctl reload apache2
 ## Run the Server
 
 ```bash
-cd MHServerEmu/src/MHServerEmu/bin/x64/Release/net8.0
+cd MHServerEmu/src/MHServerEmu/bin/x64/Release/net10.0
 DOTNET_ROLL_FORWARD=LatestMajor dotnet MHServerEmu.dll
 ```
 
@@ -134,7 +134,7 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/steve/code/MHServerEmu/src/MHServerEmu/bin/x64/Release/net8.0
+WorkingDirectory=/home/steve/code/MHServerEmu/src/MHServerEmu/bin/x64/Release/net10.0
 ExecStart=/usr/bin/dotnet MHServerEmu.dll
 Environment=DOTNET_ROLL_FORWARD=LatestMajor
 Restart=on-failure

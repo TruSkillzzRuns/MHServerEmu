@@ -7,7 +7,7 @@ Start-to-finish guide to get this MHServerEmu fork running on Windows with a
 
 - **Windows 10 or 11** (Linux works for the server itself but this guide
   covers Windows only).
-- **.NET 8 SDK** — download from <https://dotnet.microsoft.com/download/dotnet/8.0>.
+- **.NET 10 SDK** — download from <https://dotnet.microsoft.com/download/dotnet/10.0>.
 - **Marvel Heroes 1.52.0.1700 client** — the "2.16a" build still available
   in your Steam library if you played the game before it shut down in 2017.
   This repo does not distribute the client.
@@ -36,7 +36,7 @@ dotnet build MHServerEmu.sln -c Release
 Should end with `Build succeeded. 0 Error(s)` (some warnings are normal).
 
 The built server will be at
-`src\MHServerEmu\bin\Release\net8.0\MHServerEmu.exe`.
+`src\MHServerEmu\bin\Release\net10.0\MHServerEmu.exe`.
 
 ## 3. Bring the two client `.sip` files
 
@@ -49,7 +49,7 @@ From your Marvel Heroes 1.52 install (typically
 into:
 
 ```
-<repo>\src\MHServerEmu\bin\Release\net8.0\Data\Game\
+<repo>\src\MHServerEmu\bin\Release\net10.0\Data\Game\
 ```
 
 Create the `Data\Game\` folders if they don't exist.
@@ -105,7 +105,7 @@ an XML file, not "Can't reach this page."
 ## 6. Start the server
 
 ```
-src\MHServerEmu\bin\Release\net8.0\MHServerEmu.exe
+src\MHServerEmu\bin\Release\net10.0\MHServerEmu.exe
 ```
 
 If everything above is right you'll see the ASCII banner, then messages like
@@ -164,7 +164,7 @@ characters — is also gitignored and never shipped by this repo.
 
 - **First-time users**: do nothing. On first server launch the server will
   create a fresh empty `Account.db` at
-  `src\MHServerEmu\bin\Release\net8.0\Data\Account.db`.
+  `src\MHServerEmu\bin\Release\net10.0\Data\Account.db`.
 - **Migrating from another install**: copy your existing `Account.db` into
   that same folder before starting the server. Your accounts and characters
   come with you.

@@ -12,13 +12,15 @@ namespace MHServerEmu.Games.Properties
 {
     public class PropertyInfo
     {
-        private InlineArray4<PropertyParamType> _paramTypes;
-        private InlineArray4<AssetTypeId> _paramAssetTypes;
-        private InlineArray4<BlueprintId> _paramPrototypeBlueprints;
-        private InlineArray4<int> _paramBitCounts;
-        private InlineArray4<int> _paramOffsets;
-        private InlineArray4<PropertyParam> _defaultParamValues;
-        private InlineArray4<PropertyParam> _paramMaxValues;
+        // Fully qualified: .NET 10 added System.Runtime.CompilerServices.InlineArray4<T>,
+        // which collides with ours in files that import both namespaces.
+        private MHServerEmu.Core.Collections.InlineArray4<PropertyParamType> _paramTypes;
+        private MHServerEmu.Core.Collections.InlineArray4<AssetTypeId> _paramAssetTypes;
+        private MHServerEmu.Core.Collections.InlineArray4<BlueprintId> _paramPrototypeBlueprints;
+        private MHServerEmu.Core.Collections.InlineArray4<int> _paramBitCounts;
+        private MHServerEmu.Core.Collections.InlineArray4<int> _paramOffsets;
+        private MHServerEmu.Core.Collections.InlineArray4<PropertyParam> _defaultParamValues;
+        private MHServerEmu.Core.Collections.InlineArray4<PropertyParam> _paramMaxValues;
 
         private bool _updatedInfo = false;
 

@@ -95,7 +95,11 @@ namespace MHServerEmu.Core.Network.Web
 
             try
             {
-                await _httpRequest.InputStream.ReadAsync(buffer.AsMemory(0, length));
+                // ReadExactlyAsync, not ReadAsync: this is a network stream, so a single read
+                // is not guaranteed to return all ContentLength64 bytes. The old code ignored
+                // the returned count and decoded the full length regardless, so a partial read
+                // decoded stale bytes left in the rented buffer by an earlier request.
+                await _httpRequest.InputStream.ReadExactlyAsync(buffer.AsMemory(0, length));
                 return Encoding.UTF8.GetString(buffer, 0, length);
             }
             finally
