@@ -36,7 +36,11 @@ dotnet build MHServerEmu.sln -c Release
 Should end with `Build succeeded. 0 Error(s)` (some warnings are normal).
 
 The built server will be at
-`src\MHServerEmu\bin\Release\net10.0\MHServerEmu.exe`.
+`src\MHServerEmu\bin\x64\Release\net10.0\MHServerEmu.exe`.
+
+> Note the `x64` in that path. This fork's csproj sets `<Platforms>x64</Platforms>`,
+> so the build lands in `bin\x64\Release\` — **not** the `bin\Release\` path
+> you may be used to from upstream. Every path in this guide includes it.
 
 ## 3. Bring the two client `.sip` files
 
@@ -49,7 +53,7 @@ From your Marvel Heroes 1.52 install (typically
 into:
 
 ```
-<repo>\src\MHServerEmu\bin\Release\net10.0\Data\Game\
+<repo>\src\MHServerEmu\bin\x64\Release\net10.0\Data\Game\
 ```
 
 Create the `Data\Game\` folders if they don't exist.
@@ -154,8 +158,11 @@ If `httpd.exe -t` prints `Syntax OK` but Apache still won't stay up, check
 ## 6. Start the server
 
 ```
-src\MHServerEmu\bin\Release\net10.0\MHServerEmu.exe
+src\MHServerEmu\bin\x64\Release\net10.0\MHServerEmu.exe
 ```
+
+Or just double-click `StartServer.bat` in the repo root, which finds the exe
+for you and starts Apache too.
 
 If everything above is right you'll see the ASCII banner, then messages like
 `Loaded N prototypes`, `PlayerManagerService: Started`, etc.
@@ -183,12 +190,28 @@ At the login screen, use the **Register Account** button, or type this in
 the login field before hitting Login:
 
 ```
-!account create <email> <password>
+!account create <email> <playerName> <password>
 ```
+
+All three arguments are required — `playerName` is your in-game display name.
+Leaving it out gets you an "Invalid arguments" error.
 
 Then log in with those credentials.
 
-## 9. Try the phantom heroes
+## 9. Give your account admin rights
+
+New accounts are created at user level 0 (regular user), but commands like
+`!phantom` require admin. Promote yourself from the **server console window**
+(the one running `MHServerEmu.exe`) — console commands always run as admin:
+
+```
+account userlevel <email> 2
+```
+
+Note there's no `!` prefix when typing into the server console. Log out and
+back in for the new level to apply.
+
+## 10. Try the phantom heroes
 
 Once you're in a zone (Avengers Tower, a story chapter, wherever), open chat
 and try:
@@ -213,7 +236,7 @@ characters — is also gitignored and never shipped by this repo.
 
 - **First-time users**: do nothing. On first server launch the server will
   create a fresh empty `Account.db` at
-  `src\MHServerEmu\bin\Release\net10.0\Data\Account.db`.
+  `src\MHServerEmu\bin\x64\Release\net10.0\Data\Account.db`.
 - **Migrating from another install**: copy your existing `Account.db` into
   that same folder before starting the server. Your accounts and characters
   come with you.
@@ -222,9 +245,10 @@ characters — is also gitignored and never shipped by this repo.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `Build succeeded` then no exe | Wrong project or configuration | Check step 2 — must be `MHServerEmu.sln` with `-c Release` |
+| `Build succeeded` then no exe | Looking in `bin\Release\` | This fork builds to `bin\x64\Release\net10.0\` — see step 2 |
 | `mu_cdata.sip missing` fatal | Client files not copied | Step 3 |
 | `Site Config Not Available` in client | Apache not running or wrong docroot | Steps 4–5, then curl `localhost/SiteConfig.xml` |
 | `AH00111: APACHE_SERVER_ROOT is not defined` in Apache log | Missing env var | Step 4's user-env-var block |
-| Client connects but "Server List Empty" | `SiteConfig.xml` points at wrong server host/port | Check `SiteConfig.xml` — should point at `localhost:4306` for frontend |
+| Client connects but "Server List Empty" | `AuthServerAddress` wrong, or Apache isn't proxying `/AuthServer` to the server's web port | Check `AuthServerAddress` in `SiteConfig.xml` (should be `localhost`), and that Apache has `mod_proxy` + `mod_proxy_http` loaded |
+| `!phantom spawn` says you lack permission | Account is user level 0 | Step 9 — promote to admin from the server console |
 | `!phantom spawn` says "command not found" | Server built from wrong branch | Confirm you're on `phantom-heroes` (default): `git branch --show-current` |
