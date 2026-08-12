@@ -1,4 +1,4 @@
-using MHServerEmu.Core.Config;
+﻿using MHServerEmu.Core.Config;
 using MHServerEmu.Core.Helpers;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.Core.Network;
@@ -54,6 +54,12 @@ namespace MHServerEmu.WebFrontend
             {
                 InitializeWebBackend();
                 WebApiKeyManager.Instance.LoadKeys();
+
+                // Build the client-asset index up front if it is missing, so
+                // item icons and costume art work on a fresh install without
+                // any manual setup step. No-ops when already built or when the
+                // client paths are not configured.
+                ClientAssetIndexBuilder.EnsureBuiltInBackground();
 
                 if (config.EnableDashboard)
                     InitializeWebDashboard(config.DashboardFileDirectory, config.DashboardUrlPath);
@@ -197,6 +203,9 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/account/migration/credentials/import", new MHServerEmu.WebFrontend.Handlers.WebApi.AccountMigrationCredentialsImportWebHandler());
 
             // OmegaDev2 DPS Meter.
+            _webService.RegisterHandler("/webapi/clientassets/status", new MHServerEmu.WebFrontend.Handlers.WebApi.ClientAssetsStatusWebHandler());
+            _webService.RegisterHandler("/webapi/farm",       new MHServerEmu.WebFrontend.Handlers.WebApi.FarmWebHandler());
+            _webService.RegisterHandler("/webapi/farm/reset", new MHServerEmu.WebFrontend.Handlers.WebApi.FarmResetWebHandler());
             _webService.RegisterHandler("/webapi/dps",       new MHServerEmu.WebFrontend.Handlers.WebApi.DpsWebHandler());
             _webService.RegisterHandler("/webapi/dps/reset", new MHServerEmu.WebFrontend.Handlers.WebApi.DpsResetWebHandler());
 
@@ -216,6 +225,7 @@ namespace MHServerEmu.WebFrontend
 
             // OmegaDev2 Command Console + logs.
             _webService.RegisterHandler("/webapi/console/exec", new MHServerEmu.WebFrontend.Handlers.WebApi.ConsoleExecWebHandler());
+            _webService.RegisterHandler("/webapi/toggles",     new MHServerEmu.WebFrontend.Handlers.WebApi.TogglesWebHandler());
             _webService.RegisterHandler("/webapi/logs/tail",    new MHServerEmu.WebFrontend.Handlers.WebApi.LogsTailWebHandler());
             _webService.RegisterHandler("/webapi/debug/logs",   new MHServerEmu.WebFrontend.Handlers.WebApi.DebugLogsWebHandler());
             _webService.RegisterHandler("/webapi/debug/position",   new MHServerEmu.WebFrontend.Handlers.WebApi.PlayerPositionWebHandler());

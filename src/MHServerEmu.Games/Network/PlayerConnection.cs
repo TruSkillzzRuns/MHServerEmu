@@ -1133,10 +1133,25 @@ namespace MHServerEmu.Games.Network
             }
 
             // Add item to the player's inventory
-            Inventory inventory = Player.GetInventory(InventoryConvenienceLabel.General);
+            // Auto-Stash may redirect this to a stash tab instead of the bag.
+            // See Player.AutoStash.cs — returns the General inventory (and
+            // autoStashed=false) whenever the feature is off or doesn't apply.
+            Inventory inventory = Player.ResolvePickupInventory(item, out bool autoStashed);
             if (!Verify.IsNotNull(inventory)) return;
 
             InventoryResult result = item.ChangeInventoryLocation(inventory);
+
+            // If the stash move failed, fall back to the bag rather than
+            // failing the pickup outright — auto-stash must never cost the
+            // player an item it merely tried to reroute.
+            if (result != InventoryResult.Success && autoStashed)
+            {
+                autoStashed = false;
+                inventory = Player.GetInventory(InventoryConvenienceLabel.General);
+                if (!Verify.IsNotNull(inventory)) return;
+                result = item.ChangeInventoryLocation(inventory);
+            }
+
             if (result != InventoryResult.Success)
             {
                 if (result == InventoryResult.InventoryFull || result == InventoryResult.NoAvailableInventory)
@@ -1147,6 +1162,9 @@ namespace MHServerEmu.Games.Network
 
             // Flag the item as recently added
             item.SetRecentlyAdded(true);
+
+            // Farm tracker / auto-stash counter / gear upgrade alert.
+            Player.OnItemAcquired(item, autoStashed);
 
             // Scoring ItemCollected
             if (item.Properties.HasProperty(PropertyEnum.RestrictedToPlayerGuid))

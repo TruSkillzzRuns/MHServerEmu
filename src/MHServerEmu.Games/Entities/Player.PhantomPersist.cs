@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -107,6 +107,10 @@ namespace MHServerEmu.Games.Entities
                 if (blob.RogueEncounterEnabled)
                     RogueEncounterEnabled = true;
 
+                // Auto-Stash toggle — plain field, no side effects on set.
+                AutoStashEnabled = blob.AutoStashEnabled;
+                GearUpgradeAlertEnabled = blob.GearUpgradeAlertEnabled;
+
                 PersistLogger.Info($"[PhantomPersist] {GetName()}: loaded {_nemeses.Count} nemesis entries, {_bountyBoard.Count} bounty board slots, {_preferredPowers.Count} preferred powers");
             }
             catch (Exception ex)
@@ -130,7 +134,13 @@ namespace MHServerEmu.Games.Entities
             bool hasData = _nemeses.Count > 0
                         || _bountyBoard.Count > 0
                         || _preferredPowers.Count > 0
-                        || _rogueEncounterEnabled;
+                        || _rogueEncounterEnabled
+                        // QoL toggles must count as data in their own right —
+                        // otherwise a player who only ever turns these on has
+                        // hasData == false, the sidecar is deleted on logout,
+                        // and the setting silently reverts every session.
+                        || _autoStashEnabled
+                        || _gearUpgradeAlertEnabled;
             string path = PhantomPersistPath(dbGuid);
             if (hasData == false)
             {
@@ -148,6 +158,8 @@ namespace MHServerEmu.Games.Entities
                     BountyThemeIndex = _bountyThemeIndex,
                     PreferredPowers = new Dictionary<ulong, ulong>(_preferredPowers),
                     RogueEncounterEnabled = _rogueEncounterEnabled,
+                    AutoStashEnabled = _autoStashEnabled,
+                    GearUpgradeAlertEnabled = _gearUpgradeAlertEnabled,
                 };
                 string json = JsonSerializer.Serialize(blob, s_persistJsonOptions);
                 // Write to a temp file + move so a crash mid-write can't
@@ -173,6 +185,8 @@ namespace MHServerEmu.Games.Entities
             public int BountyThemeIndex { get; set; } = -1;
             public Dictionary<ulong, ulong> PreferredPowers { get; set; }
             public bool RogueEncounterEnabled { get; set; }
+            public bool AutoStashEnabled { get; set; }
+            public bool GearUpgradeAlertEnabled { get; set; }
         }
     }
 }

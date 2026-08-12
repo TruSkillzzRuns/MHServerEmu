@@ -52,7 +52,20 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 if (proto == null || proto is AvatarPrototype) continue;
 
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
+                // Prefer HiRes, but NOT when it is the under-construction
+                // placeholder. 1.53 points many bosses' HiRes icon at
+                // MarvelUIIcons_HD.Placeholder while the plain IconPath still
+                // holds the real portrait — 1.52 has the real art in both. Taking
+                // HiRes unconditionally is what made most Secret Invasion bosses
+                // render as "UNDER CONSTRUCTION" on 1.53 only.
                 AssetId iconAssetId = proto.IconPathHiRes != 0 ? proto.IconPathHiRes : proto.IconPath;
+
+                if (iconAssetId != 0 && proto.IconPath != 0 && iconAssetId != proto.IconPath)
+                {
+                    string hiResName = GameDatabase.GetAssetName(iconAssetId);
+                    if (hiResName != null && hiResName.Contains("Placeholder", StringComparison.OrdinalIgnoreCase))
+                        iconAssetId = proto.IconPath;
+                }
 #else
                 AssetId iconAssetId = proto.IconPath;
 #endif

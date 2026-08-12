@@ -1367,6 +1367,16 @@ namespace MHServerEmu.Games.Entities
                 return InventoryResult.Success;
             }
 
+            // Auto-Stash: only when the caller didn't name a destination (i.e.
+            // this would have defaulted to the general bag). Explicit targets
+            // are always respected. See Player.AutoStash.cs.
+            bool autoStashed = false;
+            if (inventoryProtoRef == PrototypeId.Invalid && TryGetAutoStashInventory(item, out PrototypeId autoStashInvRef))
+            {
+                inventoryProtoRef = autoStashInvRef;
+                autoStashed = true;
+            }
+
             Inventory inventory = inventoryProtoRef != PrototypeId.Invalid
                 ? GetInventoryByRef(inventoryProtoRef)
                 : GetInventory(InventoryConvenienceLabel.General);
@@ -1384,6 +1394,10 @@ namespace MHServerEmu.Games.Entities
                     item = Game.EntityManager.GetEntity<Item>(stackEntityId.Value);
 
                 item?.SetRecentlyAdded(true);
+
+                // Shared with the ground-pickup path in
+                // PlayerConnection.OnPickupInteraction — see Player.AutoStash.cs.
+                OnItemAcquired(item, autoStashed);
             }
             else
             {

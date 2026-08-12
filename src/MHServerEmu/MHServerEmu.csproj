@@ -71,10 +71,31 @@
     </Reference>
   </ItemGroup>
 
+  <!-- Config.ini is deliberately NOT a CopyToOutputDirectory item.
+       PreserveNewest was not protection: it skips the copy only while the
+       OUTPUT is newer than the source, and any git operation (merge, checkout,
+       branch switch) restamps the source file's timestamp. The next build then
+       overwrote the deployed config, silently blanking user settings such as
+       CookedPCConsolePath and the server ports.
+
+       The default 1.52 server runs straight out of this build folder, so that
+       output IS the live config — unlike v48/v53, whose Build_*.bat scripts
+       already exclude Config.ini when deploying.
+
+       Copy it only when the destination does not exist, so a fresh clone still
+       gets a starting config while an existing one is never clobbered.
+       Consequence to be aware of: new settings added to the template will not
+       appear in an existing deployment; they have to be merged in by hand. -->
   <ItemGroup>
     <None Update="Config.ini">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <Target Name="CopyConfigIfMissing" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Config.ini"
+          DestinationFolder="$(OutDir)"
+          Condition="!Exists('$(OutDir)Config.ini')" />
+  </Target>
 
 </Project>

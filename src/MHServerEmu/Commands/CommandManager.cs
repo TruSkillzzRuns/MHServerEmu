@@ -18,6 +18,72 @@ namespace MHServerEmu.Commands
         private readonly Dictionary<string, CommandGroup> _commandGroupDict = new(StringComparer.OrdinalIgnoreCase);
         private IClientOutput _clientOutput;
 
+        /// <summary>
+        /// Every command group that exposes both an "on" and an "off"
+        /// subcommand, i.e. everything that is a toggle.
+        ///
+        /// Discovered by reflection rather than kept as a hand-written list, so
+        /// a new toggle command shows up in the OmegaDev2 console panel the
+        /// moment it is written, with no second place to remember to update.
+        /// </summary>
+        public IEnumerable<(string Name, string Help)> GetToggleableGroups()
+        {
+            foreach (var kvp in _commandGroupDict)
+            {
+                bool hasOn = false;
+                bool hasOff = false;
+
+                foreach (MethodInfo method in kvp.Value.GetType().GetMethods(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    CommandAttribute attr = method.GetCustomAttribute<CommandAttribute>();
+                    if (attr == null) continue;
+
+                    if (attr.Name == "on") hasOn = true;
+                    else if (attr.Name == "off") hasOff = true;
+                }
+
+                if (hasOn && hasOff)
+                {
+                    yield return (kvp.Key, kvp.Value.ToString());
+                    continue;
+                }
+
+                // Parameter-style toggles: "phantom rogue on | off" takes on/off
+                // as ARGUMENTS, so there is no on/off method to reflect for.
+                // These are found by reading the command's own usage and
+                // description text, which is a heuristic and not a structural
+                // match — it needs both "on" and "off" as standalone words to
+                // avoid matching prose that merely mentions turning something on.
+                foreach (MethodInfo method in kvp.Value.GetType().GetMethods(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    CommandAttribute attr = method.GetCustomAttribute<CommandAttribute>();
+                    if (attr == null) continue;
+
+                    string text = (method.GetCustomAttribute<CommandUsageAttribute>()?.Usage ?? "")
+                                + " "
+                                + (method.GetCustomAttribute<CommandDescriptionAttribute>()?.Description ?? "");
+
+                    if (HasStandaloneWord(text, "on") && HasStandaloneWord(text, "off"))
+                        yield return ($"{kvp.Key} {attr.Name}", text.Trim());
+                }
+            }
+        }
+
+        private static bool HasStandaloneWord(string text, string word)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+
+            foreach (string token in text.Split(' ', '|', ',', '\t', '\n', '\r', '/'))
+            {
+                if (token.Trim().Equals(word, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
         public static CommandManager Instance { get; } = new();
 
         /// <summary>

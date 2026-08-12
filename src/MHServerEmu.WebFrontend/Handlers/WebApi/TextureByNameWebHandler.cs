@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
@@ -109,10 +109,19 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             lock (_indexLock)
             {
                 if (_texIndex != null) return _texIndex;
-                string indexPath = Path.GetFullPath("Cache/texIndex.json");
+                // Outside the repo and scoped per game version — see
+                // ClientAssetCachePaths. Previously this resolved to
+                // Cache/texIndex.json inside the server folder, i.e. inside a
+                // public repository tree.
+                string indexPath = ClientAssetCachePaths.TextureIndexPath;
                 if (!File.Exists(indexPath))
                 {
-                    Logger.Warn($"TexByName: index not found at {indexPath}");
+                    // Build it from the user's own client rather than leaving
+                    // every icon blank until someone runs a manual setup step.
+                    // Fire-and-forget: this request still misses, the next
+                    // one hits a warm index.
+                    Logger.Warn($"TexByName: index not found at {indexPath} — building it now");
+                    ClientAssetIndexBuilder.EnsureBuiltInBackground();
                     return null;
                 }
                 try
@@ -181,8 +190,22 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         private static async Task<bool> RunTexOneAsync(ClientAssetsConfig cfg, string upkPath, string leaf, string outPng)
         {
-            string exe = Path.GetFullPath(cfg.UpkExtractPath);
-            if (!File.Exists(exe)) { Logger.Warn($"TexByName: extractor not found at {exe}"); return false; }
+            // Resolve through ClientAssetToolPaths rather than trusting the
+            // configured path directly: the config default points at a
+            // Tools/UpkExtract folder next to the server, which doesn't exist
+            // in a repo build. The resolver also checks the repo's build
+            // output, which is where the exe actually lives during development.
+            //
+            // Without this the inline-mip path silently failed for every
+            // texture that isn't in the TFC manifest — i.e. all the hero
+            // banners — while /webapi/clientassets/status reported the tool as
+            // present, because status already used the resolver.
+            string exe = ClientAssetToolPaths.ResolveUpkExtract(cfg.UpkExtractPath);
+            if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe))
+            {
+                Logger.Warn($"TexByName: extractor not found (configured '{cfg.UpkExtractPath}', resolved '{exe}')");
+                return false;
+            }
 
             var psi = new ProcessStartInfo
             {

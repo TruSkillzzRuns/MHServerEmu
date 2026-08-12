@@ -112,7 +112,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
         private static string GetCachePath(string path, int w, int h)
         {
-            string root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            // Version-scoped: 1.48/1.52/1.53 ship different art under the
+            // same asset names, so one shared cache would serve whichever
+            // version happened to warm it first to all three.
+            string root = ClientAssetCachePaths.PortraitCacheDirectory;
             string keyInput = $"{path.ToLowerInvariant()}|{w}x{h}";
             string hash;
             using (var sha = SHA256.Create())
@@ -120,7 +123,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 byte[] digest = sha.ComputeHash(Encoding.UTF8.GetBytes(keyInput));
                 hash = Convert.ToHexString(digest).Substring(0, 24).ToLowerInvariant();
             }
-            return Path.Combine(root, "MHServerEmu", "portrait_tfc_cache", $"{hash}.png");
+            return Path.Combine(root, $"{hash}.png");
         }
     }
 }

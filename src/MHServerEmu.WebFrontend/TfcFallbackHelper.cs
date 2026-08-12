@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using MHServerEmu.Core.Config;
 using MHServerEmu.Core.Logging;
 
@@ -40,7 +40,8 @@ namespace MHServerEmu.WebFrontend
                 return null;
             }
 
-            string exe = Path.GetFullPath(cfg.TfcExtractPath ?? "");
+            // Resolved so a config written on another machine still works.
+            string exe = ClientAssetToolPaths.ResolveTfcExtract(cfg.TfcExtractPath);
             if (!File.Exists(exe))
             {
                 Logger.Warn($"TfcFallback[{contextLabel}]: TfcExtract not found at {exe}");

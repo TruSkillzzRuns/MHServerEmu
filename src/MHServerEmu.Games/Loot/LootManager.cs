@@ -625,6 +625,13 @@ namespace MHServerEmu.Games.Loot
 
             if (!Verify.IsNotNull(item)) return false;
 
+            // Auto-Stash at DROP time: matched crafting materials go straight to
+            // a stash tab instead of landing on the ground to be walked over.
+            // Returns false whenever the feature is off, the item doesn't match,
+            // or no tab has room — in which case the item stays exactly where it
+            // would have been. See Player.AutoStash.cs.
+            player?.TryAutoCollectLoot(item);
+
             return true;
         }
 

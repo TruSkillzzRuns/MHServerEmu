@@ -686,6 +686,50 @@ namespace MHServerEmu.Games.Entities.Items
             };
         }
 
+        /// <summary>
+        /// Sums this item's rolled + built-in affix contributions into
+        /// <paramref name="dest"/>, keyed by <see cref="PropertyId"/>.
+        ///
+        /// Exists because _affixProperties is private but the Gear Upgrade
+        /// Alert (Player.GearUpgradeAlert.cs) needs an item's real stat
+        /// contribution to compare a drop against equipped gear. Reads the
+        /// same per-affix PropertyCollections that get added as child
+        /// collections to the avatar on equip, so the numbers here are the
+        /// ones the item would actually grant.
+        ///
+        /// Values are read as float; integer-backed properties are picked up
+        /// through RawLong so counts aren't silently lost.
+        /// </summary>
+        public void AccumulateAffixStats(Dictionary<PropertyId, float> dest)
+        {
+            if (dest == null) return;
+
+            foreach (AffixPropertiesCopyEntry copyEntry in _affixProperties)
+            {
+                if (copyEntry.Properties == null)
+                    continue;
+
+                foreach (var kvp in copyEntry.Properties)
+                {
+                    PropertyId id = kvp.Key;
+
+                    PropertyInfo info = GameDatabase.PropertyInfoTable.LookupPropertyInfo(id.Enum);
+                    float value = info?.DataType switch
+                    {
+                        PropertyDataType.Real => kvp.Value.RawFloat,
+                        PropertyDataType.Integer => kvp.Value.RawLong,
+                        _ => 0f,
+                    };
+
+                    if (value == 0f)
+                        continue;
+
+                    dest.TryGetValue(id, out float existing);
+                    dest[id] = existing + value;
+                }
+            }
+        }
+
         public bool HasAffixInPosition(AffixPosition affixPosition)
         {
             foreach (AffixPropertiesCopyEntry copyEntry in _affixProperties)

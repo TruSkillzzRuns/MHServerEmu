@@ -2350,7 +2350,7 @@ namespace MHServerEmu.Games.Entities
             // OmegaDev2 DPS meter — record avatar-dealt damage (human hero and
             // phantoms alike) using the ACTUAL applied delta.
             if (adjustHealth < 0 && avatar != null && avatar.Id != Id && powerResults.TestFlag(PowerResultFlags.Hostile))
-                Powers.DpsMeter.RecordDamage(avatar, -adjustHealth);
+                Powers.DpsMeter.RecordDamage(avatar, -adjustHealth, powerResults.PowerPrototype);
 
             // Apply health change
             bool killed = false;

@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using MHServerEmu.Games.Entities;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.GameData;
+using MHServerEmu.Games.GameData.Prototypes;
 
 namespace MHServerEmu.Games.Powers
 {
@@ -38,14 +39,37 @@ namespace MHServerEmu.Games.Powers
             public long FirstMs;
             public long LastMs;
             public readonly Queue<(long Ms, long Amount)> Recent = new();
+
+            // Per-power breakdown, keyed by power prototype. Scoped INSIDE the
+            // entry so a hero and their phantoms never blur together — the
+            // meter already tracks each avatar separately and this must follow.
+            public readonly Dictionary<PrototypeId, PowerEntry> Powers = new();
+        }
+
+        private sealed class PowerEntry
+        {
+            public string Name;
+            public long Total;
+            public long Hits;
+            public long PeakHit;
+            public long CurrentBurstSum;
+            public long CurrentBurstMs;
+            public long LastMs;
+            public readonly Queue<(long Ms, long Amount)> Recent = new();
         }
 
         private static readonly object _lock = new();
         private static readonly Dictionary<ulong, Entry> _entries = new();   // key: avatar entity id
         private static long _resetMs = Environment.TickCount64;
 
-        /// <summary>Record damage dealt by an avatar (game thread).</summary>
-        public static void RecordDamage(Avatar attacker, long amount)
+        /// <summary>
+        /// Record damage dealt by an avatar (game thread).
+        /// <paramref name="powerProto"/> may be null — damage-over-time ticks
+        /// and environmental sources arrive without one, and those are folded
+        /// into an "(unattributed)" row rather than dropped, so the per-power
+        /// totals still add up to the combatant total.
+        /// </summary>
+        public static void RecordDamage(Avatar attacker, long amount, PowerPrototype powerProto = null)
         {
             if (amount <= 0 || attacker == null) return;
 
@@ -83,7 +107,43 @@ namespace MHServerEmu.Games.Powers
                 entry.LastMs = now;
                 entry.Recent.Enqueue((now, amount));
                 TrimRecent(entry, now);
+
+                RecordPowerDamage(entry, powerProto, amount, now);
             }
+        }
+
+        /// <summary>Attribute one damage event to a power. Caller holds the lock.</summary>
+        private static void RecordPowerDamage(Entry entry, PowerPrototype powerProto, long amount, long now)
+        {
+            PrototypeId key = powerProto?.DataRef ?? PrototypeId.Invalid;
+
+            if (entry.Powers.TryGetValue(key, out PowerEntry power) == false)
+            {
+                power = new PowerEntry
+                {
+                    Name = key != PrototypeId.Invalid ? LeafOf(key.GetName()) : "(unattributed)",
+                };
+                entry.Powers[key] = power;
+            }
+
+            power.Total += amount;
+            power.Hits++;
+
+            // Same burst grouping as the combatant total: one cast can resolve
+            // as many RecordDamage calls (AOE targets, beam ticks, bounces), so
+            // without this a peak reads as a single target's share.
+            if (now - power.CurrentBurstMs <= PeakBurstWindowMs)
+                power.CurrentBurstSum += amount;
+            else
+                power.CurrentBurstSum = amount;
+            power.CurrentBurstMs = now;
+            if (power.CurrentBurstSum > power.PeakHit) power.PeakHit = power.CurrentBurstSum;
+
+            power.LastMs = now;
+            power.Recent.Enqueue((now, amount));
+
+            while (power.Recent.Count > 0 && now - power.Recent.Peek().Ms > WindowLongMs)
+                power.Recent.Dequeue();
         }
 
         public static void Reset()
@@ -104,6 +164,22 @@ namespace MHServerEmu.Games.Powers
             public double Dps10 { get; set; }
             public double Dps60 { get; set; }
             public double DpsOverall { get; set; }
+            public long SecondsSinceLastHit { get; set; }
+
+            /// <summary>Per-power breakdown for this combatant, biggest first.</summary>
+            public List<PowerSnapshot> Powers { get; set; } = new();
+        }
+
+        public sealed class PowerSnapshot
+        {
+            public string Name { get; set; }
+            public long Total { get; set; }
+            public long Hits { get; set; }
+            public long PeakHit { get; set; }
+            public double AvgHit { get; set; }
+            /// <summary>Share of this combatant's total damage, 0-100.</summary>
+            public double PercentOfTotal { get; set; }
+            public double Dps60 { get; set; }
             public long SecondsSinceLastHit { get; set; }
         }
 
@@ -145,12 +221,43 @@ namespace MHServerEmu.Games.Powers
                         Dps60 = sum60 / (WindowLongMs / 1000.0),
                         DpsOverall = entry.Total / activeSeconds,
                         SecondsSinceLastHit = (now - entry.LastMs) / 1000,
+                        Powers = BuildPowerSnapshots(entry, now),
                     });
                 }
             }
 
             list.Sort((a, b) => b.Total.CompareTo(a.Total));
             return list;
+        }
+
+        /// <summary>Caller holds the lock.</summary>
+        private static List<PowerSnapshot> BuildPowerSnapshots(Entry entry, long now)
+        {
+            var powers = new List<PowerSnapshot>(entry.Powers.Count);
+
+            foreach (PowerEntry power in entry.Powers.Values)
+            {
+                while (power.Recent.Count > 0 && now - power.Recent.Peek().Ms > WindowLongMs)
+                    power.Recent.Dequeue();
+
+                long sum60 = 0;
+                foreach (var (_, amount) in power.Recent) sum60 += amount;
+
+                powers.Add(new PowerSnapshot
+                {
+                    Name = power.Name,
+                    Total = power.Total,
+                    Hits = power.Hits,
+                    PeakHit = power.PeakHit,
+                    AvgHit = power.Hits > 0 ? (double)power.Total / power.Hits : 0,
+                    PercentOfTotal = entry.Total > 0 ? power.Total * 100.0 / entry.Total : 0,
+                    Dps60 = sum60 / (WindowLongMs / 1000.0),
+                    SecondsSinceLastHit = (now - power.LastMs) / 1000,
+                });
+            }
+
+            powers.Sort((a, b) => b.Total.CompareTo(a.Total));
+            return powers;
         }
 
         public static long SecondsSinceReset => (Environment.TickCount64 - _resetMs) / 1000;
