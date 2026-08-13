@@ -52,7 +52,7 @@ namespace MHServerEmu.Games.Entities
         /// there is nothing to opt into, and the data has to already be there
         /// the moment someone asks "was that spot any good".
         /// </summary>
-        private void RecordFarmDrop(Item item, string verdict)
+        private void RecordFarmDrop(Item item, string verdict, string replacesItemName)
         {
             if (item == null) return;
 
@@ -132,7 +132,8 @@ namespace MHServerEmu.Games.Entities
                 rarityName,
                 verdict,
                 iconPath,
-                specialTier);
+                specialTier,
+                replacesItemName);
         }
 
         /// <summary>
@@ -144,8 +145,16 @@ namespace MHServerEmu.Games.Entities
         /// mark the drop visually — a chat line alone tells you something
         /// dropped but not which row it was.
         /// </summary>
-        private string CheckGearUpgrade(Item item)
+        /// <param name="replacesItemName">
+        /// Set to the equipped item's display name whenever the drop is an
+        /// upgrade over something you're actually wearing (empty slot sets
+        /// this to null instead — there's nothing to name). Lets the Farm
+        /// Session tool say "replaces: X" instead of just "UPGRADE".
+        /// </param>
+        private string CheckGearUpgrade(Item item, out string replacesItemName)
         {
+            replacesItemName = null;
+
             if (item == null) return "";
 
             Avatar avatar = CurrentAvatar;
@@ -172,7 +181,7 @@ namespace MHServerEmu.Games.Entities
             // against an arbitrary equipped item, so a drop that beat your worst
             // artifact and a drop that lost to your best both got the same
             // verdict. The weakest is the one you would actually replace.
-            Item equipped = FindWeakestEquippedInSlotFamily(avatar, avatarProto, slot);
+            Item equipped = FindWeakestEquippedInSlotFamily(item, avatar, avatarProto, slot);
 
             int newTier = GetRarityTier(item);
             int newLevel = item.Properties[PropertyEnum.ItemLevel];
@@ -213,6 +222,7 @@ namespace MHServerEmu.Games.Entities
                                 + $"outranks {ResolveItemName(equipped)} ({RarityName(equipped)} lv{oldLevel}). "
                                 + "Stats couldn't be compared — check the tooltip.";
                         tag = "upgrade";
+                        replacesItemName = ResolveItemName(equipped);
                     }
                     else return "no";
                 }
@@ -223,6 +233,7 @@ namespace MHServerEmu.Games.Entities
                     message = $"🟢 UPGRADE — {itemName} (lv{newLevel}) for {SlotName(slot)} · up on {cmp.Better} stat(s), down on {cmp.Worse}. "
                             + $"Replaces {ResolveItemName(equipped)} (lv{oldLevel}).";
                     tag = "upgrade";
+                    replacesItemName = ResolveItemName(equipped);
                 }
                 else if (cmp.Comparable && (cmp.Better > 0 || cmp.Worse > 0))
                 {
@@ -238,6 +249,7 @@ namespace MHServerEmu.Games.Entities
                         message = $"🟢 UPGRADE — {itemName} ({RarityName(item)} lv{newLevel}) for {SlotName(slot)} · "
                                 + $"beats {ResolveItemName(equipped)} ({RarityName(equipped)} lv{oldLevel}).";
                         tag = "upgrade";
+                        replacesItemName = ResolveItemName(equipped);
                     }
                     else
                     {
@@ -305,11 +317,20 @@ namespace MHServerEmu.Games.Entities
 
         /// <summary>
         /// Returns the WEAKEST equipped item in the same slot family, or
-        /// <see langword="null"/> when the family has a free slot.
+        /// <see langword="null"/> when the family has an UNLOCKED free slot.
         ///
-        /// A free slot returns null on purpose: if you have three artifacts in
-        /// four slots, the next artifact costs you nothing, so it is an upgrade
-        /// regardless of its stats.
+        /// A free slot returns null on purpose: if you have three artifacts
+        /// unlocked and two equipped, the next artifact costs you nothing, so
+        /// it is an upgrade regardless of its stats. Capacity is read live per
+        /// assignment (Inventory.GetCapacity(), same call the equip path
+        /// itself uses) rather than a hardcoded "4 artifact slots" — artifact
+        /// (and some gear) slots unlock progressively via
+        /// AvatarEquipInventoryAssignmentPrototype.UnlocksAtCharacterLevel,
+        /// same check Avatar.GetEquipmentInventoryAvailableStatus() uses. A
+        /// slot you haven't unlocked yet doesn't exist for this character —
+        /// counting it as "empty and ready" made a drop read as a free
+        /// upgrade into a slot you literally cannot equip anything into
+        /// yet, while leveling.
         ///
         /// "Weakest" is (rarity tier, item level) — deliberately not the affix
         /// comparison, because that is not a total order (A can beat B, B beat
@@ -317,36 +338,58 @@ namespace MHServerEmu.Games.Entities
         /// WHICH item to compare against; the real verdict is still the affix
         /// comparison against the item chosen here.
         /// </summary>
-        private Item FindWeakestEquippedInSlotFamily(Avatar avatar, AvatarPrototype avatarProto, EquipmentInvUISlot slot)
+        private Item FindWeakestEquippedInSlotFamily(Item item, Avatar avatar, AvatarPrototype avatarProto, EquipmentInvUISlot slot)
         {
             if (avatarProto.EquipmentInventories == null) return null;
 
             string family = SlotFamily(slot);
+            bool isArtifact = family == "artifact";
 
             Item weakest = null;
             int weakestTier = int.MaxValue;
             int weakestLevel = int.MaxValue;
             int occupied = 0;
+            int unlockedCapacity = 0;
+
+            // An equipped item the drop legally CANNOT sit alongside. If one
+            // exists it is the only thing this drop could ever replace, so it
+            // wins over both the free-slot shortcut and the weakest-item pick.
+            Item blocker = null;
 
             foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
             {
                 if (assignment?.Inventory == null) continue;
+                if (SlotFamily(assignment.UISlot) != family) continue;
+
+                // Still leveling — this slot isn't available yet, so it does
+                // NOT count as free capacity. Skip it entirely rather than
+                // reading its (empty) inventory.
+                if (avatar.CharacterLevel < assignment.UnlocksAtCharacterLevel) continue;
 
                 Inventory inv = avatar.GetInventoryByRef(assignment.Inventory.DataRef);
                 if (inv == null) continue;
+
+                unlockedCapacity += inv.GetCapacity();
 
                 foreach (var entry in inv)
                 {
                     Item equipped = Game.EntityManager.GetEntity<Item>(entry.Id);
                     if (equipped == null) continue;
 
-                    ItemPrototype equippedProto = equipped.ItemPrototype;
-                    if (equippedProto == null) continue;
-
-                    EquipmentInvUISlot equippedSlot = equippedProto.GetInventorySlotForAgent(avatarProto);
-                    if (SlotFamily(equippedSlot) != family) continue;
-
                     occupied++;
+
+                    // Mirrors Avatar.ValidateEquipmentChange(): two of the SAME
+                    // artifact can never be worn together (InvalidTwoOfSameArtifact,
+                    // matched on PrototypeDataRef), and keyword-conflicting items
+                    // are rejected by CanBeEquippedWithItem(). In either case a
+                    // free slot elsewhere is irrelevant — the drop can only get
+                    // equipped by displacing THIS item, so it has to beat it.
+                    if (blocker == null)
+                    {
+                        bool sameArtifact = isArtifact && item.PrototypeDataRef == equipped.PrototypeDataRef;
+                        if (sameArtifact || item.CanBeEquippedWithItem(equipped) == false)
+                            blocker = equipped;
+                    }
 
                     int tier = GetRarityTier(equipped);
                     int level = equipped.Properties[PropertyEnum.ItemLevel];
@@ -360,25 +403,14 @@ namespace MHServerEmu.Games.Entities
                 }
             }
 
-            // Family has room — treat it as an empty slot.
-            if (occupied < SlotFamilyCapacity(family)) return null;
+            // Can't be worn next to something already equipped — that item is
+            // the forced comparison target, empty slots notwithstanding.
+            if (blocker != null) return blocker;
+
+            // Room in an unlocked slot — treat it as an empty slot.
+            if (occupied < unlockedCapacity) return null;
 
             return weakest;
-        }
-
-        /// <summary>
-        /// How many items a family holds. Only the multi-slot families need an
-        /// entry; everything else is a single slot.
-        /// </summary>
-        private static int SlotFamilyCapacity(string family)
-        {
-            return family switch
-            {
-                "artifact" => 4,
-                // Every other slot holds exactly one item, so it is "full" as
-                // soon as anything is in it.
-                _ => 1,
-            };
         }
 
         private readonly struct GearComparison

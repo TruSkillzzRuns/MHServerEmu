@@ -59,6 +59,13 @@ namespace MHServerEmu.Games.Loot
             /// <summary>"" | "upgrade" | "sidegrade" | "no" — from the gear alert comparison.</summary>
             public string Verdict;
             /// <summary>
+            /// Display name of the equipped item this drop upgrades, when
+            /// Verdict is "upgrade" against a real (non-empty) slot. Null for
+            /// every other verdict, and for an upgrade into an empty slot —
+            /// there's nothing it replaced.
+            /// </summary>
+            public string ReplacesItemName;
+            /// <summary>
             /// Icon asset name, for the client to fetch from its OWN local game
             /// files via /webapi/portrait or /webapi/texbyname. Only the name
             /// travels — no image data is stored or shipped here.
@@ -88,7 +95,7 @@ namespace MHServerEmu.Games.Loot
         public static void RecordDrop(ulong playerId, string playerName, PrototypeId itemProtoRef,
             PrototypeId rarityProtoRef, int itemLevel, PrototypeId regionProtoRef, long nowMs,
             string itemDisplayName = null, string rarityDisplayName = null, string verdict = null,
-            string iconPath = null, int specialTier = 0)
+            string iconPath = null, int specialTier = 0, string replacesItemName = null)
         {
             if (playerId == 0 || itemProtoRef == PrototypeId.Invalid)
                 return;
@@ -148,6 +155,7 @@ namespace MHServerEmu.Games.Loot
                     Ms = nowMs,
                     Verdict = verdict ?? "",
                     IconPath = iconPath ?? "",
+                    ReplacesItemName = replacesItemName,
                 });
 
                 while (session.Recent.Count > MaxRecent)
@@ -205,6 +213,7 @@ namespace MHServerEmu.Games.Loot
                         rec.RegionName,
                         rec.Verdict,
                         rec.IconPath,
+                        rec.ReplacesItemName,
                         AgeSeconds = Math.Max(0, (nowMs - rec.Ms) / 1000),
                     });
                 }

@@ -278,9 +278,9 @@ namespace MHServerEmu.Games.Entities
             // Compare first: the verdict is stored on the drop so the Farm
             // Session tool can mark the row. A chat line alone tells you
             // something good dropped but not which one it was.
-            string verdict = CheckGearUpgrade(item);
+            string verdict = CheckGearUpgrade(item, out string replacesItemName);
 
-            RecordFarmDrop(item, verdict);
+            RecordFarmDrop(item, verdict, replacesItemName);
 
             if (autoStashed)
                 OnItemAutoStashed();
