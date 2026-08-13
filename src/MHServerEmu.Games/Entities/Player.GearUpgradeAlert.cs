@@ -205,64 +205,37 @@ namespace MHServerEmu.Games.Entities
                 int oldTier = GetRarityTier(equipped);
                 int oldLevel = equipped.Properties[PropertyEnum.ItemLevel];
 
-                GearComparison cmp = CompareAffixStats(item, equipped);
+                // Stat accumulation stays here (it needs live Item entities);
+                // the decision itself lives in GearVerdict, where it can be
+                // tested without a Player, an Avatar or a loaded GameDatabase.
+                Dictionary<PropertyId, float> newStats = new();
+                Dictionary<PropertyId, float> oldStats = new();
+                item.AccumulateAffixStats(newStats);
+                equipped.AccumulateAffixStats(oldStats);
 
-                // A stat comparison is only meaningful when BOTH items actually
-                // exposed stats. AccumulateAffixStats reads rolled affixes only,
-                // so an item whose power is built into its prototype accumulates
-                // nothing and reads as empty — which is how a lv1 artifact with
-                // one rolled affix was reported as "better on 1, worse on none"
-                // against a lv63 artifact. When either side is blank the affix
-                // verdict is not evidence, so fall through to rarity/level.
-                if (cmp.Comparable == false)
+                GearVerdict.Comparison cmp = GearVerdict.CompareStats(newStats, oldStats);
+                GearVerdict.Kind verdict = GearVerdict.Decide(cmp, newTier, oldTier, newLevel, oldLevel);
+
+                switch (verdict)
                 {
-                    if (newTier > oldTier || (newTier == oldTier && newLevel > oldLevel))
-                    {
+                    case GearVerdict.Kind.UpgradeByStats:
+                        message = $"🟢 UPGRADE — {itemName} (lv{newLevel}) for {SlotName(slot)} · up on {cmp.Better} stat(s), down on {cmp.Worse}. "
+                                + $"Replaces {ResolveItemName(equipped)} (lv{oldLevel}).";
+                        tag = "upgrade";
+                        replacesItemName = ResolveItemName(equipped);
+                        break;
+
+                    case GearVerdict.Kind.UpgradeByRank:
                         message = $"🟢 UPGRADE — {itemName} ({RarityName(item)} lv{newLevel}) for {SlotName(slot)} · "
                                 + $"outranks {ResolveItemName(equipped)} ({RarityName(equipped)} lv{oldLevel}). "
                                 + "Stats couldn't be compared — check the tooltip.";
                         tag = "upgrade";
                         replacesItemName = ResolveItemName(equipped);
-                    }
-                    else return "no";
-                }
-                else if (cmp.Dominates)
-                {
-                    // Strictly better in the real sense: every stat that
-                    // changed moved up, none moved down.
-                    message = $"🟢 UPGRADE — {itemName} (lv{newLevel}) for {SlotName(slot)} · up on {cmp.Better} stat(s), down on {cmp.Worse}. "
-                            + $"Replaces {ResolveItemName(equipped)} (lv{oldLevel}).";
-                    tag = "upgrade";
-                    replacesItemName = ResolveItemName(equipped);
-                }
-                else if (cmp.Comparable && (cmp.Better > 0 || cmp.Worse > 0))
-                {
-                    // Compared cleanly and lost. No middle verdict by design.
-                    return "no";
-                }
-                else if (cmp.Better == 0 && cmp.Worse == 0)
-                {
-                    // No affix data to separate them — fall back to the cheap
-                    // ordering so an obviously better drop still gets flagged.
-                    if (newTier > oldTier || (newTier == oldTier && newLevel > oldLevel))
-                    {
-                        message = $"🟢 UPGRADE — {itemName} ({RarityName(item)} lv{newLevel}) for {SlotName(slot)} · "
-                                + $"beats {ResolveItemName(equipped)} ({RarityName(equipped)} lv{oldLevel}).";
-                        tag = "upgrade";
-                        replacesItemName = ResolveItemName(equipped);
-                    }
-                    else
-                    {
-                        // Equal or worse — no chat noise, but the row is still
-                        // tagged so the tool can say "checked, not better"
-                        // rather than looking the same as a crafting mat.
+                        break;
+
+                    default:
+                        // Compared and lost. No middle verdict by design.
                         return "no";
-                    }
-                }
-                else
-                {
-                    // Worse on every changed stat — quiet in chat, still tagged.
-                    return "no";
                 }
             }
 
@@ -411,89 +384,6 @@ namespace MHServerEmu.Games.Entities
             if (occupied < unlockedCapacity) return null;
 
             return weakest;
-        }
-
-        private readonly struct GearComparison
-        {
-            public readonly int Better;
-            public readonly int Worse;
-
-            /// <summary>
-            /// Both items exposed at least one stat, so the counts below mean
-            /// something. False when either side accumulated nothing — see the
-            /// note in CheckGearUpgrade about prototype-granted stats.
-            /// </summary>
-            public readonly bool Comparable;
-
-            /// <summary>
-            /// Net stat win. Deliberately "more stats up than down" rather than
-            /// "up on everything": requiring a clean sweep meant almost every
-            /// real roll landed in a middle bucket, which is not a verdict — an
-            /// item either replaces what you're wearing or it doesn't.
-            ///
-            /// Honest limit: this counts stats, it can't weigh them, so a big
-            /// gain on one stat against small losses on two reads as "no". That
-            /// is a build-dependent judgement no server-side rule can make.
-            /// </summary>
-            public bool Dominates => Comparable && Better > Worse;
-
-            public GearComparison(int better, int worse, bool comparable)
-            {
-                Better = better;
-                Worse = worse;
-                Comparable = comparable;
-            }
-        }
-
-        /// <summary>
-        /// Compares two items stat-by-stat over the UNION of properties either
-        /// one grants, so nothing is missed because it only appears on one
-        /// side (a stat absent from an item counts as 0 for that item).
-        ///
-        /// Deliberately weight-free: no attempt is made to decide that N
-        /// damage is worth M health, because that depends on the build and any
-        /// weighting would be a guess dressed up as a number. Instead this
-        /// counts stats up vs stats down, which supports an objective
-        /// "better on every changed stat" verdict.
-        ///
-        /// Known limit: this treats every property as higher-is-better, which
-        /// holds for the beneficial affixes items actually roll but would
-        /// misread a hypothetical penalty affix.
-        /// </summary>
-        private static GearComparison CompareAffixStats(Item newItem, Item equipped)
-        {
-            Dictionary<PropertyId, float> newStats = new();
-            Dictionary<PropertyId, float> oldStats = new();
-
-            newItem.AccumulateAffixStats(newStats);
-            equipped.AccumulateAffixStats(oldStats);
-
-            int better = 0;
-            int worse = 0;
-
-            HashSet<PropertyId> allKeys = new(newStats.Keys);
-            allKeys.UnionWith(oldStats.Keys);
-
-            foreach (PropertyId id in allKeys)
-            {
-                newStats.TryGetValue(id, out float newValue);
-                oldStats.TryGetValue(id, out float oldValue);
-
-                // Relative epsilon — percentage affixes are tiny absolute
-                // numbers while flat stats are large, so a fixed threshold
-                // would either ignore real percentage gains or treat float
-                // noise on big numbers as a difference.
-                float scale = Math.Max(Math.Abs(newValue), Math.Abs(oldValue));
-                float epsilon = Math.Max(0.0001f, scale * 0.001f);
-
-                if (newValue > oldValue + epsilon) better++;
-                else if (newValue < oldValue - epsilon) worse++;
-            }
-
-            // An empty side means "no data", not "zero stats" — see GearComparison.
-            bool comparable = newStats.Count > 0 && oldStats.Count > 0;
-
-            return new GearComparison(better, worse, comparable);
         }
 
         private static int GetRarityTier(Item item)
