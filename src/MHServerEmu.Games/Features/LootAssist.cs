@@ -317,15 +317,12 @@ namespace MHServerEmu.Games.Features
         /// OmegaDev2 web console — that path returns its result string to the
         /// web caller, so without this the player sees nothing on screen.
         /// </summary>
-        public void SendAutoStashBanner(string text)
-        {
-            if (_player.PlayerConnection == null) return;
-
-            var msg = new Core.Network.ServiceMessage.GroupingManagerMetagameMessage(
-                _player.PlayerConnection.PlayerDbId, text, showSender: false);
-            Core.Network.ServerManager.Instance.SendMessageToService(
-                Core.Network.GameServiceType.GroupingManager, msg);
-        }
+        /// <summary>
+        /// Single unadorned chat line. Delegates to Player's banner primitive
+        /// rather than re-implementing the message plumbing — this used to be a
+        /// second copy of Player.SendBannerLine.
+        /// </summary>
+        public void SendAutoStashBanner(string text) => _player.SendBannerLine(text);
 
 
         private static readonly Logger GearAlertLogger = LogManager.CreateLogger();

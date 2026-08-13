@@ -335,22 +335,6 @@ namespace MHServerEmu.Games.Entities
         /// manager chat channel. A blank spacer line above the banner and
         /// a divider line below help it stand out in the combat log.
         /// </summary>
-        private void SendBannerLines(string text)
-        {
-            if (PlayerConnection == null) return;
-            const string divider = "━━━━━━━━━━━━━━━━━━━━";
-            SendBannerLine(divider);
-            SendBannerLine(text);
-            SendBannerLine(divider);
-        }
-
-        private void SendBannerLine(string line)
-        {
-            var msg = new MHServerEmu.Core.Network.ServiceMessage.GroupingManagerMetagameMessage(
-                PlayerConnection.PlayerDbId, line, showSender: false);
-            MHServerEmu.Core.Network.ServerManager.Instance.SendMessageToService(
-                MHServerEmu.Core.Network.GameServiceType.GroupingManager, msg);
-        }
 
         /// <summary>
         /// Hub check — RegionBehavior.Town covers every hub / social /
