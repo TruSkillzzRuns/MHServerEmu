@@ -177,24 +177,20 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         if (string.IsNullOrWhiteSpace(displayName)) displayName = null;
                     }
 
+                    // Costumes carry their OWN icon fields and do not use the
+                    // generic ItemPrototype.IconPath, which is the shared
+                    // "UNDER CONSTRUCTION" placeholder for every costume in the
+                    // data. Preference order is most-specific first: the
+                    // portrait is the square inventory icon, full-body is the
+                    // tall character art, store is the shop tile.
+                    AssetId costumeIconAssetId = FirstNonPlaceholder(
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
-                    AssetId costumeIconAssetId = costumeProto.IconPathHiRes != 0 ? costumeProto.IconPathHiRes : costumeProto.IconPath;
-
-                    // 1.53 points many prototypes' HiRes icon at
-                    // MarvelUIIcons_HD.Placeholder (the "UNDER CONSTRUCTION"
-                    // art) while the plain IconPath still holds the real
-                    // picture; 1.52 has real art in both. Taking HiRes
-                    // unconditionally is what made 1.53 costumes render as
-                    // placeholders. Same guard as BossRosterWebHandler.
-                    if (costumeIconAssetId != 0 && costumeProto.IconPath != 0 && costumeIconAssetId != costumeProto.IconPath)
-                    {
-                        string hiResNameB = GameDatabase.GetAssetName(costumeIconAssetId);
-                        if (hiResNameB != null && hiResNameB.Contains("Placeholder", StringComparison.OrdinalIgnoreCase))
-                            costumeIconAssetId = costumeProto.IconPath;
-                    }
-#else
-                    AssetId costumeIconAssetId = costumeProto.IconPath;
+                        costumeProto.PortraitIconPathHiRes,
 #endif
+                        costumeProto.PortraitIconPath,
+                        costumeProto.FullBodyIconPath,
+                        costumeProto.StoreIconPath,
+                        costumeProto.IconPath);
 
                     items.Add(new ItemCatalogEntry
                     {
@@ -329,6 +325,30 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             if (leaf.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
                 leaf = leaf[..^suffix.Length];
             return leaf;
+        }
+        /// <summary>
+        /// Returns the first asset that is set AND is not the shared
+        /// "UNDER CONSTRUCTION" placeholder, falling back to the first set
+        /// asset if every candidate is a placeholder — a placeholder still
+        /// beats no icon at all.
+        /// </summary>
+        private static AssetId FirstNonPlaceholder(params AssetId[] candidates)
+        {
+            AssetId firstSet = 0;
+
+            foreach (AssetId candidate in candidates)
+            {
+                if (candidate == 0) continue;
+                if (firstSet == 0) firstSet = candidate;
+
+                string name = GameDatabase.GetAssetName(candidate);
+                if (name != null && name.Contains("Placeholder", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                return candidate;
+            }
+
+            return firstSet;
         }
     }
 
@@ -499,5 +519,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
         public string Avatar { get; set; }
         public string IconPath { get; set; }
         public bool IsUnique { get; set; }
+
+
     }
 }

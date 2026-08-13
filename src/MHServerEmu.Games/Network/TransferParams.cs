@@ -15,6 +15,8 @@ namespace MHServerEmu.Games.Network
     /// </summary>
     public class TransferParams
     {
+        private static readonly Logger Logger = LogManager.CreateLogger();
+
         public PlayerConnection PlayerConnection { get; }
 
         public ulong DestRegionId { get; set; }
@@ -84,8 +86,44 @@ namespace MHServerEmu.Games.Network
             if (FindStartLocationFromRegionStartTarget(region, ref position, ref orientation))
                 return true;
 
-            // Fall back to the center of the first cell in the start area if all else fails (this is very bad and should never really happen!)
+            // Last resort. Documented as "should never really happen", but
+            // AbandonedAIMRegion reaches here on EVERY entry, so it has to
+            // produce a genuinely usable spot rather than a nominal one.
+            //
+            // The original fallback used the first cell's geometric centre.
+            // For that region the start area has a SINGLE cell spanning 2304
+            // units and centred on the origin, so the fallback was (0,0,0) -
+            // inside a wall. The player spawned embedded in scenery and
+            // movement powers failed with TargetPositionInvalid.
+            //
+            // Avatar.AdjustStartPositionIfNeeded can't rescue that: it only
+            // probes a 64-unit radius, which is nothing against an area that
+            // size. Search the whole area instead, straight through
+            // ChooseRandomPositionNearPoint with a radius derived from the
+            // area's own bounds.
             position = startArea.Cells.First().Value.RegionBounds.Center;
+
+            Bounds bounds = new();
+            bounds.InitializeCapsule(64f, 128f, BoundsCollisionType.Blocking, BoundsFlags.None);
+            bounds.Center = position;
+
+            // Half the diagonal of the area's footprint covers every corner of
+            // it from the centre, whatever the shape.
+            float searchRadius = MathF.Max(startArea.RegionBounds.Width, startArea.RegionBounds.Length);
+
+            if (region.ChooseRandomPositionNearPoint(ref bounds, Navi.PathFlags.Walk,
+                    PositionCheckFlags.CanBeBlockedEntity,
+                    BlockingCheckFlags.CheckGroundMovementPowers | BlockingCheckFlags.CheckLanding,
+                    0f, searchRadius, out Vector3 walkable))
+            {
+                position = walkable;
+            }
+            else
+            {
+                Logger.Warn($"FindStartLocation(): No walkable position within {searchRadius} of " +
+                            $"[{position}] in [{region}]; using it as-is.");
+            }
+
             Verify.IsTrue(false, LoggingLevel.Error, $"Failed to find valid start location! region=[{region}], fallbackPosition=[{position}]");
             return true;
         }

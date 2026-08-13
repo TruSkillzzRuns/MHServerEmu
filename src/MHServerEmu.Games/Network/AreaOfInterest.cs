@@ -24,6 +24,8 @@ namespace MHServerEmu.Games.Network
 {
     public class AreaOfInterest
     {
+        private static readonly Logger Logger = LogManager.CreateLogger();
+
         public const float UpdateDistanceSquared = 256f * 256f;
         private const float ViewExpansionDistance = 600.0f;
         private const float InvisibleExpansionDistance = 1200.0f;
@@ -309,6 +311,22 @@ namespace MHServerEmu.Games.Network
                 player.BeginTeleport(regionId, startPosition.Value, startOrientation != null ? startOrientation.Value : Orientation.Zero);
 
                 Area startArea = Region.GetAreaAtPosition(startPosition.Value);
+
+                // Never strand the client. Returning here skips AddArea and
+                // Update, so no area or cell data is ever sent and the player
+                // sits on a loading screen until they kill the game - the
+                // symptom reported 2026-08-13 when teleporting out of Avengers
+                // Tower. TransferParams now rejects positions that don't
+                // resolve to an area, but this is the last line of defence for
+                // any other path that produces one: an approximate area beats
+                // an infinite load.
+                if (startArea == null)
+                {
+                    startArea = Region.GetStartArea();
+                    Logger.Warn($"SetRegion(): No area at start position {startPosition.Value} in {Region}, " +
+                                $"falling back to start area [{startArea}]");
+                }
+
                 if (!Verify.IsNotNull(startArea)) return;
                 AddArea(startArea, true);
 
