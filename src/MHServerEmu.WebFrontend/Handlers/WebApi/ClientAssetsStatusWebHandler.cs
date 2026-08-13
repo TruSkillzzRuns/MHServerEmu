@@ -1,4 +1,4 @@
-// GET /webapi/clientassets/status
+﻿// GET /webapi/clientassets/status
 //
 // Reports whether this server can resolve client artwork, and why not if it
 // can't. Exists because the OmegaDev2 Setup page previously inferred that
@@ -26,10 +26,18 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
             var cfg = ConfigManager.Instance.GetConfig<ClientAssetsConfig>();
 
             string cooked = cfg?.CookedPCConsolePath ?? "";
-            bool cookedOk = string.IsNullOrWhiteSpace(cooked) == false && Directory.Exists(cooked);
 
-            string upk = ClientAssetToolPaths.ResolveUpkExtract(cfg?.UpkExtractPath);
-            string tfc = ClientAssetToolPaths.ResolveTfcExtract(cfg?.TfcExtractPath);
+            // Cached: this endpoint is polled every few seconds by the app's
+            // server-discovery loop, and the three probes below are all
+            // filesystem work whose answers change about never.
+            //
+            // Directory.Exists on the client path can hit a different physical
+            // drive (mine sits on E: while the server runs from C:) and the
+            // tool resolvers walk repo build directories hunting for the exe.
+            // Uncached, this handler measured 2.4-2.8 SECONDS on 1.52 versus
+            // under 1ms on the other two, which blew past the discovery
+            // client's timeout and made a healthy server flap online/offline.
+            (bool cookedOk, string upk, string tfc) = GetProbesCached(cfg, cooked);
 
             bool indexBuilt = ClientAssetIndexBuilder.IndexExists;
 
@@ -69,5 +77,40 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 },
             });
         }
+
+        // ---- probe cache -------------------------------------------------
+
+        private static readonly object s_probeLock = new();
+        private static string s_probeKey;
+        private static (bool CookedOk, string Upk, string Tfc) s_probeValue;
+        private static DateTime s_probeAtUtc = DateTime.MinValue;
+
+        private static readonly TimeSpan ProbeTtl = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// Returns the filesystem probe results, recomputing at most once per
+        /// <see cref="ProbeTtl"/>. Keyed on the configured paths so editing
+        /// Config.ini and re-checking still reflects the change promptly.
+        /// </summary>
+        private static (bool CookedOk, string Upk, string Tfc) GetProbesCached(ClientAssetsConfig cfg, string cooked)
+        {
+            string key = $"{cooked}|{cfg?.UpkExtractPath}|{cfg?.TfcExtractPath}";
+
+            lock (s_probeLock)
+            {
+                if (s_probeKey == key && DateTime.UtcNow - s_probeAtUtc < ProbeTtl)
+                    return s_probeValue;
+
+                bool cookedOk = string.IsNullOrWhiteSpace(cooked) == false && Directory.Exists(cooked);
+                string upk = ClientAssetToolPaths.ResolveUpkExtract(cfg?.UpkExtractPath);
+                string tfc = ClientAssetToolPaths.ResolveTfcExtract(cfg?.TfcExtractPath);
+
+                s_probeKey = key;
+                s_probeValue = (cookedOk, upk, tfc);
+                s_probeAtUtc = DateTime.UtcNow;
+                return s_probeValue;
+            }
+        }
+
     }
 }
