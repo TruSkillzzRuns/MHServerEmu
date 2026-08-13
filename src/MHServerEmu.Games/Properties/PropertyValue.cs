@@ -78,21 +78,22 @@ namespace MHServerEmu.Games.Properties
         /// </remarks>
         public PropertyValue(Vector3 vector)
         {
-            ulong x = (ulong)vector.X & 0x1FFFFF;
-            if (vector.X < 0)
-                x |= 0x10000;
-            x <<= 42;
+            // Three signed 21-bit fields packed into one long. Casting the
+            // rounded coordinate to long first gives two's complement for free,
+            // so masking to 21 bits already carries the sign - no separate sign
+            // flag is needed.
+            //
+            // The previous implementation set a sign bit of 0x10000 (bit 16),
+            // but the sign bit of a 21-bit field is 0x100000 (bit 20); it also
+            // OR'd the Z sign into x, which had already been shifted left 42.
+            // Every negative coordinate came back corrupted - live symptom was
+            // a bodyslider return position of (-2031616, -2031616, 55), i.e.
+            // -0x1F0000, which hung the client on a loading screen.
+            ulong x = (ulong)(long)MathF.Round(vector.X) & 0x1FFFFF;
+            ulong y = (ulong)(long)MathF.Round(vector.Y) & 0x1FFFFF;
+            ulong z = (ulong)(long)MathF.Round(vector.Z) & 0x1FFFFF;
 
-            ulong y = (ulong)vector.Y & 0x1FFFFF;
-            if (vector.Y < 0)
-                y |= 0x10000;
-            y <<= 21;
-
-            ulong z = (ulong)vector.Z & 0x1FFFFF;
-            if (vector.Z < 0)
-                x |= 0x10000;
-
-            RawLong = (long)(x | y | z);
+            RawLong = (long)((x << 42) | (y << 21) | z);
         }
 
         // Conversion to supported types
@@ -149,19 +150,9 @@ namespace MHServerEmu.Games.Properties
         {
             ulong raw = (ulong)RawLong;
 
-            int x = (int)((raw >> 42) & 0x1FFFFF);
-            if ((x & 0x10000) != 0)
-                x = (int)((raw >> 42) | 0xFFE00000);
-
-            int y = (int)((raw >> 21) & 0x1FFFFF);
-            if ((y & 0x10000) != 0)
-                y = (int)((raw >> 21) | 0xFFE00000);
-
-            int z = (int)(raw & 0x1FFFFF);
-            if ((z & 0x10000) != 0)
-                z = (int)(raw | 0xFFE00000);
-
-            return new Vector3(x, y, z);
+            return new Vector3(SignExtend21((raw >> 42) & 0x1FFFFF),
+                               SignExtend21((raw >> 21) & 0x1FFFFF),
+                               SignExtend21(raw & 0x1FFFFF));
         }
 
         /// <summary>
@@ -207,5 +198,22 @@ namespace MHServerEmu.Games.Properties
         public static implicit operator AssetId(PropertyValue value) => value.ToAssetId();
         public static implicit operator Vector3(PropertyValue value) => value.ToVector3();
         public static implicit operator TimeSpan(PropertyValue value) => TimeSpan.FromMilliseconds(value.ToLong());
+
+        /// <summary>
+        /// Sign-extends a masked 21-bit two's complement value to int. Bit 20
+        /// is the sign bit; the old code tested bit 16 and OR'd its extension
+        /// onto the unmasked value.
+        /// </summary>
+        private static int SignExtend21(ulong value)
+        {
+            const ulong SignBit = 0x100000;         // bit 20
+            const ulong Extension = 0xFFE00000;     // bits 21..31
+
+            if ((value & SignBit) != 0)
+                value |= Extension;
+
+            return (int)(uint)value;
+        }
+
     }
 }
