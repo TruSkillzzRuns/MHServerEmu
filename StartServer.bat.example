@@ -1,0 +1,56 @@
+@echo off
+REM ============================================================================
+REM  EXAMPLE launcher - copy to StartServer.bat and adjust if your layout differs.
+REM
+REM  StartServer.bat itself is gitignored: the real one on a given machine may
+REM  hold local paths (Apache location, client install), which is not something
+REM  to version. This example is the portable skeleton.
+REM
+REM      copy StartServer.bat.example StartServer.bat
+REM
+REM  It resolves the exe from the repo's own build output, so it works as-is if
+REM  you built with:  dotnet build MHServerEmu.sln -c Release -p:Platform=x64
+REM ============================================================================
+
+setlocal
+set "X64_EXE=%~dp0src\MHServerEmu\bin\x64\Release\net10.0\MHServerEmu.exe"
+set "PLAIN_EXE=%~dp0src\MHServerEmu\bin\Release\net10.0\MHServerEmu.exe"
+
+if exist "%X64_EXE%" (
+    set "EXE=%X64_EXE%"
+    set "WD=%~dp0src\MHServerEmu\bin\x64\Release\net10.0"
+) else if exist "%PLAIN_EXE%" (
+    set "EXE=%PLAIN_EXE%"
+    set "WD=%~dp0src\MHServerEmu\bin\Release\net10.0"
+) else (
+    echo Server exe not found. Build first:  Build.bat  ^(or  dotnet build MHServerEmu.sln -c Release^)
+    pause
+    exit /b 1
+)
+
+echo Starting MHServerEmu from %EXE%
+
+REM Launched via Start-Process -PassThru so we can record the exact PID to
+REM a file -- StopServer.bat kills that PID precisely, instead of killing
+REM every MHServerEmu.exe by name (which used to also take out any running
+REM v48/v53 instance, since they share the same exe filename).
+set "PIDFILE=%WD%\server.pid"
+powershell -NoProfile -Command "$p = Start-Process -FilePath '%EXE%' -WorkingDirectory '%WD%' -PassThru; Set-Content -NoNewline -Path '%PIDFILE%' -Value $p.Id"
+
+REM Apache serves SiteConfig.xml on port 80 and proxies /AuthServer to
+REM MHServerEmu's WebFrontend on port 8080 -- the client needs both up.
+set "APACHE_ROOT=%~dp0Apache24"
+set "APACHE_EXE=%APACHE_ROOT%\bin\httpd.exe"
+
+tasklist /FI "IMAGENAME eq httpd.exe" | find /I "httpd.exe" >nul
+if not errorlevel 1 (
+    echo Apache is already running.
+) else if exist "%APACHE_EXE%" (
+    echo Starting Apache from %APACHE_EXE%
+    set "APACHE_SERVER_ROOT=%APACHE_ROOT%"
+    start "Apache" /D "%APACHE_ROOT%\bin" /MIN "%APACHE_EXE%"
+) else (
+    echo Apache not found at %APACHE_EXE% -- run StartApache.bat to set it up.
+)
+
+exit /b 0

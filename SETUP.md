@@ -161,14 +161,52 @@ If `httpd.exe -t` prints `Syntax OK` but Apache still won't stay up, check
 src\MHServerEmu\bin\x64\Release\net10.0\MHServerEmu.exe
 ```
 
-Or just double-click `StartServer.bat` in the repo root, which finds the exe
-for you and starts Apache too.
+Or use the launcher script, which finds the exe for you and starts Apache too.
+It ships as an example because the real one is gitignored (it can hold paths
+specific to your machine), so copy it once:
+
+```
+copy StartServer.bat.example StartServer.bat
+```
+
+Then double-click `StartServer.bat` from the repo root.
 
 If everything above is right you'll see the ASCII banner, then messages like
 `Loaded N prototypes`, `PlayerManagerService: Started`, etc.
 
 If you see `mu_cdata.sip and/or Calligraphy.sip are missing`, go back to
 step 3.
+
+## 6b. Running 1.48 and 1.53 as well
+
+The solution builds three game versions from the same source, selected by build
+configuration:
+
+| Version | Configuration  | Deploy script   | Runs from    | Web port |
+|---------|----------------|-----------------|--------------|----------|
+| 1.52    | `Release`      | -               | `src/...` | 8080     |
+| 1.48    | `Release 1.48` | `Build_v48.bat` | `build/v48`  | 8081     |
+| 1.53    | `Release 1.53` | `Build_v53.bat` | `build/v53`  | 8082     |
+
+**`dotnet build` does not update `build/v48` or `build/v53`.** It compiles to
+`src/MHServerEmu/bin/x64/Release 1.48/...`; only `Build_v48.bat` and
+`Build_v53.bat` copy that output into the `build/` folders the servers actually
+run from. Building and then starting a v48/v53 server without running the
+deploy script launches the *previous* build with no error - the symptom is code
+changes appearing to have no effect, or a server missing endpoints it should
+have. If a version behaves like it is running old code, run its `Build_*.bat`.
+
+Each version also needs its own client for artwork and localization:
+
+- `ClientAssets.CookedPCConsolePath` in that version's `Config.ini` must point
+  at the matching client's `CookedPCConsole` folder - not another version's.
+- That client's `Data/Game/Loco` folder must be present alongside the server,
+  or every localized name falls back to raw prototype names
+  (`Insignia094` instead of the real item name).
+
+Check both at once with `/webapi/clientassets/status` on that server's web
+port - it reports the resolved client path, whether the tools were found, and
+whether the texture index has been built.
 
 ## 7. Launch the client
 
