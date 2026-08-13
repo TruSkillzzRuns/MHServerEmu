@@ -139,8 +139,8 @@ namespace MHServerEmu.Games.Entities
                         // otherwise a player who only ever turns these on has
                         // hasData == false, the sidecar is deleted on logout,
                         // and the setting silently reverts every session.
-                        || _autoStashEnabled
-                        || _gearUpgradeAlertEnabled;
+                        || AutoStashEnabled
+                        || GearUpgradeAlertEnabled;
             string path = PhantomPersistPath(dbGuid);
             if (hasData == false)
             {
@@ -158,8 +158,10 @@ namespace MHServerEmu.Games.Entities
                     BountyThemeIndex = _bountyThemeIndex,
                     PreferredPowers = new Dictionary<ulong, ulong>(_preferredPowers),
                     RogueEncounterEnabled = _rogueEncounterEnabled,
-                    AutoStashEnabled = _autoStashEnabled,
-                    GearUpgradeAlertEnabled = _gearUpgradeAlertEnabled,
+                    // Via the properties, not fields: this state now lives in
+                    // LootAssist. See Player.AutoStash.cs.
+                    AutoStashEnabled = this.AutoStashEnabled,
+                    GearUpgradeAlertEnabled = this.GearUpgradeAlertEnabled,
                 };
                 string json = JsonSerializer.Serialize(blob, s_persistJsonOptions);
                 // Write to a temp file + move so a crash mid-write can't
