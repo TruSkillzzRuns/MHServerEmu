@@ -1,4 +1,4 @@
-// OmegaDev2 Gear Picker endpoints.
+﻿// OmegaDev2 Gear Picker endpoints.
 //
 //   GET  /webapi/items/catalog   — every approved concrete item prototype in
 //                                  the loaded client data, categorized, plus
@@ -119,6 +119,19 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
                     AssetId iconAssetId = itemProto.IconPathHiRes != 0 ? itemProto.IconPathHiRes : itemProto.IconPath;
+
+                    // 1.53 points many prototypes' HiRes icon at
+                    // MarvelUIIcons_HD.Placeholder (the "UNDER CONSTRUCTION"
+                    // art) while the plain IconPath still holds the real
+                    // picture; 1.52 has real art in both. Taking HiRes
+                    // unconditionally is what made 1.53 costumes render as
+                    // placeholders. Same guard as BossRosterWebHandler.
+                    if (iconAssetId != 0 && itemProto.IconPath != 0 && iconAssetId != itemProto.IconPath)
+                    {
+                        string hiResNameA = GameDatabase.GetAssetName(iconAssetId);
+                        if (hiResNameA != null && hiResNameA.Contains("Placeholder", StringComparison.OrdinalIgnoreCase))
+                            iconAssetId = itemProto.IconPath;
+                    }
 #else
                     AssetId iconAssetId = itemProto.IconPath;
 #endif
@@ -166,6 +179,19 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
 
 #if GAME_VERSION_1_52 || GAME_VERSION_1_53
                     AssetId costumeIconAssetId = costumeProto.IconPathHiRes != 0 ? costumeProto.IconPathHiRes : costumeProto.IconPath;
+
+                    // 1.53 points many prototypes' HiRes icon at
+                    // MarvelUIIcons_HD.Placeholder (the "UNDER CONSTRUCTION"
+                    // art) while the plain IconPath still holds the real
+                    // picture; 1.52 has real art in both. Taking HiRes
+                    // unconditionally is what made 1.53 costumes render as
+                    // placeholders. Same guard as BossRosterWebHandler.
+                    if (costumeIconAssetId != 0 && costumeProto.IconPath != 0 && costumeIconAssetId != costumeProto.IconPath)
+                    {
+                        string hiResNameB = GameDatabase.GetAssetName(costumeIconAssetId);
+                        if (hiResNameB != null && hiResNameB.Contains("Placeholder", StringComparison.OrdinalIgnoreCase))
+                            costumeIconAssetId = costumeProto.IconPath;
+                    }
 #else
                     AssetId costumeIconAssetId = costumeProto.IconPath;
 #endif
