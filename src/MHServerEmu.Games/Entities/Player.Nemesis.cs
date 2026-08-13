@@ -22,8 +22,6 @@ namespace MHServerEmu.Games.Entities
     {
         private static readonly Logger NemesisLogger = LogManager.CreateLogger();
 
-        // 1..5 rank cap. Each rank adds a name suffix + HP/damage buff.
-        public const int NemesisMaxRank = 5;
 
         // 2026-07-27 — Endless Wave-only extension of the same rank curve up
         // to 10, for players who go deep into a long run. Deliberately NOT

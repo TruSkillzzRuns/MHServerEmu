@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using MHServerEmu.Core.Logging;
+using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
 
@@ -152,6 +153,19 @@ namespace MHServerEmu.Games.Features
                 s_rawBossCandidatePool = pool;
                 return pool;
             }
+        }
+
+        /// <summary>"Entity/Characters/Avatars/Shipping/Thor.prototype" -> "Thor".</summary>
+        internal static string GetFriendlyHeroName(Avatar avatar)
+        {
+            string path = avatar.PrototypeDataRef.GetName();
+            if (string.IsNullOrEmpty(path)) return path;
+            int slash = path.LastIndexOf('/');
+            string leaf = slash >= 0 ? path[(slash + 1)..] : path;
+            const string suffix = ".prototype";
+            if (leaf.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                leaf = leaf[..^suffix.Length];
+            return leaf;
         }
     }
 }

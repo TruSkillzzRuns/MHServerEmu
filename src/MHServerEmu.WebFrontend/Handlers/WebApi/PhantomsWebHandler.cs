@@ -814,7 +814,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         n.Defeated,
                         n.IsBoss,
                         LastKillerName = n.LastKillerName ?? string.Empty,
-                        Suffix = MHServerEmu.Games.Features.NemesisRank.NemesisSuffixes[System.Math.Clamp(n.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)],
+                        Suffix = MHServerEmu.Games.Features.NemesisRank.NemesisSuffixes[System.Math.Clamp(n.Rank, 1, MHServerEmu.Games.Features.NemesisRank.NemesisMaxRank)],
                         LastKillMs = n.LastKillMs,
                         GrudgeScore = MHServerEmu.Games.Entities.Player.GrudgeScore(n),
                         IsBountyTarget = bountyTarget != null && bountyTarget.HeroRef == n.HeroRef,
@@ -1098,8 +1098,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         return (object)new { Ok = false, Error = "player has no avatar in world" };
 
                     string killerBase = string.IsNullOrEmpty(nemesis.LastKillerName) ? "Phantom" : nemesis.LastKillerName;
-                    string suffix = MHServerEmu.Games.Features.NemesisRank.NemesisSuffixes[System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)];
-                    string stars = new string('★', System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank));
+                    string suffix = MHServerEmu.Games.Features.NemesisRank.NemesisSuffixes[System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Features.NemesisRank.NemesisMaxRank)];
+                    string stars = new string('★', System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Features.NemesisRank.NemesisMaxRank));
                     string displayName = string.IsNullOrEmpty(suffix) ? $"{stars} {killerBase}" : $"{stars} {killerBase} {suffix}";
 
                     int grudgeScore = MHServerEmu.Games.Entities.Player.GrudgeScore(nemesis);

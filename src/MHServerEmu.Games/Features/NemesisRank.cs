@@ -18,6 +18,9 @@ namespace MHServerEmu.Games.Features
     /// </summary>
     public static class NemesisRank
     {
+        // 1..5 rank cap. Each rank adds a name suffix + HP/damage buff.
+        public const int NemesisMaxRank = 5;
+
         public const int EndlessMaxRank = 10;
 
         /// <summary>Alias of EndlessMaxRank for Bounty Hunt's ephemeral rank — same underlying curve data, just named for its own caller.</summary>

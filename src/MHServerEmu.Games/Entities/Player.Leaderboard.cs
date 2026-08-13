@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
@@ -8,6 +8,7 @@ using MHServerEmu.Games.Events;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Regions;
+using static MHServerEmu.Games.Features.BossPool;
 
 namespace MHServerEmu.Games.Entities
 {
@@ -376,18 +377,6 @@ namespace MHServerEmu.Games.Entities
             return tierProto != null ? tierProto.Tier.ToString() : "Unknown";
         }
 
-        /// <summary>"Entity/Characters/Avatars/Shipping/Thor.prototype" -> "Thor".</summary>
-        private static string GetFriendlyHeroName(Avatar avatar)
-        {
-            string path = avatar.PrototypeDataRef.GetName();
-            if (string.IsNullOrEmpty(path)) return path;
-            int slash = path.LastIndexOf('/');
-            string leaf = slash >= 0 ? path[(slash + 1)..] : path;
-            const string suffix = ".prototype";
-            if (leaf.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                leaf = leaf[..^suffix.Length];
-            return leaf;
-        }
 
         /// <summary>Delete a single entry by id.</summary>
         public string DeleteLeaderboardEntry(string id)

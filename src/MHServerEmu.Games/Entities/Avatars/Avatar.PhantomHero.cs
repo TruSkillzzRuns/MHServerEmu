@@ -3132,7 +3132,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // Rank 5 below level 60: skip the worn-gear drop entirely and
             // explode a pile of random loot instead. 20-59 = terminal-boss
             // tier (top of the level band); below 20 = plain level-appropriate.
-            if (rank >= Player.NemesisMaxRank && level < 60)
+            if (rank >= Features.NemesisRank.NemesisMaxRank && level < 60)
             {
                 int rolled = RollSplosionInto(summary, avatarProto, killer, lootMgr, rng, level, LootSplosionCount);
                 if (rolled > 0)
@@ -3159,7 +3159,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             //   70% (roll misses both) -> no BiS at all; a random
             //         level-appropriate gear splosion drops instead so the
             //         kill still feels worthwhile.
-            if (rank >= Player.NemesisMaxRank && level >= 60)
+            if (rank >= Features.NemesisRank.NemesisMaxRank && level >= 60)
             {
                 var wornItems = new List<Items.Item>();
                 foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
@@ -3267,7 +3267,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         private static int RollPhantomCostumeDrop(Agent phantom, AvatarPrototype avatarProto, int rank,
             MHServerEmu.Core.System.Random.GRandom rng, Loot.LootResultSummary summary)
         {
-            float costumeDropChance = rank >= Player.NemesisMaxRank ? 0.20f : rank == 4 ? 0.15f : 0.06f;
+            float costumeDropChance = rank >= Features.NemesisRank.NemesisMaxRank ? 0.20f : rank == 4 ? 0.15f : 0.06f;
             if (rng.NextFloat() >= costumeDropChance) return 0;
 
             foreach (AvatarEquipInventoryAssignmentPrototype assignment in avatarProto.EquipmentInventories)
@@ -7429,7 +7429,7 @@ namespace MHServerEmu.Games.Entities.Avatars
             // random gear"). Sub-max-rank enemy phantoms and everyone below
             // level 60 still roll the normal level-banded random gear.
             IReadOnlyDictionary<EquipmentInvUISlot, PrototypeId> bisLoadout = null;
-            bool wantsBiS = effectiveLevel >= 60 && (enemy == false || nemesisRank >= Player.NemesisMaxRank);
+            bool wantsBiS = effectiveLevel >= 60 && (enemy == false || nemesisRank >= Features.NemesisRank.NemesisMaxRank);
             if (wantsBiS && PhantomBiSData.TryGetLoadout(avatarRef, Game, out var bis))
             {
                 bisLoadout = bis;
