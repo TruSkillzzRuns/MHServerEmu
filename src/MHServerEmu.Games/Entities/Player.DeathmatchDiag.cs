@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using MHServerEmu.Core.VectorMath;
@@ -11,6 +11,7 @@ using MHServerEmu.Games.MetaGames;
 using MHServerEmu.Games.Properties;
 using MHServerEmu.Games.Regions;
 using MHServerEmu.Games.UI.Widgets;
+using static MHServerEmu.Games.Features.BossPool;
 
 namespace MHServerEmu.Games.Entities
 {

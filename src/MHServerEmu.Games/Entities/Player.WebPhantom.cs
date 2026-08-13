@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MHServerEmu.Core.Logging;
@@ -6,6 +6,7 @@ using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.Events;
 using MHServerEmu.Games.Events.Templates;
 using MHServerEmu.Games.GameData;
+using static MHServerEmu.Games.Features.BossPool;
 
 namespace MHServerEmu.Games.Entities
 {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Gazillion;
 using MHServerEmu.Core.Extensions;
@@ -14,6 +14,8 @@ using MHServerEmu.Games.Properties;
 using MHServerEmu.Games.Regions;
 using MHServerEmu.Games.UI;
 using MHServerEmu.Games.UI.Widgets;
+using static MHServerEmu.Games.Features.NemesisRank;
+using static MHServerEmu.Games.Features.BossPool;
 
 namespace MHServerEmu.Games.Entities
 {

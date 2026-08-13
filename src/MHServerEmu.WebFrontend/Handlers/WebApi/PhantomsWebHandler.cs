@@ -29,6 +29,7 @@ using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Locales;
 using MHServerEmu.Games.Powers;
+using static MHServerEmu.Games.Features.NemesisRank;
 
 namespace MHServerEmu.WebFrontend.Handlers.WebApi
 {
@@ -813,7 +814,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         n.Defeated,
                         n.IsBoss,
                         LastKillerName = n.LastKillerName ?? string.Empty,
-                        Suffix = MHServerEmu.Games.Entities.Player.NemesisSuffixes[System.Math.Clamp(n.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)],
+                        Suffix = MHServerEmu.Games.Features.NemesisRank.NemesisSuffixes[System.Math.Clamp(n.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)],
                         LastKillMs = n.LastKillMs,
                         GrudgeScore = MHServerEmu.Games.Entities.Player.GrudgeScore(n),
                         IsBountyTarget = bountyTarget != null && bountyTarget.HeroRef == n.HeroRef,
@@ -1097,7 +1098,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         return (object)new { Ok = false, Error = "player has no avatar in world" };
 
                     string killerBase = string.IsNullOrEmpty(nemesis.LastKillerName) ? "Phantom" : nemesis.LastKillerName;
-                    string suffix = MHServerEmu.Games.Entities.Player.NemesisSuffixes[System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)];
+                    string suffix = MHServerEmu.Games.Features.NemesisRank.NemesisSuffixes[System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank)];
                     string stars = new string('★', System.Math.Clamp(nemesis.Rank, 1, MHServerEmu.Games.Entities.Player.NemesisMaxRank));
                     string displayName = string.IsNullOrEmpty(suffix) ? $"{stars} {killerBase}" : $"{stars} {killerBase} {suffix}";
 
@@ -1111,8 +1112,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     if (nemesis.IsBoss)
                     {
                         id = p.SpawnCuratedBoss(avatar, (PrototypeId)nemesis.HeroRef, out spawnErr,
-                            MHServerEmu.Games.Entities.Player.BossNemesisExtraHealthMultForRank(nemesis.Rank),
-                            MHServerEmu.Games.Entities.Player.BossNemesisExtraDamageMultForRank(nemesis.Rank));
+                            MHServerEmu.Games.Features.NemesisRank.BossNemesisExtraHealthMultForRank(nemesis.Rank),
+                            MHServerEmu.Games.Features.NemesisRank.BossNemesisExtraDamageMultForRank(nemesis.Rank));
                         // Boss-type nemeses aren't covered by the phantom
                         // corpse-cleanup tick's auto-retire -- wire kill
                         // detection manually so this revenge fight actually

@@ -118,7 +118,7 @@ namespace MHServerEmu.Games.Entities
             return base.CanChangeInventoryLocation(destInventory, out propertyRestriction);
         }
 
-        private bool IsRealCuratedBoss => Player.GetRawBossCandidatePool().Contains(PrototypeDataRef);
+        private bool IsRealCuratedBoss => Features.BossPool.GetRawBossCandidatePool().Contains(PrototypeDataRef);
 
         public override int Throwability { get => Properties[PropertyEnum.Throwability]; }
         public bool IsVisibleWhenDormant { get => AgentPrototype.WakeStartsVisible; }

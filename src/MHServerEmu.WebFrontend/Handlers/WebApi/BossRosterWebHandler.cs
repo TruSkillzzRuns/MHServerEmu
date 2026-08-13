@@ -1,4 +1,4 @@
-// OmegaDev2 "Enemy Phantoms" page — Boss Roster panel. Spawns a REAL
+﻿// OmegaDev2 "Enemy Phantoms" page — Boss Roster panel. Spawns a REAL
 // boss-tier AgentPrototype (Doom/Kraven/Green Goblin-class content) as a
 // plain hostile Agent near the player — NOT a synthetic Player+Avatar
 // phantom hero (that's what /webapi/arena/enemyphantoms/spawn does).
@@ -18,6 +18,7 @@ using MHServerEmu.Games.Entities;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Properties;
+using static MHServerEmu.Games.Features.BossPool;
 
 namespace MHServerEmu.WebFrontend.Handlers.WebApi
 {

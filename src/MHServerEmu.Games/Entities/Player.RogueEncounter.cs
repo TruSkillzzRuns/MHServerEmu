@@ -1,10 +1,12 @@
-using System;
+﻿using System;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.Events;
 using MHServerEmu.Games.Events.Templates;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
+using static MHServerEmu.Games.Features.NemesisRank;
+using static MHServerEmu.Games.Features.BossPool;
 
 namespace MHServerEmu.Games.Entities
 {

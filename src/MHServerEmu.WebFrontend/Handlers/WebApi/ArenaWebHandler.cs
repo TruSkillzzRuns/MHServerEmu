@@ -1,4 +1,4 @@
-// OmegaDev2 Arena endpoints — Enemy Phantoms and the Wave Director.
+﻿// OmegaDev2 Arena endpoints — Enemy Phantoms and the Wave Director.
 //
 //   POST /webapi/arena/enemyphantoms/spawn  { playerName, heroes:[{avatarRef, level, count}] }
 //   POST /webapi/arena/enemyphantoms/clear  { playerName }
@@ -22,6 +22,7 @@ using MHServerEmu.Core.Logging;
 using MHServerEmu.Core.Network.Web;
 using MHServerEmu.Games.Entities;
 using MHServerEmu.Games.GameData;
+using static MHServerEmu.Games.Features.BossPool;
 
 namespace MHServerEmu.WebFrontend.Handlers.WebApi
 {

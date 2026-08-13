@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using MHServerEmu.Core.Collisions;
@@ -6526,7 +6526,7 @@ namespace MHServerEmu.Games.Entities.Avatars
         /// routed to SpawnTeamUpPhantomHero.
         /// </summary>
         private static bool IsBossPhantomRef(PrototypeId bossRef)
-            => bossRef != PrototypeId.Invalid && Player.GetRawBossCandidatePool().Contains(bossRef);
+            => bossRef != PrototypeId.Invalid && Features.BossPool.GetRawBossCandidatePool().Contains(bossRef);
 
         /// <summary>
         /// Spawn a real boss-tier AgentPrototype (Sabretooth, Rhino, etc. —

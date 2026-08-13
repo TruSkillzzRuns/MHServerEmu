@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using MHServerEmu.Core.Logging;
 using MHServerEmu.Games.Entities.Avatars;
@@ -13,6 +13,7 @@ using MHServerEmu.Core.Memory;
 using MHServerEmu.Games.Regions;
 using MHServerEmu.Games.UI.Widgets;
 using Gazillion;
+using static MHServerEmu.Games.Features.BossPool;
 
 namespace MHServerEmu.Games.Entities
 {

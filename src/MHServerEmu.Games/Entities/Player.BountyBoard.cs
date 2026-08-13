@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using MHServerEmu.Core.Logging;
@@ -9,6 +9,8 @@ using MHServerEmu.Games.GameData.Prototypes;
 using MHServerEmu.Games.Locales;
 using MHServerEmu.Games.Loot;
 using MHServerEmu.Games.Properties;
+using static MHServerEmu.Games.Features.NemesisRank;
+using static MHServerEmu.Games.Features.BossPool;
 
 namespace MHServerEmu.Games.Entities
 {
