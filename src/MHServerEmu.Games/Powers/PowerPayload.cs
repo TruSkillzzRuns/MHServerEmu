@@ -2607,7 +2607,7 @@ namespace MHServerEmu.Games.Powers
                 Property.FromParam(kvp.Key, 0, out PrototypeId powerProtoRef);
                 Property.FromParam(kvp.Key, 1, out int maxStacksToRemove);
 
-                removedAny |= CalculateResultConditionsToRemoveHelper(results, conditionCollection, ConditionFilter.IsConditionOfPowerFunc, powerProtoRef, maxStacksToRemove);
+                removedAny |= CalculateResultConditionsToRemoveHelper(results, conditionCollection, ConditionFilter.IsConditionOfPower, powerProtoRef, maxStacksToRemove);
             }
 
             // Remove conditions with specified keywords
@@ -2618,7 +2618,7 @@ namespace MHServerEmu.Games.Powers
 
                 KeywordPrototype keywordProto = keywordProtoRef.As<KeywordPrototype>();
 
-                removedAny |= CalculateResultConditionsToRemoveHelper(results, conditionCollection, ConditionFilter.IsConditionWithKeywordFunc, keywordProto, maxStacksToRemove);
+                removedAny |= CalculateResultConditionsToRemoveHelper(results, conditionCollection, ConditionFilter.IsConditionWithKeyword, keywordProto, maxStacksToRemove);
             }
 
             // Remove conditions that have specified properties
@@ -2631,7 +2631,7 @@ namespace MHServerEmu.Games.Powers
 
                 PropertyEnum propertyEnum = propertyInfoTable.GetPropertyEnumFromPrototype(propertyProtoRef);
 
-                removedAny |= CalculateResultConditionsToRemoveHelper(results, conditionCollection, ConditionFilter.IsConditionWithPropertyOfTypeFunc, propertyEnum, maxStacksToRemove);
+                removedAny |= CalculateResultConditionsToRemoveHelper(results, conditionCollection, ConditionFilter.IsConditionWithPropertyOfType, propertyEnum, maxStacksToRemove);
             }
 
             // Remove conditions of the specified type (no params here)
@@ -2640,7 +2640,7 @@ namespace MHServerEmu.Games.Powers
             {
                 ConditionType conditionType = (ConditionType)AssetDirectory.Instance.GetEnumValue(conditionTypeAssetRef);
                 if (conditionType != ConditionType.Neither)
-                    removedAny |= CalculateResultConditionsToRemoveHelper(results, conditionCollection, ConditionFilter.IsConditionOfTypeFunc, conditionType, 0);
+                    removedAny |= CalculateResultConditionsToRemoveHelper(results, conditionCollection, ConditionFilter.IsConditionOfType, conditionType, 0);
             }
 
             return removedAny;

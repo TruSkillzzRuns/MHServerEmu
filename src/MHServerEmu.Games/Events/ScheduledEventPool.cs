@@ -141,6 +141,12 @@ namespace MHServerEmu.Games.Events
                 return new() { EventTypeId = EventTypeId };
             }
 
+            protected override void OnGet(T instance)
+            {
+                if (CountTotal > 16384)
+                    Verify.IsTrue(false, $"OnGet(): {instance}");
+            }
+
             protected override int GetAllocationWarningThreshold()
             {
                 return 16384;

@@ -352,8 +352,8 @@ namespace MHServerEmu.Games.Entities
             ConditionCollection?.RemoveCancelOnKilledConditions();
 
             // Send kill message to clients
-            var killMessage = NetMessageEntityKill.CreateBuilder()
-                .SetIdEntity(Id)
+            using var builderHandle = ProtobufBuilderPool<NetMessageEntityKill.Builder>.Get(out var builder);
+            var killMessage = builder.SetIdEntity(Id)
                 .SetIdKillerEntity(killer != null ? killer.Id : InvalidId)
                 .SetKillFlags((uint)killFlags)
                 .Build();
@@ -878,14 +878,16 @@ namespace MHServerEmu.Games.Entities
                 using var interestedClientListHandle = ListPool<PlayerConnection>.Get(out List<PlayerConnection> interestedClientList);
                 if (networkManager.GetInterestedClients(interestedClientList, this, AOINetworkPolicyValues.AOIChannelProximity, excludeOwner))
                 {
-                    var entityPositionMessageBuilder = NetMessageEntityPosition.CreateBuilder()
-                        .SetIdEntity(Id)
+                    using var builderHandle = ProtobufBuilderPool<NetMessageEntityPosition.Builder>.Get(out var builder);
+                    builder.SetIdEntity(Id)
                         .SetFlags((uint)flags);
 
-                    if (position.HasValue) entityPositionMessageBuilder.SetPosition(position.Value.ToNetStructPoint3());
-                    if (orientation.HasValue) entityPositionMessageBuilder.SetOrientation(orientation.Value.ToNetStructPoint3());
+                    if (position.HasValue)
+                        builder.SetPosition(position.Value.ToNetStructPoint3());
+                    if (orientation.HasValue)
+                        builder.SetOrientation(orientation.Value.ToNetStructPoint3());
 
-                    networkManager.SendMessageToMultiple(interestedClientList, entityPositionMessageBuilder.Build());
+                    networkManager.SendMessageToMultiple(interestedClientList, builder.Build());
                 }
             }
 
@@ -4781,8 +4783,8 @@ namespace MHServerEmu.Games.Entities
 
             if (modified == false) return false;
 
-            var entityTracked = NetMessageEntityTracked.CreateBuilder()
-                .SetIdEntity(Id)
+            using var builderHandle = ProtobufBuilderPool<NetMessageEntityTracked.Builder>.Get(out var builder);
+            NetMessageEntityTracked entityTracked = builder.SetIdEntity(Id)
                 .SetTrackingProtoId((ulong)contextRef)
                 .SetFlags((uint)flags)
                 .Build();
@@ -4987,6 +4989,11 @@ namespace MHServerEmu.Games.Entities
         {
             protected override CallbackDelegate GetCallback() => (t, p1) => ((WorldEntity)t).ApplyPowerResults(p1);
             public override void OnCancelled() => _param1.Clear();    // Clear to prevent conditions leaking from their pool
+
+            public override string ToString()   // REMOVEME: debug logging
+            {
+                return $"{base.ToString()}, PowerPrototype={_param1?.PowerPrototype}";
+            }
         }
 
         private class NegateHotspotsEvent : CallMethodEvent<Entity>

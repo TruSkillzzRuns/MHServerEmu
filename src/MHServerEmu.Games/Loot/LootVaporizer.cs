@@ -129,12 +129,13 @@ namespace MHServerEmu.Games.Loot
 
             if (vaporizedItemSpecs.Count > 0 || vaporizedCredits.Count > 0)
             {
-                NetMessageVaporizedLootResult.Builder resultMessageBuilder = NetMessageVaporizedLootResult.CreateBuilder();
-                
+                using var resultMessageBuilderHandle = ProtobufBuilderPool<NetMessageVaporizedLootResult.Builder>.Get(out var resultMessageBuilder);
+                using var vaporizedItemBuilderHandle = ProtobufBuilderPool<NetStructVaporizedItem.Builder>.Get(out var vaporizedItemBuilder);
+
                 foreach (ItemSpec itemSpec in vaporizedItemSpecs)
                 {
                     VaporizeItemSpec(player, itemSpec);
-                    resultMessageBuilder.AddItems(NetStructVaporizedItem.CreateBuilder()
+                    resultMessageBuilder.AddItems(vaporizedItemBuilder.Clear()
                         .SetItemProtoId((ulong)itemSpec.ItemProtoRef)
                         .SetRarityProtoId((ulong)itemSpec.RarityProtoRef));
                 }
@@ -142,7 +143,7 @@ namespace MHServerEmu.Games.Loot
                 foreach (int credits in vaporizedCredits)
                 {
                     player.AcquireCredits(credits);
-                    resultMessageBuilder.AddItems(NetStructVaporizedItem.CreateBuilder()
+                    resultMessageBuilder.AddItems(vaporizedItemBuilder.Clear()
                         .SetCredits(credits));
                 }
 
