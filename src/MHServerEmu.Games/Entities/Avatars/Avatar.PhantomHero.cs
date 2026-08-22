@@ -7641,6 +7641,14 @@ namespace MHServerEmu.Games.Entities.Avatars
             }
             catch (Exception ex) { PhantomLogger.Warn($"[PhantomHero] AOI broadcast failed: {ex.Message}"); }
 
+            // MHCostumeMod: a custom costume applied above, before EnterWorld,
+            // rides in on the entity's creation archive -- which is not a
+            // property CHANGE, so the mod's client DLL never fires and the
+            // phantom renders its donor costume instead. Re-assert it now that
+            // the phantom exists client-side. Does nothing on a server without
+            // the mod, and nothing for an ordinary costume.
+            phantomAvatar.ScheduleCustomCostumeReassert(appliedCostumeRef);
+
             // Hoisted above the enemy/friendly branch below so both sides
             // (and the ApplyPhantomDamageScaling call further down) can see
             // it � Deathmatch needs its own damage profile regardless of
@@ -8151,6 +8159,91 @@ namespace MHServerEmu.Games.Entities.Avatars
 
             if (alive > 0 || host.EnemyPhantomCount > 0)
                 SchedulePhantomTick();
+        }
+
+        // ---- MHCostumeMod custom costume re-assert ----
+        //
+        // The mod's client DLL swaps costume art when it observes a costume
+        // property CHANGE. A phantom is created already wearing its costume, so
+        // the value arrives inside the creation archive and no change is ever
+        // observed -- the client draws the donor costume the custom id is
+        // aliased onto. The mod solves this for a real player's avatar with a
+        // re-assert on world entry; a phantom is a synthetic Player and does not
+        // travel that path, so it needs its own.
+        //
+        // The toggle is donor -> custom with a gap between, because setting the
+        // same value twice in one tick collapses into no change at all.
+
+        // Long enough for the client to have finished creating the entity, so
+        // the change lands on something it can already draw. Matches the delay
+        // the mod uses for the equivalent player-avatar sequence.
+        private static readonly TimeSpan PhantomCostumeReassertDelay = TimeSpan.FromMilliseconds(400);
+        private static readonly TimeSpan PhantomCostumeReassertToggleDelay = TimeSpan.FromMilliseconds(50);
+
+        private readonly EventPointer<PhantomCostumeReassertStepEvent> _phantomCostumeReassertStep = new();
+        private readonly EventPointer<PhantomCostumeReassertFinishEvent> _phantomCostumeReassertFinish = new();
+
+        /// <summary>
+        /// Re-applies a custom costume so the client actually renders it.
+        /// No-op for an ordinary costume, or on a server without MHCostumeMod.
+        /// </summary>
+        public void ScheduleCustomCostumeReassert(PrototypeId costumeRef)
+        {
+            if (costumeRef == PrototypeId.Invalid) return;
+
+            // Checked before scheduling rather than inside the event, so an
+            // ordinary spawn -- which is every spawn on almost every server --
+            // costs one dictionary lookup and no scheduling at all.
+            if (CustomCostumeBridge.IsCustom(costumeRef) == false) return;
+
+            if (CustomCostumeBridge.GetDonor(costumeRef) == PrototypeId.Invalid)
+            {
+                PhantomLogger.Warn($"[PhantomHero] custom costume 0x{(ulong)costumeRef:X} has no usable donor - " +
+                                   "leaving it alone; the phantom will render stock art.");
+                return;
+            }
+
+            ScheduleEntityEvent(_phantomCostumeReassertStep, PhantomCostumeReassertDelay, costumeRef);
+        }
+
+        private void PhantomCostumeReassertStep(PrototypeId customRef)
+        {
+            if (IsInWorld == false) return;
+
+            PrototypeId donorRef = CustomCostumeBridge.GetDonor(customRef);
+            if (donorRef == PrototypeId.Invalid) return;
+
+            // Step down to the donor first. This is the half that makes the
+            // following change a real transition rather than a repeat.
+            if (ChangeCostume(donorRef) == false)
+            {
+                PhantomLogger.Warn($"[PhantomHero] costume re-assert: could not step {this} down to donor " +
+                                   $"0x{(ulong)donorRef:X}; leaving the custom costume as-is.");
+                return;
+            }
+
+            ScheduleEntityEvent(_phantomCostumeReassertFinish, PhantomCostumeReassertToggleDelay, customRef);
+        }
+
+        private void PhantomCostumeReassertFinish(PrototypeId customRef)
+        {
+            // Not in world any more means the phantom was cleared mid-toggle.
+            // It is gone, so the costume it was wearing no longer matters.
+            if (IsInWorld == false) return;
+
+            if (ChangeCostume(customRef) == false)
+                PhantomLogger.Warn($"[PhantomHero] costume re-assert: could not restore custom costume " +
+                                   $"0x{(ulong)customRef:X} on {this}; it is left wearing the donor costume.");
+        }
+
+        private class PhantomCostumeReassertStepEvent : CallMethodEventParam1<Entity, PrototypeId>
+        {
+            protected override CallbackDelegate GetCallback() => (t, p1) => ((Avatar)t).PhantomCostumeReassertStep(p1);
+        }
+
+        private class PhantomCostumeReassertFinishEvent : CallMethodEventParam1<Entity, PrototypeId>
+        {
+            protected override CallbackDelegate GetCallback() => (t, p1) => ((Avatar)t).PhantomCostumeReassertFinish(p1);
         }
 
         private void DestroyPhantomPlayer(Player p)
