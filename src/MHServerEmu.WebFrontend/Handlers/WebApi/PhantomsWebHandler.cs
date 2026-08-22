@@ -268,6 +268,8 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                     return new { Ok = false, Error = "player has no avatar in world", Spawned = 0, Failed = 0, FirstError = (string)null };
                 if (p.IsTrialGauntletActive)
                     return new { Ok = false, Error = "Trial of the Impossible is solo-only — no phantom summons", Spawned = 0, Failed = 0, FirstError = (string)null };
+                if (p.IsDeathmatchActive)
+                    return new { Ok = false, Error = "Deathmatch supplies its own phantom teams — no extra summons while a match is running", Spawned = 0, Failed = 0, FirstError = (string)null };
 
                 int spawned = 0, failed = 0;
                 string firstError = null;

@@ -1,4 +1,4 @@
-using MHServerEmu.Commands.Attributes;
+﻿using MHServerEmu.Commands.Attributes;
 using MHServerEmu.Core.Network;
 using MHServerEmu.DatabaseAccess.Models;
 using MHServerEmu.Games.Entities.Avatars;
@@ -28,6 +28,7 @@ namespace MHServerEmu.Commands.Implementations
             var avatar = pc.Player?.CurrentAvatar;
             if (avatar == null) return "No avatar in world.";
             if (pc.Player.IsTrialGauntletActive) return "Trial of the Impossible is solo-only — no phantom summons.";
+            if (pc.Player.IsDeathmatchActive) return "Deathmatch supplies its own phantom teams — no extra summons while a match is running.";
 
             // 0 = "match caller's CharacterLevel" (handled inside
             // SpawnPhantomHeroCore). The tick loop then keeps them in sync
@@ -79,6 +80,12 @@ namespace MHServerEmu.Commands.Implementations
             var player = pc.Player;
             var avatar = player?.CurrentAvatar;
             if (player == null || avatar == null) return "No avatar in world.";
+            // squad spawn summons phantoms just like `phantom spawn`, so it
+            // needs the same guards. It had neither, which meant the
+            // documented "no phantom squads during a Trial run" rule was not
+            // actually enforced.
+            if (player.IsTrialGauntletActive) return "Trial of the Impossible is solo-only — no phantom squads.";
+            if (player.IsDeathmatchActive) return "Deathmatch supplies its own phantom teams — no phantom squads while a match is running.";
 
             if (@params.Length == 0)
                 return "Usage: phantom squad save [name] | spawn [name] | list | delete [name]";
@@ -180,6 +187,7 @@ namespace MHServerEmu.Commands.Implementations
             var avatar = pc.Player?.CurrentAvatar;
             if (avatar == null) return "No avatar in world.";
             if (pc.Player.IsTrialGauntletActive) return "Trial of the Impossible is solo-only — no phantom summons.";
+            if (pc.Player.IsDeathmatchActive) return "Deathmatch supplies its own phantom teams — no extra summons while a match is running.";
 
             int level = PhantomCommandUtil.ParseLevelClamp(@params, 1);
 
@@ -220,6 +228,7 @@ namespace MHServerEmu.Commands.Implementations
             var avatar = pc.Player?.CurrentAvatar;
             if (avatar == null) return "No avatar in world.";
             if (pc.Player.IsTrialGauntletActive) return "Trial of the Impossible is solo-only — no phantom summons.";
+            if (pc.Player.IsDeathmatchActive) return "Deathmatch supplies its own phantom teams — no extra summons while a match is running.";
             if (@params.Length < 1) return "Usage: !phantom teamup [name] [level] [enemy]";
 
             var all = Avatar.GetAllPhantomTeamUpRefs();

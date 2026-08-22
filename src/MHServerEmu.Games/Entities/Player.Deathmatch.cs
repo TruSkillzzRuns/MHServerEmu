@@ -145,7 +145,12 @@ namespace MHServerEmu.Games.Entities
 
         private readonly EventPointer<DeathmatchRespawnEvent> _deathmatchRespawn = new();
 
-        internal bool IsDeathmatchActive => _deathmatchActive;
+        /// <summary>
+        /// True while a Deathmatch (1v1 or 5v5) is running. Public rather than
+        /// internal because the chat commands live in a different assembly and
+        /// need it to refuse manual phantom summons mid-match.
+        /// </summary>
+        public bool IsDeathmatchActive => _deathmatchActive;
 
         private static AlliancePrototype GetDeathmatchAlliance(string path)
             => GameDatabase.GetPrototypeRefByName(path).As<AlliancePrototype>();
@@ -189,11 +194,35 @@ namespace MHServerEmu.Games.Entities
             return result;
         }
 
+        /// <summary>
+        /// Despawns the player's own phantoms and enemy phantoms before a
+        /// match starts. Deliberately runs before any arena setup so the
+        /// removals can't race the mode's own spawns.
+        /// </summary>
+        private void ClearPhantomsForDeathmatch(Avatar avatar)
+        {
+            if (avatar == null) return;
+
+            int friendly = avatar.DespawnAllPhantomHeroes();
+            int hostile = avatar.DespawnAllEnemyPhantoms();
+
+            if (friendly > 0 || hostile > 0)
+                DeathmatchLogger.Info($"[Deathmatch] Cleared {friendly} phantom(s) and {hostile} enemy phantom(s) before match start for {GetName()}.");
+        }
+
         public string StartDeathmatch1v1(int killTarget)
         {
             Avatar avatar = CurrentAvatar;
             if (avatar == null || avatar.IsInWorld == false) return "no avatar in world";
             if (_deathmatchActive) return "you're already in a deathmatch — finish it or use !dm quit";
+
+            // Clear anything the player already had out. The mode brings its
+            // own phantom opponents (and teammates in 5v5), so pre-existing
+            // summons would be extra bodies the match never accounted for -
+            // five boss phantoms carried into a 1v1, for instance. The
+            // commands refuse NEW summons once a match is running; this
+            // handles the ones that were already standing there.
+            ClearPhantomsForDeathmatch(avatar);
 
             PrototypeId regionRef = _deathmatchRegionOverride != PrototypeId.Invalid
                 ? _deathmatchRegionOverride

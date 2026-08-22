@@ -188,6 +188,10 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 var avatar = p.CurrentAvatar;
                 if (avatar == null || avatar.IsInWorld == false)
                     return new { Ok = false, Error = "player has no avatar in world", Spawned = 0, Failed = 0, FirstError = (string)null };
+                if (p.IsTrialGauntletActive)
+                    return new { Ok = false, Error = "Trial of the Impossible is solo-only — no phantom summons", Spawned = 0, Failed = 0, FirstError = (string)null };
+                if (p.IsDeathmatchActive)
+                    return new { Ok = false, Error = "Deathmatch supplies its own phantom teams — no extra summons while a match is running", Spawned = 0, Failed = 0, FirstError = (string)null };
 
                 var bossProto = ((PrototypeId)bossRef).As<AgentPrototype>();
                 if (bossProto == null)
