@@ -151,6 +151,10 @@ namespace MHServerEmu.WebFrontend
             _webService.RegisterHandler("/webapi/items/catalog", new MHServerEmu.WebFrontend.Handlers.WebApi.ItemCatalogWebHandler());
             _webService.RegisterHandler("/webapi/items/give",    new MHServerEmu.WebFrontend.Handlers.WebApi.ItemGiveWebHandler());
 
+            // Custom costumes (MHCostumeMod). Reflection-only: 404s unless the
+            // server also carries the mod Games-layer costume loader.
+            _webService.RegisterHandler("/webapi/customcostumes/catalog", new MHServerEmu.WebFrontend.Handlers.WebApi.CustomCostumesCatalogWebHandler());
+
             // OmegaDev2 Gear Picker -- force-equip a costume directly on the
             // player's own live avatar, bypassing the item/store/closet flow.
             _webService.RegisterHandler("/webapi/avatar/costume", new MHServerEmu.WebFrontend.Handlers.WebApi.AvatarCostumeWebHandler());
