@@ -118,6 +118,26 @@ namespace MHServerEmu.Games.Tests.GameData
         }
 
         [Fact]
+        public void ReportsNoHeroWhenTheIdIsNotAliased()
+        {
+            // GetHeroFor resolves the hero through the donor costume's record,
+            // which needs loaded game data -- which a test run does not have,
+            // and GameDatabase throws rather than returning null when it is
+            // missing. Invalid is the correct answer either way: the catalog
+            // then omits "hero" and the client falls back to matching names.
+            // Pinned here because the alternative, letting that exception out,
+            // turns one unresolvable costume into a 500 for the whole catalog.
+            Assert.Equal(PrototypeId.Invalid,
+                         CustomCostumeBridge.GetHeroFor((PrototypeId)CustomCostumeLoader.SymbioteId));
+        }
+
+        [Fact]
+        public void ReportsNoHeroForAnInvalidId()
+        {
+            Assert.Equal(PrototypeId.Invalid, CustomCostumeBridge.GetHeroFor(PrototypeId.Invalid));
+        }
+
+        [Fact]
         public void ReadsFxPacks()
         {
             var packs = CustomCostumeBridge.GetFxPacks();

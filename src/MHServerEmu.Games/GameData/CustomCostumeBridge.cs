@@ -115,6 +115,46 @@ namespace MHServerEmu.Games.GameData
             return donorRef == customRef ? PrototypeId.Invalid : donorRef;
         }
 
+        /// <summary>
+        /// The avatar a custom costume belongs to, or Invalid when it cannot
+        /// be determined.
+        /// </summary>
+        /// <remarks>
+        /// The mod publishes no hero field, but it does not need to: a custom
+        /// id is aliased onto its donor's data record, so the ordinary
+        /// prototype lookup hands back the donor, and the donor's UsableBy is
+        /// the avatar. That is exact, and it is the same field
+        /// Avatar.GetCostumesForAvatar filters the stock costume pool on.
+        ///
+        /// Donor and custom costume are always the same hero: the mod's own
+        /// tooling refuses a donor from a different one, because that would put
+        /// one hero's mesh on another's skeleton.
+        ///
+        /// Worth having because the alternative — guessing the hero from the
+        /// costume's name — misfires on any hero whose name contains another's.
+        /// </remarks>
+        public static PrototypeId GetHeroFor(PrototypeId customRef)
+        {
+            if (customRef == PrototypeId.Invalid) return PrototypeId.Invalid;
+
+            try
+            {
+                CostumePrototype costumeProto = GameDatabase.GetPrototype<CostumePrototype>(customRef);
+                return costumeProto != null ? costumeProto.UsableBy : PrototypeId.Invalid;
+            }
+            catch (Exception e)
+            {
+                // Reaching the prototype means going through GameDatabase, which
+                // throws rather than returning null if the game data has not
+                // been loaded. A live server always has it, so this is really
+                // about not letting one unresolvable costume take down the whole
+                // catalog with a 500 -- "hero unknown" is a supported answer
+                // here, and the client falls back to matching names.
+                Logger.Warn($"CustomCostumeBridge.GetHeroFor(0x{(ulong)customRef:X}): {e.Message}");
+                return PrototypeId.Invalid;
+            }
+        }
+
         /// <summary>Every custom costume the mod has loaded.</summary>
         public static List<CustomCostumeInfo> GetCatalog()
         {

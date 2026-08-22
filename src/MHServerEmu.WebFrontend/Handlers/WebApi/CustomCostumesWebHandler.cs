@@ -1,8 +1,8 @@
-// Custom costume catalog — a bridge for MHCostumeMod (Mr.Gippy), which lets
+﻿// Custom costume catalog — a bridge for MHCostumeMod (Mr.Gippy), which lets
 // players add costumes the retail game never had.
 //
 //   GET /webapi/customcostumes/catalog
-//     -> 200 { "ok": true, "costumes": [ { name, token, enum, customId } ],
+//     -> 200 { "ok": true, "costumes": [ { name, token, enum, customId, hero } ],
 //                          "fxPacks":  [ { token, displayName, hero, effects } ] }
 //     -> 404 on any server without the mod's costume loader
 //
@@ -59,7 +59,7 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                 var costumes = new JsonArray();
                 foreach (CustomCostumeInfo entry in CustomCostumeBridge.GetCatalog())
                 {
-                    costumes.Add(new JsonObject
+                    var costume = new JsonObject
                     {
                         ["name"] = entry.Name,
                         ["token"] = entry.Token,
@@ -67,7 +67,20 @@ namespace MHServerEmu.WebFrontend.Handlers.WebApi
                         // The mod formats its minted ids this way; matching it
                         // means a client never has to know which server it asked.
                         ["customId"] = $"0x{entry.CustomId:X16}",
-                    });
+                    };
+
+                    // Not part of the mod's own catalog format, and the reason
+                    // this is worth adding: without it a client has to guess
+                    // the hero from the costume's name, which misfires on any
+                    // hero whose name contains another's. Resolved from the
+                    // donor's UsableBy, so it is exact. Omitted rather than
+                    // sent as zero when it cannot be resolved, so a client can
+                    // tell "unknown" from a real answer and fall back.
+                    PrototypeId heroRef = CustomCostumeBridge.GetHeroFor((PrototypeId)entry.CustomId);
+                    if (heroRef != PrototypeId.Invalid)
+                        costume["hero"] = $"0x{(ulong)heroRef:X16}";
+
+                    costumes.Add(costume);
                 }
 
                 var packs = new JsonArray();
