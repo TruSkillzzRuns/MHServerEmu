@@ -66,6 +66,19 @@ MHServerEmu itself is released under the GNU Affero General Public License
 v3.0 (AGPL-3.0). See [LICENSE](LICENSE). The Phantom Heroes additions on top
 are released under the same license.
 
+### Optional interop: MHCostumeMod
+
+This fork can list and apply custom costumes added by
+[MHCostumeMod](https://github.com/MrGippy626/MHCostumeMod), a separate project
+by Mr.Gippy with its own licence. The support is entirely optional: the server
+looks for the mod's costume loader at runtime, and when it isn't present the
+custom-costume endpoint returns 404 and nothing else changes.
+
+**None of that project's code is included here, and none of it is
+redistributed.** The interop is reflection-only — no assembly reference, no
+build dependency. If you want the mod, get it from its own project rather than
+from any copy.
+
 ## Upstream FAQ
 
 **Where can I download the game client?**

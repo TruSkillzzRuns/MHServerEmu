@@ -8,6 +8,23 @@
 //
 // On a server without the mod the type is simply absent, every member here
 // reports "no custom costumes", and callers carry on unchanged.
+//
+// ---------------------------------------------------------------------------
+// Attribution
+// ---------------------------------------------------------------------------
+// MHCostumeMod is a separate project by Mr.Gippy, under its own licence. This
+// file contains none of its code and is not derived from it: it locates the
+// loader by type name at runtime and reads public members by name. There is no
+// assembly reference, no build dependency, and nothing from that project is
+// redistributed here.
+//
+// The member names below ("CustomInfo", "Catalog", "FxPackCatalog", and the
+// entry fields) are the interface this bridge reads. They are recorded here
+// because reflection resolves by name; they are not a copy of the mod's
+// implementation.
+//
+// The mod is not bundled with this fork and must be obtained from its own
+// project. Install it from there rather than from any copy.
 
 using System.Collections;
 using System.Reflection;

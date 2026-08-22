@@ -10,6 +10,18 @@ using MHServerEmu.Games.GameData;
 // Dictionary<PrototypeId, ...> through the non-generic IDictionary interface,
 // so the PrototypeId key is boxed, and a mismatch there would silently report
 // every custom costume as "not custom" rather than throwing.
+//
+// Attribution: MHCostumeMod is a separate project by Mr.Gippy under its own
+// licence. The type below is a stand-in written for this test. It reproduces
+// the public member NAMES and shapes the bridge reflects over -- the interface,
+// which it has to match or the test would verify nothing -- and none of that
+// project's implementation. The values are invented. The mod is not bundled
+// with this fork; obtain it from its own project.
+//
+// Keep this in step with the real loader's public shape. If a future version
+// renames a member, this stand-in should be updated to match rather than left
+// pinned to the old name, or these tests will pass while the live integration
+// quietly reports "no custom costumes".
 namespace MHServerEmu.Games.GameData
 {
     public static class CustomCostumeLoader
