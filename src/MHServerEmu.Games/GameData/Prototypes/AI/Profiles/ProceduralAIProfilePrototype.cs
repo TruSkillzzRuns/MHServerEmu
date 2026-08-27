@@ -636,7 +636,8 @@ namespace MHServerEmu.Games.GameData.Prototypes
                     if (Verify.IsNotNull(spawnGroup) && alliance != null)
                     {
                         SpawnGroupEntityQueryFilterFlags filterFlags = SpawnGroupEntityQueryFilterFlags.Allies | SpawnGroupEntityQueryFilterFlags.NotDeadDestroyedControlled;
-                        if (spawnGroup.GetEntities(out List <WorldEntity> allies, filterFlags, agent.Alliance))
+                        using var alliesHandle = ListPool<WorldEntity>.Get(out List<WorldEntity> allies);
+                        if (spawnGroup.GetEntities(allies, filterFlags, agent.Alliance))
                         {
                             foreach (WorldEntity ally in allies)
                             {
@@ -1425,6 +1426,9 @@ namespace MHServerEmu.Games.GameData.Prototypes
             BehaviorBlackboard ownerBlackboard = ownerController.Blackboard;
 
             int syncAttackIndex = GetRandomSyncAttackIndex(ownerBlackboard, game);
+            if (syncAttackIndex == -1)
+                return;
+
             if (!Verify.IsTrue(syncAttackIndex >= 0 && syncAttackIndex < IDPropertiesLength)) return;
 
             ulong targetId = ownerBlackboard.PropertyCollection[IDProperties[syncAttackIndex]];            
