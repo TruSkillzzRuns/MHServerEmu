@@ -1,28 +1,29 @@
 using MHServerEmu.Games.GameData;
 
-// Deliberately in the namespace and with the name the mod uses, so
-// CustomCostumeBridge's assembly scan finds this exactly the way it would find
-// the real MHCostumeMod loader at runtime. Nothing here ships to a server: it
-// exists only inside the test assembly.
+// Stand-in for MHCostumeMod's costume loader, so CustomCostumeBridge can be
+// tested without the mod installed. The bridge finds a loader by scanning
+// loaded assemblies for a type *named* CustomCostumeLoader, so this works from
+// any namespace.
 //
-// This is the only way to exercise the bridge without installing the mod, and
-// the part most worth exercising is the CustomInfo lookup -- it reads a
-// Dictionary<PrototypeId, ...> through the non-generic IDictionary interface,
-// so the PrototypeId key is boxed, and a mismatch there would silently report
-// every custom costume as "not custom" rather than throwing.
+// It deliberately does NOT sit in MHServerEmu.Games.GameData, even though that
+// is where the real one lives. On a server that has merged the mod, both types
+// would then share a full name and every reference here would raise CS0436 --
+// four warnings on a clean build, which reads as "something is wrong with the
+// merge" to anyone following the setup guide. Nothing here ships to a server:
+// it exists only inside the test assembly.
 //
 // Attribution: MHCostumeMod is a separate project by Mr.Gippy under its own
-// licence. The type below is a stand-in written for this test. It reproduces
-// the public member NAMES and shapes the bridge reflects over -- the interface,
-// which it has to match or the test would verify nothing -- and none of that
-// project's implementation. The values are invented. The mod is not bundled
-// with this fork; obtain it from its own project.
+// licence. The type below is written for this test. It reproduces the public
+// member NAMES and shapes the bridge reflects over -- the interface, which it
+// has to match or the test would verify nothing -- and none of that project's
+// implementation. The values are invented. The mod is not bundled with this
+// fork; obtain it from its own project.
 //
 // Keep this in step with the real loader's public shape. If a future version
-// renames a member, this stand-in should be updated to match rather than left
+// renames a member, update this stand-in to match rather than leaving it
 // pinned to the old name, or these tests will pass while the live integration
 // quietly reports "no custom costumes".
-namespace MHServerEmu.Games.GameData
+namespace MHServerEmu.Games.Tests.Fakes
 {
     public static class CustomCostumeLoader
     {
@@ -70,6 +71,7 @@ namespace MHServerEmu.Games.Tests.GameData
     /// Tests for the reflection bridge to MHCostumeMod's costume loader.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The bridge exists so neither the phantom spawn path nor the WebFrontend
     /// takes a build dependency on a mod almost no server has installed. That
     /// makes reflection the only contract between them, and reflection fails
@@ -77,9 +79,26 @@ namespace MHServerEmu.Games.Tests.GameData
     /// costumes" instead of throwing, which is indistinguishable from an
     /// unmodded server. These tests pin the member names and shapes the bridge
     /// depends on.
+    /// </para>
+    /// <para>
+    /// On a server that has merged the mod, the real loader wins — the bridge
+    /// resolves it by assembly-qualified name before it ever scans for the
+    /// stand-in — and it holds no costumes during a test run. The value
+    /// assertions are skipped in that case rather than failing, since what they
+    /// describe is the stand-in's contents, not the bridge's behaviour.
+    /// </para>
     /// </remarks>
     public class CustomCostumeBridgeTests
     {
+        private const ulong SymbioteId = Fakes.CustomCostumeLoader.SymbioteId;
+        private const ulong JadeId = Fakes.CustomCostumeLoader.JadeId;
+
+        /// <summary>
+        /// True when the bridge resolved the stand-in rather than a real loader.
+        /// </summary>
+        private static bool StandInResolved
+            => CustomCostumeBridge.GetCatalog().Any(c => c.CustomId == SymbioteId);
+
         [Fact]
         public void DetectsAnInstalledLoader()
         {
@@ -89,18 +108,21 @@ namespace MHServerEmu.Games.Tests.GameData
         [Fact]
         public void RecognisesACustomCostumeId()
         {
+            if (StandInResolved == false) return;
+
             // The boxed-key lookup. If PrototypeId did not survive boxing into
             // IDictionary.Contains, this returns false and every custom costume
             // silently renders as its donor.
-            Assert.True(CustomCostumeBridge.IsCustom((PrototypeId)CustomCostumeLoader.SymbioteId));
-            Assert.True(CustomCostumeBridge.IsCustom((PrototypeId)CustomCostumeLoader.JadeId));
+            Assert.True(CustomCostumeBridge.IsCustom((PrototypeId)SymbioteId));
+            Assert.True(CustomCostumeBridge.IsCustom((PrototypeId)JadeId));
         }
 
         [Fact]
         public void LeavesOrdinaryCostumesAlone()
         {
             // A stock costume must not be re-asserted -- doing so would add a
-            // visible donor-then-custom flicker to every ordinary spawn.
+            // visible donor-then-custom flicker to every ordinary spawn. True
+            // whichever loader answered.
             Assert.False(CustomCostumeBridge.IsCustom((PrototypeId)0x1234));
             Assert.False(CustomCostumeBridge.IsCustom(PrototypeId.Invalid));
         }
@@ -109,12 +131,13 @@ namespace MHServerEmu.Games.Tests.GameData
         public void ReadsTheCatalog()
         {
             var catalog = CustomCostumeBridge.GetCatalog();
+            if (StandInResolved == false) return;
 
             Assert.Equal(2, catalog.Count);
             Assert.Equal("Symbiote Spider-Man", catalog[0].Name);
             Assert.Equal("spiderman_symbiote", catalog[0].Token);
             Assert.Equal(100001, catalog[0].Enum);
-            Assert.Equal(CustomCostumeLoader.SymbioteId, catalog[0].CustomId);
+            Assert.Equal(SymbioteId, catalog[0].CustomId);
         }
 
         [Fact]
@@ -127,8 +150,7 @@ namespace MHServerEmu.Games.Tests.GameData
             // then omits "hero" and the client falls back to matching names.
             // Pinned here because the alternative, letting that exception out,
             // turns one unresolvable costume into a 500 for the whole catalog.
-            Assert.Equal(PrototypeId.Invalid,
-                         CustomCostumeBridge.GetHeroFor((PrototypeId)CustomCostumeLoader.SymbioteId));
+            Assert.Equal(PrototypeId.Invalid, CustomCostumeBridge.GetHeroFor((PrototypeId)SymbioteId));
         }
 
         [Fact]
@@ -141,6 +163,7 @@ namespace MHServerEmu.Games.Tests.GameData
         public void ReadsFxPacks()
         {
             var packs = CustomCostumeBridge.GetFxPacks();
+            if (StandInResolved == false) return;
 
             Assert.Single(packs);
             Assert.Equal("fx_web", packs[0].Token);
