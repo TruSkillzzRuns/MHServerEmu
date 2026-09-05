@@ -1145,14 +1145,28 @@ namespace MHServerEmu.Games.Entities
         /// <summary>Replace the current phantoms with a saved squad.</summary>
         public string SpawnPhantomSquad(string squadName, Avatar caller, bool bypassCap = false)
         {
+            var squads = LoadPhantomSquadFile();
+            if (squads.TryGetValue(squadName, out List<PhantomSquadMember> members) == false || members == null || members.Count == 0)
+                return $"No squad named '{squadName}'. Use: phantom squad list";
+
+            return SpawnPhantomSquadMembers(squadName, members, caller, bypassCap);
+        }
+
+        /// <summary>
+        /// Spawns squad members as THIS player's phantoms.
+        /// </summary>
+        /// <remarks>
+        /// Split out from <see cref="SpawnPhantomSquad"/> so a squad can be
+        /// read from one player's saved file and spawned onto another. The
+        /// members are just data; whose phantoms they become is decided by the
+        /// avatar they are spawned through.
+        /// </remarks>
+        private string SpawnPhantomSquadMembers(string squadName, List<PhantomSquadMember> members, Avatar caller, bool bypassCap = false)
+        {
             if (caller == null || caller.IsInWorld == false)
                 return "No avatar in world.";
             if (IsTrialGauntletActive)
                 return "Trial of the Impossible is solo-only — no phantom summons.";
-
-            var squads = LoadPhantomSquadFile();
-            if (squads.TryGetValue(squadName, out List<PhantomSquadMember> members) == false || members == null || members.Count == 0)
-                return $"No squad named '{squadName}'. Use: phantom squad list";
 
             PurgePhantoms();
 
@@ -1171,6 +1185,93 @@ namespace MHServerEmu.Games.Entities
             return firstError == null
                 ? $"Squad '{squadName}': spawned {spawned}/{members.Count}."
                 : $"Squad '{squadName}': spawned {spawned}/{members.Count}. First error: {firstError}";
+        }
+
+        /// <summary>
+        /// Finds another player in this game instance by name.
+        /// </summary>
+        /// <remarks>
+        /// Case-insensitive, and an exact match wins over a partial one so a
+        /// player whose name is a prefix of someone else's is still reachable.
+        /// Scoped to this game instance, which is what a chat command can see;
+        /// a player on another instance reports as not found rather than
+        /// silently matching the wrong person.
+        /// </remarks>
+        public static Player FindPlayerByName(Game game, string name, out string error)
+        {
+            error = null;
+            if (game == null) { error = "no game"; return null; }
+            if (string.IsNullOrWhiteSpace(name)) { error = "no player name given"; return null; }
+
+            name = name.Trim();
+            Player exact = null;
+            List<Player> partial = new();
+
+            foreach (Player candidate in new PlayerIterator(game))
+            {
+                string candidateName = candidate?.GetName();
+                if (string.IsNullOrEmpty(candidateName)) continue;
+
+                if (string.Equals(candidateName, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    exact = candidate;
+                    break;
+                }
+
+                if (candidateName.Contains(name, StringComparison.OrdinalIgnoreCase))
+                    partial.Add(candidate);
+            }
+
+            if (exact != null) return exact;
+            if (partial.Count == 1) return partial[0];
+
+            if (partial.Count > 1)
+            {
+                var names = new System.Text.StringBuilder();
+                for (int i = 0; i < partial.Count && i < 6; i++)
+                {
+                    if (i > 0) names.Append(", ");
+                    names.Append(partial[i].GetName());
+                }
+                error = $"'{name}' matches several players: {names}. Use the full name.";
+                return null;
+            }
+
+            error = $"No player named '{name}' is online here.";
+            return null;
+        }
+
+        /// <summary>
+        /// Spawns one of THIS player's saved squads onto another player.
+        /// </summary>
+        /// <remarks>
+        /// The squad is read from the caller's own file but spawned through the
+        /// recipient's avatar, so the phantoms belong to the recipient: they can
+        /// clear them, they follow the recipient between regions, and they are
+        /// cleaned up when the recipient leaves rather than when the caller
+        /// does. Ownership tracks the avatar's owning Player, so simply
+        /// spawning through their avatar is what makes them theirs.
+        /// </remarks>
+        public string GivePhantomSquad(string squadName, Player recipient)
+        {
+            if (recipient == null) return "No recipient.";
+
+            var squads = LoadPhantomSquadFile();
+            if (squads.TryGetValue(squadName, out List<PhantomSquadMember> members) == false
+                || members == null || members.Count == 0)
+                return $"No squad named '{squadName}'. Use: phantom squad list";
+
+            if (ReferenceEquals(recipient, this))
+                return SpawnPhantomSquadMembers(squadName, members, CurrentAvatar);
+
+            string result = recipient.SpawnPhantomSquadMembers(squadName, members, recipient.CurrentAvatar);
+
+            // Tell the recipient what landed on them. Phantoms appearing out of
+            // nowhere with no explanation reads as a bug, not a gift.
+            if (result.StartsWith("Squad ", StringComparison.Ordinal))
+                recipient.SendBannerLine($"{GetName()} gave you the '{squadName}' squad.");
+
+            return $"{recipient.GetName()}: {result}";
         }
 
         /// <summary>List saved squad names.</summary>

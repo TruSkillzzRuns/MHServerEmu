@@ -1,6 +1,7 @@
 ﻿using MHServerEmu.Commands.Attributes;
 using MHServerEmu.Core.Network;
 using MHServerEmu.DatabaseAccess.Models;
+using MHServerEmu.Games.Entities;
 using MHServerEmu.Games.Entities.Avatars;
 using MHServerEmu.Games.GameData;
 using MHServerEmu.Games.GameData.Prototypes;
@@ -122,6 +123,32 @@ namespace MHServerEmu.Commands.Implementations
                 default:
                     return $"Unknown squad operation '{op}'. Use save, spawn, list, delete or default.";
             }
+        }
+
+        [Command("give")]
+        [CommandDescription("Spawn one of YOUR saved squads for another player. Usage: give [player] [squad]. The phantoms belong to them, not you.")]
+        [CommandInvokerType(CommandInvokerType.Client)]
+        [CommandUserLevel(AccountUserLevel.Admin)]
+        public string Give(string[] @params, NetClient client)
+        {
+            var pc = (client as PlayerConnection) ?? throw new System.InvalidOperationException("Only clients can run !phantom give.");
+            var player = pc.Player;
+            if (player == null) return "No avatar in world.";
+
+            if (@params.Length < 2)
+                return "Usage: phantom give [player] [squad]   (build the squad first with: phantom squad save [name])";
+
+            // The player name comes first and squad names cannot contain
+            // spaces, so everything after the first argument is the squad name.
+            // A player whose name has a space in it would otherwise be
+            // unreachable.
+            string targetName = @params[0];
+            string squadName = string.Join(" ", @params, 1, @params.Length - 1);
+
+            Player recipient = Player.FindPlayerByName(player.Game, targetName, out string findError);
+            if (recipient == null) return findError;
+
+            return player.GivePhantomSquad(squadName, recipient);
         }
 
         [Command("costume")]
